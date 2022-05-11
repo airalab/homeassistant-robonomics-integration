@@ -1,0 +1,10 @@
+{
+    "domain": "robonomics_users",
+    "name": "Robonomics Users Control",
+    "config_flow": true,
+    "documentation": "",
+    "requirements": [],
+    "codeowners": [],
+    "iot_class": "cloud_push",
+    "version": "1.0.1"
+  }
