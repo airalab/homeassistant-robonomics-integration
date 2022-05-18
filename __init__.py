@@ -16,17 +16,8 @@ from homeassistant.helpers import device_registry as dr
 
 from substrateinterface import SubstrateInterface, Keypair
 from substrateinterface.exceptions import SubstrateRequestException
-import time
-from urllib import request, parse
-import json
 import asyncio
-import datetime
-import time
-# import sys.homeassistant
-import binascii
 import nacl.secret
-import base64
-import configparser
 from homeassistant import *
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -59,23 +50,9 @@ datalog_data = ''
 
 from .const import CONF_REPOS, DOMAIN
 from .utils import encrypt, decrypt, str2bool
-from .listener import SubscriptionListener
+from .config import SUB_OWNER_SEED
 
-SUBSCRIPTION_ADDRESS = "4E8yYbvT6qnYcvYbWRptXUaZ5LhZQ1jpojjNJUJCVGxaY2GQ"
-
-
-async def async_setup_entry(
-    hass: core.HomeAssistant, config_entry: config_entries.ConfigEntry
-) -> bool:
-    _LOGGER.debug("here from init")
-    """Set up platform from a ConfigEntry."""
-    hass.data.setdefault(DOMAIN, {})
-    mnemonic = config_entry.data
-    _LOGGER.debug(mnemonic)
-    # Registers update listener to update config entry when options are updated.
-    #config = hass.data[DOMAIN][config_entry.entry_id]
-    #session = async_get_clientsession(hass) 
-    return True
+import random, string
 
 def to_thread(func: typing.Callable) -> typing.Coroutine:
     @functools.wraps(func)
@@ -90,16 +67,41 @@ async def call_service(hass, platform, name, params):
     except Exception as e:
         print(f"Call service exception: {e}")
 
-async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+def generate_pass(length):
+   letters = string.ascii_lowercase
+   return ''.join(random.choice(letters) for i in range(length))
 
+async def async_setup_entry(
+    hass: core.HomeAssistant, config_entry: config_entries.ConfigEntry
+) -> bool:
+    _LOGGER.debug("here from init")
+    """Set up platform from a ConfigEntry."""
+    hass.data.setdefault(DOMAIN, {})
+    conf = config_entry.data
+    mnemonic = conf['seed']
+    _LOGGER.debug(mnemonic)
     _LOGGER.debug(f"Robonomics user control starting set up")
-    print(f"Data: {config_entry}")
+    # print(f"Data: {config_entry}")
+
+    def fail_send_datalog(retry_state):
+        print(f"Failed send datalog, retry_state: {retry_state}")
+
+    @to_thread
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(5), retry_error_callback=fail_send_datalog)
+    def send_datalog(data: str):
+        interface = RobonomicsInterface(mnemonic)
+        try:
+            receipt = interface.record_datalog(data)
+            _LOGGER.debug(f"Datalog created with hash: {receipt}")
+        except Exception as e:
+            _LOGGER.debug(f"send datalog exceprion: {e}")
+            raise e
 
     @to_thread
     def subscribe(hass, callback):
         try:
-            interface = RobonomicsInterface()
-            subscriber = Subscriber(interface, SubEvent.NewDevices, callback, SUBSCRIPTION_ADDRESS)
+            interface = RobonomicsInterface(seed=mnemonic)
+            subscriber = Subscriber(interface, SubEvent.NewDevices, callback, interface.define_address())
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
 
@@ -124,7 +126,7 @@ async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
             resp = await hass.auth.async_get_or_create_user(creds)
             # new_user = await hass.auth.async_create_user(username, ["system-users"])
             # await async_create_person(hass, username, user_id=new_user.id)
-            _LOGGER.debug(f"User was created: {username}")
+            _LOGGER.debug(f"User was created: {username}, password: {password}")
         except Exception as e:
             _LOGGER.debug(f"Exception in create user: {e}")
 
@@ -150,7 +152,6 @@ async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
         """
         Compare users and data from transaction decide what users must be created or deleted
         """
-        password = "password"
         provider = await get_provider()
 
         # users = await hass.auth.async_get_users()
@@ -161,11 +162,11 @@ async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
             try:
                 username = user['username']
                 # username = user.credentials[0].data['username']
-                print(username)
+                # print(username)
                 if len(username) == 48 and username[0] == "4":
-                    print(f"here {username}")
+                    # print(f"here {username}")
                     usernames_hass.append(username)
-                    print(usernames_hass)
+                    # print(usernames_hass)
             except Exception as e:
                 _LOGGER.debug(f"Exception from manage users: {e}")
         _LOGGER.debug(f"Users before: {provider.data.users}")
@@ -179,13 +180,22 @@ async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
         users_to_delete = list(set(usernames_hass) - set(devices))
         _LOGGER.debug(f"Following users will be deleted: {users_to_delete}")
 
+        created_users = []
         for user in users_to_add:
+            password = generate_pass(6)
             await create_user(provider, user, password)
+            created_users.append({'username': user, 'password': password})
 
         for user in users_to_delete:
             await delete_user(provider, user)
 
         if len(users_to_add) > 0 or len(users_to_delete) > 0:
+            if len(users_to_add) > 0:
+                try:
+                    encrypted = encrypt(SUB_OWNER_SEED, f"Created users: {created_users}")
+                    await send_datalog(encrypted)
+                except Exception as e:
+                    _LOGGER.debug(f"Exeption in encryption: {e}")
             await provider.data.async_save()
             _LOGGER.debug(f"Finishing user managment, user list: {provider.data.users}")
             _LOGGER.debug("Restarting...")
@@ -194,8 +204,6 @@ async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     def callback(data) -> None:
         _LOGGER.debug(f"Got NewDevices event: {data}")
         hass.async_create_task(manage_users(data))
-    
-    # await asyncio.sleep(10)
 
     try:
         hass.async_create_task(subscribe(hass, callback))
@@ -205,6 +213,9 @@ async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
 
     hass.states.async_set(f"{DOMAIN}.state", "Online")
     _LOGGER.debug(f"Robonomics user control successfuly set up")
+    return True
+
+async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
 
     ### test ###
 
