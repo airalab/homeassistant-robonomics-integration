@@ -20,13 +20,14 @@ cd ~/.homeassistant/custom_components/robonomics_users
 pip3 install -r requirements.txt
 ```
 
-Write mnemonic seed from subscription owner account to `config.py`:
+Write mnemonic seed from the account you want to add to subscription and subscription owner address to `config.py`:
 ```bash
 nano cd ~/.homeassistant/custom_components/robonomics_users/config.py
 ```
 It must look like this:
 ```
-SUB_OWNER_SEED = "word word word ..."
+SUB_OWNER_ADDRESS = "address"
+USER_SEED = "word word word ..."
 ```
 
 ## Run

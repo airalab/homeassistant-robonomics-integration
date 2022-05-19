@@ -14,7 +14,7 @@ from homeassistant.auth import auth_manager_from_config, auth_store, models
 
 from homeassistant.helpers import device_registry as dr
 
-from substrateinterface import SubstrateInterface, Keypair
+from substrateinterface import SubstrateInterface, Keypair, KeypairType
 from substrateinterface.exceptions import SubstrateRequestException
 import asyncio
 import nacl.secret
@@ -49,8 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 datalog_data = ''
 
 from .const import CONF_REPOS, DOMAIN
-from .utils import encrypt, decrypt, str2bool
-from .config import SUB_OWNER_SEED
+from .utils import encrypt_message, str2bool
 
 import random, string
 
@@ -91,10 +90,11 @@ async def async_setup_entry(
     def send_datalog(data: str):
         interface = RobonomicsInterface(mnemonic)
         try:
+            _LOGGER.debug(f"Start creating datalog")
             receipt = interface.record_datalog(data)
             _LOGGER.debug(f"Datalog created with hash: {receipt}")
         except Exception as e:
-            _LOGGER.debug(f"send datalog exceprion: {e}")
+            _LOGGER.debug(f"send datalog exception: {e}")
             raise e
 
     @to_thread
@@ -180,22 +180,22 @@ async def async_setup_entry(
         users_to_delete = list(set(usernames_hass) - set(devices))
         _LOGGER.debug(f"Following users will be deleted: {users_to_delete}")
 
-        created_users = []
+        sender_kp = Keypair.create_from_mnemonic(mnemonic, crypto_type=KeypairType.ED25519)
         for user in users_to_add:
             password = generate_pass(6)
             await create_user(provider, user, password)
-            created_users.append({'username': user, 'password': password})
-
+            for address in data[1]:
+                if address.lower() == user:
+                    try:
+                        rec_kp = Keypair(ss58_address=address, crypto_type=KeypairType.ED25519)
+                        encrypted = encrypt_message(f"Username: {address}, password: {password}", sender_kp, rec_kp.public_key)
+                        await send_datalog(encrypted)
+                    except Exception as e:
+                        print(f"create keypair exception: {e}")
         for user in users_to_delete:
             await delete_user(provider, user)
 
         if len(users_to_add) > 0 or len(users_to_delete) > 0:
-            if len(users_to_add) > 0:
-                try:
-                    encrypted = encrypt(SUB_OWNER_SEED, f"Created users: {created_users}")
-                    await send_datalog(encrypted)
-                except Exception as e:
-                    _LOGGER.debug(f"Exeption in encryption: {e}")
             await provider.data.async_save()
             _LOGGER.debug(f"Finishing user managment, user list: {provider.data.users}")
             _LOGGER.debug("Restarting...")
@@ -217,75 +217,4 @@ async def async_setup_entry(
 
 async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
 
-    ### test ###
-
-    ######################## from tests ######################
-
-    # manager = hass.data["person"][1]
-
-    # client = await hass_ws_client(hass)
-    # persons = manager.async_items()
-    # print(f"Persons: {persons}")
-
-    # resp = await client.send_json(
-    #     {"id": 6, "type": "person/delete", "person_id": persons[0]["id"]}
-    # )
-    # resp = await client.receive_json()
-
-    # persons = manager.async_items()
-    # assert len(persons) == 0
-
-    # assert resp["success"]
-    # assert len(hass.states.async_entity_ids("person")) == 0
-    # ent_reg = er.async_get(hass)
-    # assert not ent_reg.async_is_registered("person.tracked_person")
-
-    ###########################################################
-
-    # creds = models.Credentials(auth_provider_type='homeassistant', 
-    #                         auth_provider_id=None, 
-    #                         data={'username': 'hello'}, 
-    #                         id='helhel', is_new=True)
-    
-    # # resp = await hass.auth.async_get_or_create_user(creds)
-    # print(f"New user: {resp}\n")
-    # users = await hass.auth.async_get_users()
-    # provider = await get_provider()
-    # print(users)
-    # _LOGGER.debug(f"Users before: {provider.data.users}")
-    # await hass.auth.async_remove_user(users[-1])
-    # provider.data.async_remove_auth('hello')
-    # await delete_user(provider, 'hello')
-    # await delete_user(provider, users[-2])
-    # await delete_user(provider, users[-3])
-    # await provider.data.async_save()
-    # # users = await hass.auth.async_get_users()
-    # # print(users)
-    # _LOGGER.debug(f"Users after: {provider.data.users}")
-
-    # groups = await hass.auth._store.async_get_groups()
-    # print(groups)
-
-    # resp = await hass.auth.async_create_user("4haqvj19o5iyccy7a7vdirhrmazjthcd3xevyncst4bjozgx", ["system-users"])
-    # await async_create_person(hass, "4haqvj19o5iyccy7a7vdirhrmazjthcd3xevyncst4bjozgx", user_id="7b58fc97f352418897185b2e6545bf1f")
-    # users = await hass.auth.async_get_users()
-    # await hass.auth.async_remove_user(users[-1])
-
-    # hass.auth = await auth_manager_from_config(hass, [{"type": "homeassistant"}], [])
-    # # _LOGGER.debug(f"Creating new user with username: {username}")
-    # provider = hass.auth.auth_providers[0]
-    # await provider.async_initialize()
-    # _LOGGER.debug(f"Users {provider.data.users}")
-    # # provider.data.add_auth(username, password)
-    # # await provider.data.async_save()
-    # # _LOGGER.debug(f"User {username} created: {provider.data.users}")
-    # users = await hass.auth.async_get_users()
-    # for user in users:
-    #     print(user.credentials[0].data['username'])
-    #     print(user.name)
-    #     print(user.id)
-    #     if user.name != "Shtab":
-    #         print("delete")
-    #         await hass.auth.async_remove_user(user)
-    # _LOGGER.debug(f"Users 1: {users[-1]}")
     return True
