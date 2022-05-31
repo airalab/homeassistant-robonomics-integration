@@ -4,6 +4,7 @@ from substrateinterface import Keypair, KeypairType
 import secrets
 from typing import Union
 import base64
+import random, string
 
 def encrypt_message(
     message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes, nonce: bytes = secrets.token_bytes(24),
@@ -24,6 +25,12 @@ def decrypt_message(encrypted_message: bytes, sender_public_key: bytes, recipien
     encrypted = base64.b64decode(encrypted_message)
     return nacl.public.Box(recipient, sender).decrypt(encrypted)
 
-
 def str2bool(v):
-  return v.lower() in ("on", "true", "t", "1", 'y', 'yes', 'yeah')
+    return v.lower() in ("on", "true", "t", "1", 'y', 'yes', 'yeah')
+
+def generate_pass(length: int) -> str:
+    """
+    Generate random low letter string with the given length
+    """
+    letters = string.ascii_lowercase
+    return ''.join(random.choice(letters) for i in range(length))

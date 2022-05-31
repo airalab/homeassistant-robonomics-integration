@@ -13,8 +13,9 @@ from homeassistant.helpers.entity_registry import (
     async_get_registry,
 )
 import voluptuous as vol
+from collections import OrderedDict
 from homeassistant import data_entry_flow
-from .const import CONF_REPOS, DOMAIN
+from .const import DOMAIN, CONF_SEED, CONF_SUB_OWNER, CONF_PINATA_PUB, CONF_PINATA_SECRET
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +25,15 @@ class RoboConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.data = user_input
             return self.async_create_entry(title="Robonomics Control", data=self.data)
 
+        # return self.async_show_form(
+        #     step_id="user", data_schema=vol.Schema({vol.Required("seed"): str})
+        # )
+        fields = OrderedDict()
+        fields[vol.Required(CONF_SEED)] = str
+        fields[vol.Required(CONF_SUB_OWNER)] = str
+        fields[vol.Required(CONF_PINATA_PUB)] = str
+        fields[vol.Required(CONF_PINATA_SECRET)] = str
+
         return self.async_show_form(
-            step_id="user", data_schema=vol.Schema({vol.Required("seed"): str})
+            step_id="user", data_schema=vol.Schema(fields)
         )
