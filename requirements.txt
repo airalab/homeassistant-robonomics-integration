@@ -1,4 +1,4 @@
-robonomics-interface==0.11.3
+robonomics-interface==1.0.4
 pynacl==1.4.0
 pinatapy-vourhey==0.1.3
 aenum==3.1.11
