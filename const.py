@@ -1,4 +1,6 @@
-DOMAIN = "robonomics_users"
+"""Constants for the Robonomics Control integration."""
+
+DOMAIN = "robonomics_control"
 CONF_IP = "ip"
 PLATFORMS = []
 

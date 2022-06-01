@@ -1,49 +1,46 @@
+"""The Robonomics Control integration."""
 from __future__ import annotations
+
+from ast import literal_eval
+import asyncio
+import functools
+import logging
+import os
 from pickle import FALSE
 from platform import platform
+import typing as tp
 
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.person import async_create_person
-from homeassistant.const import TEMP_CELSIUS
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from homeassistant.core import StateMachine as sm
-from homeassistant.helpers.template import AllStates
-from homeassistant.auth import auth_manager_from_config, auth_store, models
-
-from homeassistant.helpers import device_registry as dr
-
-from substrateinterface import SubstrateInterface, Keypair, KeypairType
-from substrateinterface.exceptions import SubstrateRequestException
-import asyncio
+from aenum import extend_enum
 import nacl.secret
+from pinatapy import PinataPy
 import requests
+from robonomicsinterface import Account, Datalog, SubEvent, Subscriber
+from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
+from substrateinterface import Keypair, KeypairType, SubstrateInterface
+from substrateinterface.exceptions import SubstrateRequestException
+from substrateinterface.utils.ss58 import is_valid_ss58_address
+from tenacity import retry, stop_after_attempt, wait_fixed
+
 from homeassistant import *
+from homeassistant.auth import auth_manager_from_config, auth_store, models
+from homeassistant.components.person import async_create_person
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant, StateMachine
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, TEMP_CELSIUS, Platform
+from homeassistant.core import HomeAssistant, StateMachine, StateMachine as sm, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import *
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.template import AllStates
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
     UpdateFailed,
 )
-import logging
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
-from robonomicsinterface import Account, Subscriber, SubEvent, Datalog
-from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
-import functools
-from tenacity import retry, stop_after_attempt, wait_fixed
-from substrateinterface.utils.ss58 import is_valid_ss58_address
-import typing as tp
-from pinatapy import PinataPy
-import os
-from aenum import extend_enum
-from ast import literal_eval
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,8 +61,9 @@ def to_thread(func: tp.Callable) -> tp.Coroutine:
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         return await asyncio.to_thread(func, *args, **kwargs)
-    return wrapper
 
+    return wrapper
+  
 @to_thread
 def add_to_ipfs(pinata: PinataPy, data: str) -> str:
     with open("data_now", "w") as f:
@@ -73,20 +71,19 @@ def add_to_ipfs(pinata: PinataPy, data: str) -> str:
     resp = pinata.pin_file_to_ipfs("data_now")
     _LOGGER.debug(f"Data pinned to IPFS with hash: {resp['IpfsHash']}")
     os.remove("data_now")
-    return resp['IpfsHash']
+    return resp["IpfsHash"]
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Robonomics Control from a config entry."""
     # TODO Store an API object for your platforms to access
     # hass.data[DOMAIN][entry.entry_id] = MyApi(...)
-
     hass.data.setdefault(DOMAIN, {})
     conf = entry.data
     user_mnemonic = conf[CONF_USER_SEED]
     sub_owner_seed = conf[CONF_SUB_OWNER_SEED]
     pinata = PinataPy(conf[CONF_PINATA_PUB], conf[CONF_PINATA_SECRET])
     _LOGGER.debug(f"Robonomics user control starting set up")
-
 
     def subscribe(callback):
         try:
@@ -374,6 +371,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
 
     return True
+
+
+# async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+#     """Unload a config entry."""
+#     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+#         hass.data[DOMAIN].pop(entry.entry_id)
+
+#     return unload_ok
+
 
 async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
 
