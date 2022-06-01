@@ -1,0 +1,24 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Device is already configured"
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "pinata_pub": "Pinata public key",
+                    "pinata_secret": "Pinata secret",
+                    "seed": "Admin seed",
+                    "sub_owner_ed": "Is your account type ED15519",
+                    "sub_owner_seed": "Subscription owner address",
+                    "user_ed": "Is your account type ED15519"
+                }
+            }
+        }
+    }
+}
