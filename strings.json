@@ -1,0 +1,25 @@
+{
+    "config": {
+      "step": {
+        "user": {
+          "data": {
+            "seed": "Admin seed",
+            "user_ed": "Is your account type ED15519",
+            "sub_owner_seed": "Subscription owner address",
+            "sub_owner_ed": "Is your account type ED15519",
+            "pinata_pub": "Pinata public key",
+            "pinata_secret": "Pinata secret"
+          }
+        }
+      },
+      "error": {
+        "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+        "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+        "unknown": "[%key:common::config_flow::error::unknown%]"
+      },
+      "abort": {
+        "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      }
+    }
+  }
+  
