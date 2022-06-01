@@ -41,6 +41,9 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
+
+_LOGGER = logging.getLogger(__name__)
+
 from .const import (
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
@@ -51,13 +54,7 @@ from .const import (
     CONF_USER_SEED,
     DOMAIN,
 )
-from .utils import encrypt_message, generate_pass, str2bool
-
-# TODO List the platforms that you want to support.
-# For your initial PR, limit it to 1 platform.
-# PLATFORMS: list[Platform] = [Platform.LIGHT]
-
-_LOGGER = logging.getLogger(__name__)
+from .utils import encrypt_message, str2bool, generate_pass
 
 
 def to_thread(func: tp.Callable) -> tp.Coroutine:
@@ -66,8 +63,7 @@ def to_thread(func: tp.Callable) -> tp.Coroutine:
         return await asyncio.to_thread(func, *args, **kwargs)
 
     return wrapper
-
-
+  
 @to_thread
 def add_to_ipfs(pinata: PinataPy, data: str) -> str:
     with open("data_now", "w") as f:
@@ -82,7 +78,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Robonomics Control from a config entry."""
     # TODO Store an API object for your platforms to access
     # hass.data[DOMAIN][entry.entry_id] = MyApi(...)
-
     hass.data.setdefault(DOMAIN, {})
     conf = entry.data
     user_mnemonic = conf[CONF_USER_SEED]
