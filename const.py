@@ -5,7 +5,7 @@ CONF_IP = "ip"
 PLATFORMS = []
 
 CONF_REPOS = "repositories"
-CONF_USER_SEED = "seed"
+CONF_USER_SEED = "admin_seed_secret"
 CONF_USER_ED = "user_ed"
 CONF_SUB_OWNER_SEED = "sub_owner_seed"
 CONF_SUB_OWNER_ED = "sub_owner_ed"

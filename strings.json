@@ -3,13 +3,14 @@
       "step": {
         "user": {
           "data": {
-            "seed": "Admin seed",
-            "user_ed": "Is your account type ED15519",
-            "sub_owner_seed": "Subscription owner address",
-            "sub_owner_ed": "Is your account type ED15519",
+            "admin_seed_secret": "Robonomics admin account seed",
+            "user_ed": "Is your account type ED25519",
+            "sub_owner_seed": "Robonomics subscription owner account seed",
+            "sub_owner_ed": "Is your account type ED25519",
             "pinata_pub": "Pinata public key",
             "pinata_secret": "Pinata secret"
-          }
+          },
+          "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account, without it data files will be pinned to IPFS only from your local node."
         }
       },
       "error": {
