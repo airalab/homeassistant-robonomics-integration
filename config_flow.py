@@ -30,8 +30,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_USER_ED): bool,
         vol.Required(CONF_SUB_OWNER_SEED): str,
         vol.Required(CONF_SUB_OWNER_ED): bool,
-        vol.Required(CONF_PINATA_PUB): str,
-        vol.Required(CONF_PINATA_SECRET): str,
+        vol.Optional(CONF_PINATA_PUB): str,
+        vol.Optional(CONF_PINATA_SECRET): str,
     }
 )
 

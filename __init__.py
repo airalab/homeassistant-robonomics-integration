@@ -44,6 +44,9 @@ from pinatapy import PinataPy
 import os
 from aenum import extend_enum
 from ast import literal_eval
+import ipfsApi
+import time
+import getpass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,15 +69,6 @@ def to_thread(func: tp.Callable) -> tp.Coroutine:
         return await asyncio.to_thread(func, *args, **kwargs)
     return wrapper
 
-@to_thread
-def add_to_ipfs(pinata: PinataPy, data: str) -> str:
-    with open("data_now", "w") as f:
-        f.write(data)
-    resp = pinata.pin_file_to_ipfs("data_now")
-    _LOGGER.debug(f"Data pinned to IPFS with hash: {resp['IpfsHash']}")
-    os.remove("data_now")
-    return resp['IpfsHash']
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Robonomics Control from a config entry."""
     # TODO Store an API object for your platforms to access
@@ -84,9 +78,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     conf = entry.data
     user_mnemonic = conf[CONF_USER_SEED]
     sub_owner_seed = conf[CONF_SUB_OWNER_SEED]
-    pinata = PinataPy(conf[CONF_PINATA_PUB], conf[CONF_PINATA_SECRET])
+    if (CONF_PINATA_PUB in conf) and (CONF_PINATA_SECRET in conf):
+        pinata = PinataPy(conf[CONF_PINATA_PUB], conf[CONF_PINATA_SECRET])
+        _LOGGER.debug("Use Pinata to pin files")
+    else: 
+        pinata = None
+        _LOGGER.debug("Use local node to pin files")
     _LOGGER.debug(f"Robonomics user control starting set up")
+    data_path = f"/home/{getpass.getuser()}/ha_robonomics_data"
+    if not os.path.isdir(data_path):
+        os.mkdir(data_path)
+    api = ipfsApi.Client('127.0.0.1', 5001)
 
+    @to_thread
+    def add_to_ipfs(api: ipfsApi.Client, data: str, data_path, pinata: PinataPy = None) -> str:
+        filename = f"{data_path}/data{time.time()}"
+        with open(filename, "w") as f:
+            f.write(data)
+        if pinata is not None:
+            res = pinata.pin_file_to_ipfs(filename)
+            ipfs_hash = res['IpfsHash']
+        else:
+            res = api.add(filename)
+            ipfs_hash = res[0]['Hash']
+        _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash}")
+        return ipfs_hash
 
     def subscribe(callback):
         try:
@@ -339,7 +355,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data = get_states()
             _LOGGER.debug(f"Got states to send datalog: {data}")
             encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
-            ipfs_hash = await add_to_ipfs(pinata, encrypted_data)
+            ipfs_hash = await add_to_ipfs(api, encrypted_data, data_path, pinata=pinata)
             await send_datalog(ipfs_hash, user_mnemonic, conf[CONF_USER_ED], True)
         except Exception as e:
             _LOGGER.error(f"Exception in get_and_send_data: {e}")
