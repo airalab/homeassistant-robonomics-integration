@@ -98,11 +98,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if pinata is not None:
             res = pinata.pin_file_to_ipfs(filename)
             ipfs_hash = res['IpfsHash']
-        else:
-            res = api.add(filename)
-            ipfs_hash = res[0]['Hash']
-        _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash}")
-        return ipfs_hash
+        files = {
+        'file': (data),
+        }
+        try:
+            response = requests.post('https://ipfs.infura.io:5001/api/v0/add', files=files)
+            p = response.json()
+            ipfs_hash_infura = p['Hash']
+        except Exception as e:
+            _LOGGER.error(f"Pin to infura exception: {e}")
+        res = api.add(filename)
+        ipfs_hash_local = res[0]['Hash']
+
+        _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash_local}")
+        return ipfs_hash_local
 
     def subscribe(callback):
         try:
