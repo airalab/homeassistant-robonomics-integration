@@ -47,6 +47,7 @@ from ast import literal_eval
 import ipfsApi
 import time
 import getpass
+import http3
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,7 +61,9 @@ from .const import (
     CONF_USER_SEED,
     DOMAIN,
 )
-from .utils import encrypt_message, str2bool, generate_pass
+from .utils import encrypt_message, str2bool, generate_pass, decrypt_message
+
+SENDING_TIMEOUT = 15
 
 
 def to_thread(func: tp.Callable) -> tp.Coroutine:
@@ -223,11 +226,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             sender_kp,
                             rec_kp.public_key,
                         )
-                        await send_datalog(
-                            encrypted, sub_owner_seed, conf[CONF_SUB_OWNER_ED], False
-                        )
                     except Exception as e:
                         _LOGGER.error(f"create keypair exception: {e}")
+                    await send_datalog(
+                        encrypted, sub_owner_seed, conf[CONF_SUB_OWNER_ED], False
+                    )
         for user in users_to_delete:
             await delete_user(provider, user)
 
@@ -237,23 +240,67 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug("Restarting...")
             await hass.services.async_call("homeassistant", "restart")
 
+    async def get_ipfs_data(
+                ipfs_hash: str, 
+                gateways: tp.List[str] = ["https://ipfs.io/ipfs/", 
+                                        "https://gateway.moralisipfs.com/ipfs/"]   
+                ) -> str:
+        client = http3.AsyncClient()
+        try:
+            for gateway in gateways:
+                if gateway[-1] != "/":
+                    gateway += "/"
+                url = f"{gateway}{ipfs_hash}"
+                resp = await client.get(url)
+                _LOGGER.debug(f"Response from {gateway}: {resp.status_code}")
+                if resp.status_code == 200:
+                    return resp.text
+            else:
+                return await get_ipfs_data(ipfs_hash, gateways)
+        except Exception as e:
+            _LOGGER.error(f"Exception in get ipfs: {e}")
+            return await get_ipfs_data(ipfs_hash, gateways)
+
     @callback
-    def handle_launch(data: str) -> None:
-        ipfs_hash = ipfs_32_bytes_to_qm_hash(data)
-        url = f"https://gateway.moralisipfs.com/ipfs/{ipfs_hash}/"
-        message = requests.get(
-            url
-        )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
-        message = literal_eval(message)
-        hass.async_create_task(
-            hass.services.async_call(
-                message["platform"], message["name"], message["params"]
+    async def handle_launch(data: tp.List[str]) -> None:
+        _LOGGER.debug("Start handle launch")
+        try:
+            ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
+            response_text = await get_ipfs_data(ipfs_hash)  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
+        except Exception as e:
+            _LOGGER.error(f"Exception in get ipfs command: {e}")
+            return
+        _LOGGER.debug(f"Got encrypted command: {response_text}")
+        kp_sender = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
+        if conf[CONF_SUB_OWNER_ED]:
+            subscription_owner = Account(
+                seed=sub_owner_seed, crypto_type=KeypairType.ED25519
             )
-        )
+        else:
+            subscription_owner = Account(seed=sub_owner_seed, crypto_type=KeypairType.ED25519)
+        try:
+            decrypted = decrypt_message(response_text, kp_sender.public_key, subscription_owner.keypair)
+        except Exception as e:
+            _LOGGER.error(f"Exception in decript command: {e}")
+            return
+        decrypted = str(decrypted)[2:-1]
+        _LOGGER.debug(f"Decrypted command: {decrypted}")
+        try:
+            message = literal_eval(decrypted)
+            hass.async_create_task(
+                hass.services.async_call(
+                    message["platform"], message["name"], message["params"]
+                )
+            )
+        except Exception as e:
+            _LOGGER.error(f"Exception in sending command: {e}")
+            
 
     @callback
     def callback_new_devices(data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
         _LOGGER.debug(f"Got Robonomics event: {data}")
+        print(f"type {type(data[1])}")
+        print(f"ravno {type(data[1]) == list}")
         print(type(data[1]))
         if conf[CONF_SUB_OWNER_ED]:
             subscription_owner = Account(
@@ -261,8 +308,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         else:
             subscription_owner = Account(seed=sub_owner_seed)
+        print(f"Owner {data[0]} {subscription_owner.get_address()}")
         if type(data[1]) == str and data[1] == subscription_owner.get_address():
-            handle_launch(data[2])
+            hass.async_create_task(handle_launch(data))
         elif type(data[1]) == list and data[0] == subscription_owner.get_address():
             hass.async_create_task(manage_users(data))
 
@@ -321,13 +369,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             account = Account(seed=seed, crypto_type=KeypairType.ED25519)
         else:
             account = Account(seed=seed)
-        if conf[CONF_SUB_OWNER_ED]:
-            subscription_owner = Account(
-                seed=sub_owner_seed, crypto_type=KeypairType.ED25519
-            )
-        else:
-            subscription_owner = Account(seed=sub_owner_seed)
         if subscription:
+            if conf[CONF_SUB_OWNER_ED]:
+                subscription_owner = Account(
+                    seed=sub_owner_seed, crypto_type=KeypairType.ED25519
+                )
+            else:
+                subscription_owner = Account(seed=sub_owner_seed)
             try:
                 _LOGGER.debug(f"Start creating rws datalog")
                 datalog = Datalog(
@@ -341,7 +389,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else:
             try:
                 _LOGGER.debug(f"Start creating datalog")
-                datalog = Datalog(Account)
+                datalog = Datalog(account)
                 receipt = datalog.record(data)
                 _LOGGER.debug(f"Datalog created with hash: {receipt}")
             except Exception as e:
@@ -382,12 +430,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_time_changed(event):
         try:
-            if event.data["now"].minute % 5 == 0 and event.data["now"].second == 0:
+            if event.data["now"].minute % SENDING_TIMEOUT == 0 and event.data["now"].second == 0:
                 await get_and_send_data()
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
-    hass.bus.async_listen("state_changed", handle_state_changed)
+    #hass.bus.async_listen("state_changed", handle_state_changed)
     hass.bus.async_listen("time_changed", handle_time_changed)
 
     hass.async_add_executor_job(subscribe, callback_new_devices)

@@ -1,4 +1,4 @@
-# Control Home Assistant users with Robonomics
+# Control Home Assistant with Robonomics
 
 Integration track subscription devices and manage Home Assistant users.
 
@@ -11,47 +11,27 @@ sudo -u homeassistant -H -s
 cd ~/.homeassistant/custom_components
 git clone https://github.com/LoSk-p/home_assistant_users.git robonomics_users
 ```
+> The folder must have name `robonomics_users`
 
-Install dependensies:
+Install ipfs local node:
 
 ```bash
-source /srv/homeassistant/bin/activate
 cd ~/.homeassistant/custom_components/robonomics_users
-pip3 install -r requirements.txt
+chmod +x install_ipfs.sh
+./install_ipfs.sh
 ```
 
-Write mnemonic seed from the account you want to add to subscription and subscription owner address (both of them must be ed25519 type) to `config.py`:
-```bash
-nano cd ~/.homeassistant/custom_components/robonomics_users/config.py
-```
-It must look like this:
-```
-SUB_OWNER_ADDRESS = "address"
-USER_SEED = "word word word ..."
-```
-
-## Run
-
-Restart Home Assistant:
-
+Then restart HOme Assistant:
 ```bash
 systemctl restart home-assistant@homeassistant.service
 ```
 
-In the web interface go to `Configuration/Integrations` and press `Add Integration`. Find `Robonomics Users Control`:
+## Configure
 
-![robonomics-users]()
+For the Robonomics integration you need an [account](https://wiki.robonomics.network/docs/en/create-account-in-dapp/) with [subscription](https://wiki.robonomics.network/docs/en/get-subscription/). Also you need an admin account added to subscription as a device (all accounts should be ed25519 type). Admin account will send telemetry from Home Assistant and will be able to send commands to smart devices.  
 
-Then write mnemonic seed from subscription owner account and press `submit`.
+In the web interface go to `Settings/Devices & Services/Integrations` and press `Add Integration`. Find `Robonomics`:
 
-## Use
+![robonomics-users](images/config.png)
 
-Run `get_credentials.py` script:
-```bash
-sudo -u homeassistant -H -s
-source /srv/homeassistant/bin/activate
-cd ~/.homeassistant/custom_components/robonomics_users
-python3 get_credentials.py
-````
-
-Add device to the subscription and `get_credentials.py` will show new username and password.
+Then write mnemonic seeds from Robonomics accounts. Integration use IPFS to save encrypted data, by defaul it uses local node and infura IPFS API, but you can use your Pinata account in addition.

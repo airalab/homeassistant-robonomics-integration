@@ -1,6 +1,6 @@
-from robonomicsinterface import RobonomicsInterface, Subscriber, SubEvent
-from config import SUB_OWNER_ADDRESS, USER_SEED
+from robonomicsinterface import Account, Subscriber, SubEvent
 from utils import decrypt_message
+from substrateinterface import Keypair
 
 def callback(data):
     # print(data)
@@ -10,5 +10,5 @@ def callback(data):
     print(decrypted)
 
 if __name__ == '__main__':
-    interface = RobonomicsInterface()
+    interface = Account()
     subscriber = Subscriber(interface, SubEvent.NewRecord, callback, SUB_OWNER_ADDRESS)
