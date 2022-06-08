@@ -270,23 +270,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in get ipfs command: {e}")
             return
-        _LOGGER.debug(f"Got encrypted command: {response_text}")
-        kp_sender = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
-        if conf[CONF_SUB_OWNER_ED]:
-            subscription_owner = Account(
-                seed=sub_owner_seed, crypto_type=KeypairType.ED25519
-            )
+        _LOGGER.debug(f"Got from launch: {response_text}")
+        if "platform" in response_text:
+            message = literal_eval(response_text)
         else:
-            subscription_owner = Account(seed=sub_owner_seed, crypto_type=KeypairType.ED25519)
-        try:
-            decrypted = decrypt_message(response_text, kp_sender.public_key, subscription_owner.keypair)
-        except Exception as e:
-            _LOGGER.error(f"Exception in decript command: {e}")
-            return
-        decrypted = str(decrypted)[2:-1]
-        _LOGGER.debug(f"Decrypted command: {decrypted}")
-        try:
+            kp_sender = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
+            if conf[CONF_SUB_OWNER_ED]:
+                subscription_owner = Account(
+                    seed=sub_owner_seed, crypto_type=KeypairType.ED25519
+                )
+            else:
+                subscription_owner = Account(seed=sub_owner_seed, crypto_type=KeypairType.ED25519)
+            try:
+                decrypted = decrypt_message(response_text, kp_sender.public_key, subscription_owner.keypair)
+            except Exception as e:
+                _LOGGER.error(f"Exception in decript command: {e}")
+                return
+            decrypted = str(decrypted)[2:-1]
+            _LOGGER.debug(f"Decrypted command: {decrypted}")
             message = literal_eval(decrypted)
+        try:
             hass.async_create_task(
                 hass.services.async_call(
                     message["platform"], message["name"], message["params"]
@@ -308,8 +311,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         else:
             subscription_owner = Account(seed=sub_owner_seed)
+        if conf[CONF_USER_ED]:
+            sub_admin = Account(
+                seed=user_mnemonic, crypto_type=KeypairType.ED25519
+            )
+        else:
+            sub_admin = Account(seed=user_mnemonic)
         print(f"Owner {data[0]} {subscription_owner.get_address()}")
-        if type(data[1]) == str and data[1] == subscription_owner.get_address():
+        if type(data[1]) == str and data[1] == sub_admin.get_address():
             hass.async_create_task(handle_launch(data))
         elif type(data[1]) == list and data[0] == subscription_owner.get_address():
             hass.async_create_task(manage_users(data))
@@ -420,10 +429,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def handle_state_changed(event):
         try:
             if (
-                event.data["old_state"] != None
-                and event.data["entity_id"].split(".")[0] == "binary_sensor"
-                and event.data["old_state"].state != event.data["new_state"].state
-            ):
+                    event.data["old_state"] != None
+                    and event.data["old_state"].state != "unknown"
+                    and event.data["entity_id"].split(".")[0] == "binary_sensor"
+                    and event.data["old_state"].state != event.data["new_state"].state
+                ):
+                print(f"State changed: {event.data}")
                 await get_and_send_data()
         except Exception as e:
             _LOGGER.error(f"Exception in handle_state_changed: {e}")
@@ -435,7 +446,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
-    #hass.bus.async_listen("state_changed", handle_state_changed)
+    hass.bus.async_listen("state_changed", handle_state_changed)
     hass.bus.async_listen("time_changed", handle_time_changed)
 
     hass.async_add_executor_job(subscribe, callback_new_devices)
