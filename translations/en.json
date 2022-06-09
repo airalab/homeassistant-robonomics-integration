@@ -6,7 +6,9 @@
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
+            "unknown": "Unexpected error",
+            "invalid_sub_admin_seed": "Invalid sub admin seed",
+            "invalid_sub_owner_seed": "Invalid subscription owner seed"
         },
         "step": {
             "user": {
@@ -15,8 +17,9 @@
                     "pinata_secret": "Pinata secret",
                     "admin_seed_secret": "Robonomics admin account seed",
                     "sub_owner_ed": "Is your account type ED25519",
-                    "sub_owner_seed": "Robonomics subscription owner account seed",
-                    "user_ed": "Is your account type ED25519"
+                    "sub_owner_seed_secret": "Robonomics subscription owner account seed",
+                    "user_ed": "Is your account type ED25519",
+                    "sending_timeout": "Timeout for sending data to Robonomics (min)"
                 },
                 "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account, without it data files will be pinned to IPFS only from your local node."
             }

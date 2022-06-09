@@ -11,6 +11,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.core import StateMachine as sm
 from homeassistant.helpers.template import AllStates
 from homeassistant.auth import auth_manager_from_config, auth_store, models
+from homeassistant.helpers.event import async_track_time_interval
 
 from homeassistant.helpers import device_registry as dr
 
@@ -36,7 +37,6 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from robonomicsinterface import Account, Subscriber, SubEvent, Datalog
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
-import functools
 from tenacity import retry, stop_after_attempt, wait_fixed
 from substrateinterface.utils.ss58 import is_valid_ss58_address
 import typing as tp
@@ -48,10 +48,14 @@ import ipfsApi
 import time
 import getpass
 import http3
+from datetime import timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
 from .const import (
+    MORALIS_GATEWAY,
+    IPFS_GATEWAY,
+    INFURA_API,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
     CONF_REPOS,
@@ -60,17 +64,12 @@ from .const import (
     CONF_USER_ED,
     CONF_USER_SEED,
     DOMAIN,
+    CONF_SENDING_TIMEOUT
 )
-from .utils import encrypt_message, str2bool, generate_pass, decrypt_message
+from .utils import encrypt_message, str2bool, generate_pass, decrypt_message, to_thread
+from .robonomics import Robonomics
 
-SENDING_TIMEOUT = 15
 
-
-def to_thread(func: tp.Callable) -> tp.Coroutine:
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        return await asyncio.to_thread(func, *args, **kwargs)
-    return wrapper
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Robonomics Control from a config entry."""
@@ -79,8 +78,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
     conf = entry.data
-    user_mnemonic = conf[CONF_USER_SEED]
-    sub_owner_seed = conf[CONF_SUB_OWNER_SEED]
+    sending_timeout = timedelta(minutes=conf[CONF_SENDING_TIMEOUT])
+    user_mnemonic: str = conf[CONF_USER_SEED]
+    sub_owner_seed: str = conf[CONF_SUB_OWNER_SEED]
+    robonomics: Robonomics = Robonomics(
+                            hass,
+                            sub_owner_seed,
+                            conf[CONF_SUB_OWNER_ED],
+                            user_mnemonic,
+                            conf[CONF_USER_ED]
+                            )
     if (CONF_PINATA_PUB in conf) and (CONF_PINATA_SECRET in conf):
         pinata = PinataPy(conf[CONF_PINATA_PUB], conf[CONF_PINATA_SECRET])
         _LOGGER.debug("Use Pinata to pin files")
@@ -105,7 +112,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         'file': (data),
         }
         try:
-            response = requests.post('https://ipfs.infura.io:5001/api/v0/add', files=files)
+            response = requests.post(INFURA_API, files=files)
             p = response.json()
             ipfs_hash_infura = p['Hash']
         except Exception as e:
@@ -115,19 +122,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash_local}")
         return ipfs_hash_local
-
-    def subscribe(callback):
-        try:
-            account = Account()
-            extend_enum(
-                SubEvent,
-                "MultiEvent",
-                f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value}",
-            )
-            Subscriber(account, SubEvent.MultiEvent, subscription_handler=callback)
-            # Subscriber(interface, SubEvent.NewDevices, callback, subscription_owner)
-        except Exception as e:
-            _LOGGER.debug(f"subscribe exception {e}")
 
     async def get_provider():
         hass.auth = await auth_manager_from_config(
@@ -177,7 +171,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in delete user: {e}")
 
-    async def manage_users(data) -> None:
+    async def manage_users(data: tp.Tuple(str)) -> None:
         """
         Compare users and data from transaction decide what users must be created or deleted
         """
@@ -228,9 +222,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         )
                     except Exception as e:
                         _LOGGER.error(f"create keypair exception: {e}")
-                    await send_datalog(
-                        encrypted, sub_owner_seed, conf[CONF_SUB_OWNER_ED], False
-                    )
+                    await robonomics.send_datalog_creds(encrypted)
         for user in users_to_delete:
             await delete_user(provider, user)
 
@@ -242,8 +234,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def get_ipfs_data(
                 ipfs_hash: str, 
-                gateways: tp.List[str] = ["https://ipfs.io/ipfs/", 
-                                        "https://gateway.moralisipfs.com/ipfs/"]   
+                gateways: tp.List[str] = [IPFS_GATEWAY, 
+                                        MORALIS_GATEWAY]   
                 ) -> str:
         client = http3.AsyncClient()
         try:
@@ -299,30 +291,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(f"Exception in sending command: {e}")
             
 
-    @callback
-    def callback_new_devices(data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
-        _LOGGER.debug(f"Got Robonomics event: {data}")
-        print(f"type {type(data[1])}")
-        print(f"ravno {type(data[1]) == list}")
-        print(type(data[1]))
-        if conf[CONF_SUB_OWNER_ED]:
-            subscription_owner = Account(
-                seed=sub_owner_seed, crypto_type=KeypairType.ED25519
-            )
-        else:
-            subscription_owner = Account(seed=sub_owner_seed)
-        if conf[CONF_USER_ED]:
-            sub_admin = Account(
-                seed=user_mnemonic, crypto_type=KeypairType.ED25519
-            )
-        else:
-            sub_admin = Account(seed=user_mnemonic)
-        print(f"Owner {data[0]} {subscription_owner.get_address()}")
-        if type(data[1]) == str and data[1] == sub_admin.get_address():
-            hass.async_create_task(handle_launch(data))
-        elif type(data[1]) == list and data[0] == subscription_owner.get_address():
-            hass.async_create_task(manage_users(data))
-
     def get_states() -> tp.Dict[
         str,
         tp.Dict[str, tp.Union[str, tp.Dict[str, tp.Dict[str, tp.Union[str, float]]]]],
@@ -362,49 +330,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         ] = entity_info
         return devices_data
 
-    def fail_send_datalog(retry_state):
-        _LOGGER.error(f"Failed send datalog, retry_state: {retry_state}")
-
-    @to_thread
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_fixed(5),
-        retry_error_callback=fail_send_datalog,
-    )
-    def send_datalog(
-        data: str, seed: str, crypto_type_ed: bool, subscription: bool
-    ) -> None:
-        if crypto_type_ed:
-            account = Account(seed=seed, crypto_type=KeypairType.ED25519)
-        else:
-            account = Account(seed=seed)
-        if subscription:
-            if conf[CONF_SUB_OWNER_ED]:
-                subscription_owner = Account(
-                    seed=sub_owner_seed, crypto_type=KeypairType.ED25519
-                )
-            else:
-                subscription_owner = Account(seed=sub_owner_seed)
-            try:
-                _LOGGER.debug(f"Start creating rws datalog")
-                datalog = Datalog(
-                    account, rws_sub_owner=subscription_owner.get_address()
-                )
-                receipt = datalog.record(data)
-                _LOGGER.debug(f"Datalog created with hash: {receipt}")
-            except Exception as e:
-                _LOGGER.error(f"send rws datalog exception: {e}")
-                raise e
-        else:
-            try:
-                _LOGGER.debug(f"Start creating datalog")
-                datalog = Datalog(account)
-                receipt = datalog.record(data)
-                _LOGGER.debug(f"Datalog created with hash: {receipt}")
-            except Exception as e:
-                _LOGGER.error(f"send datalog exception: {e}")
-                raise e
-
     # async def handle_datalog(call):
     #     """Handle the service call."""
     #     entity_id = call.data.get(ATTR_ENTITY, DEFAULT_ENTITY)
@@ -421,10 +346,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data = get_states()
             _LOGGER.debug(f"Got states to send datalog: {data}")
             encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
+            await asyncio.sleep(2)
             ipfs_hash = await add_to_ipfs(api, encrypted_data, data_path, pinata=pinata)
-            await send_datalog(ipfs_hash, user_mnemonic, conf[CONF_USER_ED], True)
+            await robonomics.send_datalog_states(ipfs_hash)
         except Exception as e:
             _LOGGER.error(f"Exception in get_and_send_data: {e}")
+        
 
     async def handle_state_changed(event):
         try:
@@ -441,15 +368,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_time_changed(event):
         try:
-            if event.data["now"].minute % SENDING_TIMEOUT == 0 and event.data["now"].second == 0:
-                await get_and_send_data()
+            print(f"State changed: {event}")
+            await get_and_send_data()
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
-    hass.bus.async_listen("state_changed", handle_state_changed)
+    #hass.bus.async_listen("state_changed", handle_state_changed)
     hass.bus.async_listen("time_changed", handle_time_changed)
+    async_track_time_interval(hass, handle_time_changed, sending_timeout)
 
-    hass.async_add_executor_job(subscribe, callback_new_devices)
+    hass.async_add_executor_job(robonomics.subscribe, handle_launch, manage_users)
 
     hass.states.async_set(f"{DOMAIN}.state", "Online")
 
@@ -459,6 +387,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     return True
 
-async def async_setup(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+
+    _LOGGER.debug(f"setup data: {config.get(DOMAIN)}")
 
     return True
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    print(f"hass.data: {hass.data}")
+    print(f"entry id: {entry.entry_id}")
+    print(f"hass domain data: {hass.data[DOMAIN][entry.entry_id]}")
+    component: EntityComponent = hass.data[DOMAIN]
+    return await component.async_unload_entry(entry)
+
+async def async_remove_entry(hass, entry) -> None:
+    """Handle removal of an entry."""
