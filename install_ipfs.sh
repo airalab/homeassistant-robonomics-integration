@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd $USER
+cd /home/$USER
 wget https://dist.ipfs.io/go-ipfs/v0.12.2/go-ipfs_v0.12.2_linux-arm64.tar.gz
 tar -xvzf go-ipfs_v0.12.2_linux-arm64.tar.gz
 rm go-ipfs_v0.12.2_linux-arm64.tar.gz
