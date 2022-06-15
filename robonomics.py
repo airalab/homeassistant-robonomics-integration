@@ -81,11 +81,11 @@ class Robonomics:
 
 
     @to_thread
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_fixed(5),
-        retry_error_callback=fail_send_datalog,
-    )
+    # @retry(
+    #     stop=stop_after_attempt(5),
+    #     wait=wait_fixed(5),
+    #     retry_error_callback=fail_send_datalog,
+    # )
     def send_datalog(
         self, data: str, seed: str, crypto_type_ed: bool, subscription: bool
     ) -> str:
@@ -105,7 +105,7 @@ class Robonomics:
         else:
             account = Account(seed=seed)
         if subscription:
-            if conf[CONF_SUB_OWNER_ED]:
+            if self.sub_owner_ed:
                 subscription_owner = Account(
                     seed=self.sub_owner_seed, crypto_type=KeypairType.ED25519
                 )
@@ -117,10 +117,9 @@ class Robonomics:
                     account, rws_sub_owner=subscription_owner.get_address()
                 )
                 receipt = datalog.record(data)
-                _LOGGER.debug(f"Datalog created with hash: {receipt}")
+                _LOGGER.debug(f"Datalog created with hash {receipt}")
             except Exception as e:
                 _LOGGER.error(f"send rws datalog exception: {e}")
-                raise e
         else:
             try:
                 _LOGGER.debug(f"Start creating datalog")
@@ -130,7 +129,7 @@ class Robonomics:
                 return receipt
             except Exception as e:
                 _LOGGER.error(f"send datalog exception: {e}")
-                raise e
+                #raise e
 
     async def send_datalog_states(self, data: str) -> str:
         """

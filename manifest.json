@@ -1,5 +1,5 @@
 {
-    "domain": "robonomics_users",
+    "domain": "robonomics_smart_home",
     "name": "Robonomics",
     "config_flow": true,
     "documentation": "",

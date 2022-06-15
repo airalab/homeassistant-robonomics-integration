@@ -77,8 +77,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # hass.data[DOMAIN][entry.entry_id] = MyApi(...)
 
     hass.data.setdefault(DOMAIN, {})
+    _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
     sending_timeout = timedelta(minutes=conf[CONF_SENDING_TIMEOUT])
+    _LOGGER.debug(f"Sending interval: {conf[CONF_SENDING_TIMEOUT]} minutes")
     user_mnemonic: str = conf[CONF_USER_SEED]
     sub_owner_seed: str = conf[CONF_SUB_OWNER_SEED]
     robonomics: Robonomics = Robonomics(
@@ -94,7 +96,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else: 
         pinata = None
         _LOGGER.debug("Use local node to pin files")
-    _LOGGER.debug(f"Robonomics user control starting set up")
     data_path = f"/home/{getpass.getuser()}/ha_robonomics_data"
     if not os.path.isdir(data_path):
         os.mkdir(data_path)
@@ -373,8 +374,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
-    #hass.bus.async_listen("state_changed", handle_state_changed)
-    hass.bus.async_listen("time_changed", handle_time_changed)
+
+    hass.bus.async_listen("state_changed", handle_state_changed)
     async_track_time_interval(hass, handle_time_changed, sending_timeout)
 
     hass.async_add_executor_job(robonomics.subscribe, handle_launch, manage_users)
@@ -393,13 +394,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    print(f"hass.data: {hass.data}")
-    print(f"entry id: {entry.entry_id}")
-    print(f"hass domain data: {hass.data[DOMAIN][entry.entry_id]}")
-    component: EntityComponent = hass.data[DOMAIN]
-    return await component.async_unload_entry(entry)
+# async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+#     """Unload a config entry."""
+#     print(f"hass.data: {hass.data}")
+#     print(f"entry id: {entry.entry_id}")
+#     print(f"hass domain data: {hass.data[DOMAIN][entry.entry_id]}")
+#     component: EntityComponent = hass.data[DOMAIN]
+#     return await component.async_unload_entry(entry)
 
-async def async_remove_entry(hass, entry) -> None:
-    """Handle removal of an entry."""
+# async def async_remove_entry(hass, entry) -> None:
+#     """Handle removal of an entry."""
