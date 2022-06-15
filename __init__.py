@@ -359,7 +359,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if (
                     event.data["old_state"] != None
                     and event.data["old_state"].state != "unknown"
-                    and event.data["entity_id"].split(".")[0] == "binary_sensor"
                     and event.data["old_state"].state != event.data["new_state"].state
                 ):
                 print(f"State changed: {event.data}")
