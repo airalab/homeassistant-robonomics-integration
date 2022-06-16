@@ -27,6 +27,7 @@ class Robonomics:
         self.sub_owner_ed: bool = sub_owner_ed
         self.sub_admin_seed: str = sub_admin_seed
         self.sub_admin_ed: bool = sub_admin_ed
+        self.sending: bool = False
 
     def subscribe(self, handle_launch: tp.Callable, manage_users: tp.Callable) -> None:
         """
@@ -100,6 +101,11 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
+        if self.sending: 
+            _LOGGER.debug("Another datalog is sending")
+            return
+        else:
+            self.sending = True
         if crypto_type_ed:
             account = Account(seed=seed, crypto_type=KeypairType.ED25519)
         else:
@@ -126,9 +132,11 @@ class Robonomics:
                 datalog = Datalog(account)
                 receipt = datalog.record(data)
                 _LOGGER.debug(f"Datalog created with hash: {receipt}")
+                self.sending = False
                 return receipt
             except Exception as e:
                 _LOGGER.error(f"send datalog exception: {e}")
+                self.sending = False
                 #raise e
 
     async def send_datalog_states(self, data: str) -> str:

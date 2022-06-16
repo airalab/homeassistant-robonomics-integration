@@ -345,7 +345,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             sender_acc = Account(seed=user_mnemonic, crypto_type=KeypairType.ED25519)
             sender_kp = sender_acc.keypair
             data = get_states()
-            _LOGGER.debug(f"Got states to send datalog: {data}")
+            _LOGGER.debug(f"Got states to send datalog")
             encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
             await asyncio.sleep(2)
             ipfs_hash = await add_to_ipfs(api, encrypted_data, data_path, pinata=pinata)
@@ -359,16 +359,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if (
                     event.data["old_state"] != None
                     and event.data["old_state"].state != "unknown"
+                    and event.data["old_state"].state != "unavailable"
+                    and event.data["new_state"].state != "unknown"
+                    and event.data["new_state"].state != "unavailable"
+                    and event.data["entity_id"].split(".")[0] != "sensor"
                     and event.data["old_state"].state != event.data["new_state"].state
                 ):
-                print(f"State changed: {event.data}")
+                _LOGGER.debug(f"State changed: {event.data}")
                 await get_and_send_data()
         except Exception as e:
             _LOGGER.error(f"Exception in handle_state_changed: {e}")
 
     async def handle_time_changed(event):
         try:
-            print(f"State changed: {event}")
+            _LOGGER.debug(f"Time changed: {event}")
             await get_and_send_data()
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
