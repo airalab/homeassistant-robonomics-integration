@@ -116,6 +116,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             response = requests.post(INFURA_API, files=files)
             p = response.json()
             ipfs_hash_infura = p['Hash']
+            _LOGGER.debug(f"Data pinned to infura {ipfs_hash_infura}")
         except Exception as e:
             _LOGGER.error(f"Pin to infura exception: {e}")
         res = api.add(filename)
