@@ -19,15 +19,10 @@ def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipie
 
     :return: encrypted message
     """
-    curve25519_public_key = nacl.bindings.crypto_sign_ed25519_pk_to_curve25519(recipient_public_key)
-    recipient = nacl.public.PublicKey(curve25519_public_key)
-    private_key = nacl.bindings.crypto_sign_ed25519_sk_to_curve25519(sender_keypair.private_key + sender_keypair.public_key)
-    sender = nacl.public.PrivateKey(private_key)
-    box = nacl.public.Box(sender, recipient)
-    encrypted = box.encrypt(message if isinstance(message, bytes) else message.encode("utf-8"), secrets.token_bytes(24))
-    return base64.b64encode(encrypted).decode("ascii")
+    encrypted = sender_keypair.encrypt_message(message, recipient_public_key)
+    return f"0x{encrypted.hex()}"
 
-def decrypt_message(encrypted_message: bytes, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
     """
     Decrypt message with recepient private key and sender puplic key
 
@@ -37,12 +32,11 @@ def decrypt_message(encrypted_message: bytes, sender_public_key: bytes, recipien
 
     :return: Decrypted message
     """
-    private_key = nacl.bindings.crypto_sign_ed25519_sk_to_curve25519(recipient_keypair.private_key + recipient_keypair.public_key)
-    recipient = nacl.public.PrivateKey(private_key)
-    curve25519_public_key = nacl.bindings.crypto_sign_ed25519_pk_to_curve25519(sender_public_key)
-    sender = nacl.public.PublicKey(curve25519_public_key)
-    encrypted = base64.b64decode(encrypted_message)
-    return nacl.public.Box(recipient, sender).decrypt(encrypted)
+    if encrypted_message[:2] == "0x":
+        encrypted_message = encrypted_message[2:]
+    bytes_encrypted = bytes.fromhex(encrypted_message)
+
+    return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
 
 def str2bool(v):
     return v.lower() in ("on", "true", "t", "1", 'y', 'yes', 'yeah')

@@ -6,6 +6,7 @@ from homeassistant.core import callback, HomeAssistant
 import logging
 import typing as tp
 import asyncio
+import time
 from tenacity import retry, stop_after_attempt, wait_fixed
 from .utils import encrypt_message, str2bool, generate_pass, decrypt_message, to_thread
 
@@ -28,6 +29,7 @@ class Robonomics:
         self.sub_admin_seed: str = sub_admin_seed
         self.sub_admin_ed: bool = sub_admin_ed
         self.sending: bool = False
+        self.on_queue: int = 0
 
     def subscribe(self, handle_launch: tp.Callable, manage_users: tp.Callable) -> None:
         """
@@ -101,11 +103,22 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
+        _LOGGER.debug(f"Send datalog request, another datalog: {self.sending}")
         if self.sending: 
-            _LOGGER.debug("Another datalog is sending")
-            return
+            _LOGGER.debug("Another datalog is sending. Wait...")
+            self.on_queue += 1
+            on_queue = self.on_queue
+            while self.sending:
+                time.sleep(5)
+                if on_queue < self.on_queue:
+                    _LOGGER.debug("Stop waiting to send datalog")
+                    return
+            self.sending = True
+            self.on_queue = 0
+            time.sleep(300)
         else:
             self.sending = True
+            self.on_queue = 0
         if crypto_type_ed:
             account = Account(seed=seed, crypto_type=KeypairType.ED25519)
         else:
@@ -122,21 +135,22 @@ class Robonomics:
                 datalog = Datalog(
                     account, rws_sub_owner=subscription_owner.get_address()
                 )
-                receipt = datalog.record(data)
-                _LOGGER.debug(f"Datalog created with hash {receipt}")
             except Exception as e:
-                _LOGGER.error(f"send rws datalog exception: {e}")
+                _LOGGER.error(f"Create datalog class exception: {e}")
         else:
             try:
                 _LOGGER.debug(f"Start creating datalog")
                 datalog = Datalog(account)
-                receipt = datalog.record(data)
-                _LOGGER.debug(f"Datalog created with hash: {receipt}")
-                self.sending = False
-                return receipt
             except Exception as e:
-                _LOGGER.error(f"send datalog exception: {e}")
-                self.sending = False
+                _LOGGER.error(f"Create datalog class exception: {e}")
+        try:    
+            receipt = datalog.record(data)
+            self.sending = False
+            _LOGGER.debug(f"Datalog created with hash: {receipt}")
+            return receipt
+        except Exception as e:
+            _LOGGER.error(f"send datalog exception: {e}")
+            self.sending = False
                 #raise e
 
     async def send_datalog_states(self, data: str) -> str:
