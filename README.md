@@ -27,7 +27,7 @@ Install ipfs local node:
 su ubuntu
 wget https://raw.githubusercontent.com/LoSk-p/robonomics_smart_home/main/install_ipfs.sh
 sudo chmod +x install_ipfs.sh
-sudo ./install_ipfs.sh
+./install_ipfs.sh
 ```
 
 Then restart Home Assistant:
