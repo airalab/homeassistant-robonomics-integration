@@ -8,7 +8,9 @@ In your computer with Home Assistant clone the repository to `custom_componets`:
 
 ```bash
 sudo -u homeassistant -H -s
-cd ~/.homeassistant/custom_components
+cd ~/.homeassistant/
+mkdir custom_components
+cd custom_components
 git clone https://github.com/LoSk-p/robonomics_smart_home.git robonomics_smart_home
 ```
 > The folder must have name `robonomics_smart_home`
