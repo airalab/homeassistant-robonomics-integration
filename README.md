@@ -9,21 +9,28 @@ In your computer with Home Assistant clone the repository to `custom_componets`:
 ```bash
 sudo -u homeassistant -H -s
 cd ~/.homeassistant/custom_components
-git clone https://github.com/LoSk-p/home_assistant_users.git robonomics_users
+git clone https://github.com/LoSk-p/robonomics_smart_home.git robonomics_smart_home
 ```
-> The folder must have name `robonomics_users`
+> The folder must have name `robonomics_smart_home`
+
+Install python dependency:
+```bash
+source /srv/homeassistant/bin/activate
+pip install http3
+```
 
 Install ipfs local node:
 
 ```bash
-cd ~/.homeassistant/custom_components/robonomics_users
-chmod +x install_ipfs.sh
-./install_ipfs.sh
+su ubuntu
+wget https://raw.githubusercontent.com/LoSk-p/robonomics_smart_home/main/install_ipfs.sh
+sudo chmod +x install_ipfs.sh
+sudo ./install_ipfs.sh
 ```
 
-Then restart HOme Assistant:
+Then restart Home Assistant:
 ```bash
-systemctl restart home-assistant@homeassistant.service
+sudo systemctl restart home-assistant@homeassistant.service
 ```
 
 ## Configure
