@@ -14,7 +14,7 @@ Description=IPTS Daemon Service
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/ipfs daemon
-User=homeassistant
+User=$USER
 
 [Install]
 WantedBy=multi-user.target
