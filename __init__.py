@@ -109,7 +109,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f.write(data)
         if pinata is not None:
             res = pinata.pin_file_to_ipfs(filename)
-            ipfs_hash = res['IpfsHash']
+            if 'IpfsHash' in res:
+                ipfs_hash = res['IpfsHash']
         files = {
         'file': (data),
         }
