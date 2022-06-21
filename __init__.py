@@ -312,7 +312,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     except:
                         units = "None"
                     entity_info = {
-                        "device_class": str(entity_data.device_class),
                         "units": units,
                         "state": str(entity_state.state),
                     }
