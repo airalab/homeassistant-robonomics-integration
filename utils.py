@@ -8,6 +8,9 @@ import random, string
 import functools
 import typing as tp
 import asyncio
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
     """

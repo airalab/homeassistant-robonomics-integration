@@ -68,6 +68,7 @@ from .const import (
 )
 from .utils import encrypt_message, str2bool, generate_pass, decrypt_message, to_thread
 from .robonomics import Robonomics
+import json
 
 
 
@@ -270,13 +271,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else:
             kp_sender = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
             if conf[CONF_SUB_OWNER_ED]:
-                subscription_owner = Account(
-                    seed=sub_owner_seed, crypto_type=KeypairType.ED25519
+                subscription_owner_kp = Keypair.create_from_mnemonic(
+                    user_mnemonic, crypto_type=KeypairType.ED25519
                 )
             else:
-                subscription_owner = Account(seed=sub_owner_seed, crypto_type=KeypairType.ED25519)
+                subscription_owner_kp = Keypair.create_from_mnemonic(user_mnemonic, crypto_type=KeypairType.ED25519)
             try:
-                decrypted = decrypt_message(response_text, kp_sender.public_key, subscription_owner.keypair)
+                decrypted = decrypt_message(response_text, kp_sender.public_key, subscription_owner_kp)
             except Exception as e:
                 _LOGGER.error(f"Exception in decript command: {e}")
                 return
@@ -307,20 +308,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 entity_state = hass.states.get(entity)
                 if entity_state != None:
                     try:
-                        units = entity_state.attributes.get("unit_of_measurement")
+                        units = str(entity_state.attributes.get("unit_of_measurement"))
                     except:
-                        units = None
+                        units = "None"
                     entity_info = {
-                        "device_class": entity_data.device_class,
+                        "device_class": str(entity_data.device_class),
                         "units": units,
-                        "state": entity_state.state,
+                        "state": str(entity_state.state),
                     }
                     if entity_data.device_id not in devices_data:
                         device = registry.async_get(entity_data.device_id)
                         device_name = (
-                            device.name_by_user
+                            str(device.name_by_user)
                             if device.name_by_user != None
-                            else device.name
+                            else str(device.name)
                         )
                         devices_data[entity_data.device_id] = {
                             "name": device_name,
@@ -346,6 +347,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             sender_acc = Account(seed=user_mnemonic, crypto_type=KeypairType.ED25519)
             sender_kp = sender_acc.keypair
             data = get_states()
+            data = json.dumps(data)
             _LOGGER.debug(f"Got states to send datalog")
             encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
             await asyncio.sleep(2)
@@ -379,7 +381,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
 
-    hass.bus.async_listen("state_changed", handle_state_changed)
+    #hass.bus.async_listen("state_changed", handle_state_changed)
     async_track_time_interval(hass, handle_time_changed, sending_timeout)
 
     hass.async_add_executor_job(robonomics.subscribe, handle_launch, manage_users)
