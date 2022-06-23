@@ -58,7 +58,6 @@ from .const import (
     INFURA_API,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
-    CONF_REPOS,
     CONF_SUB_OWNER_ED,
     CONF_SUB_OWNER_SEED,
     CONF_USER_ED,
@@ -180,7 +179,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         Compare users and data from transaction decide what users must be created or deleted
         """
         provider = await get_provider()
-
         # users = await hass.auth.async_get_users()
         users = provider.data.users
         print(f"Begining users: {users}")
@@ -208,10 +206,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug(f"Following users will be deleted: {users_to_delete}")
 
         sender_kp = Keypair.create_from_mnemonic(
-            sub_owner_seed, crypto_type=KeypairType.ED25519
+            user_mnemonic, crypto_type=KeypairType.ED25519
         )
         for user in users_to_add:
-            password = generate_pass(6)
+            password = generate_pass(10)
             await create_user(provider, user, password)
             for address in data[1]:
                 if address.lower() == user:
@@ -224,9 +222,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             sender_kp,
                             rec_kp.public_key,
                         )
+                        await robonomics.send_datalog_creds(encrypted)
                     except Exception as e:
                         _LOGGER.error(f"create keypair exception: {e}")
-                    await robonomics.send_datalog_creds(encrypted)
+                    
         for user in users_to_delete:
             await delete_user(provider, user)
 
@@ -243,14 +242,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ) -> str:
         client = http3.AsyncClient()
         try:
-            for gateway in gateways:
-                if gateway[-1] != "/":
-                    gateway += "/"
-                url = f"{gateway}{ipfs_hash}"
-                resp = await client.get(url)
-                _LOGGER.debug(f"Response from {gateway}: {resp.status_code}")
-                if resp.status_code == 200:
-                    return resp.text
+        for gateway in gateways:
+            if gateway[-1] != "/":
+                gateway += "/"
+            url = f"{gateway}{ipfs_hash}"
+            _LOGGER.debug(f"Request to {url}")
+            resp = await client.get(url)
+            _LOGGER.debug(f"Response from {gateway}: {resp.status_code}")
+            if resp.status_code == 200:
+                return resp.text
             else:
                 return await get_ipfs_data(ipfs_hash, gateways)
         except Exception as e:
@@ -399,6 +399,23 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     _LOGGER.debug(f"setup data: {config.get(DOMAIN)}")
 
     return True
+
+
+# async def async_unload_entry(
+#     hass: core.HomeAssistant, entry: config_entries.ConfigEntry
+# ) -> bool:
+#     """Unload a config entry."""
+#     unload_ok = all(
+#         await asyncio.gather(
+#             *[hass.config_entries.async_forward_entry_unload(entry, platform)]
+#         )
+#     )
+#     # Remove config entry from domain.
+#     if unload_ok:
+#         hass.data[DOMAIN].pop(entry.entry_id)
+
+#     return unload_ok
+
 
 # async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 #     """Unload a config entry."""

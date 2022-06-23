@@ -75,7 +75,7 @@ class Robonomics:
                 seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
             )
         else:
-            sub_admin = Account(seed=user_mnemonic)
+            sub_admin = Account(seed=self.sub_admin_seed)
         print(f"Owner {data[0]} {subscription_owner.get_address()}")
         if type(data[1]) == str and data[1] == sub_admin.get_address():
             self.hass.async_create_task(self.handle_launch(data))
@@ -174,5 +174,5 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
-        receipt = await self.send_datalog(data, self.sub_owner_seed, self.sub_owner_ed, False)
+        receipt = await self.send_datalog(data, self.sub_owner_seed, self.sub_owner_ed, True)
         return receipt
