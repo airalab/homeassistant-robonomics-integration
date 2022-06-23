@@ -242,17 +242,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ) -> str:
         client = http3.AsyncClient()
         try:
-        for gateway in gateways:
-            if gateway[-1] != "/":
-                gateway += "/"
-            url = f"{gateway}{ipfs_hash}"
-            _LOGGER.debug(f"Request to {url}")
-            resp = await client.get(url)
-            _LOGGER.debug(f"Response from {gateway}: {resp.status_code}")
-            if resp.status_code == 200:
-                return resp.text
-            else:
-                return await get_ipfs_data(ipfs_hash, gateways)
+            for gateway in gateways:
+                if gateway[-1] != "/":
+                    gateway += "/"
+                url = f"{gateway}{ipfs_hash}"
+                _LOGGER.debug(f"Request to {url}")
+                resp = await client.get(url)
+                _LOGGER.debug(f"Response from {gateway}: {resp.status_code}")
+                if resp.status_code == 200:
+                    return resp.text
+                else:
+                    return await get_ipfs_data(ipfs_hash, gateways)
         except Exception as e:
             _LOGGER.error(f"Exception in get ipfs: {e}")
             return await get_ipfs_data(ipfs_hash, gateways)
