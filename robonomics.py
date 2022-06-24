@@ -1,5 +1,5 @@
 from substrateinterface import SubstrateInterface, Keypair, KeypairType
-from robonomicsinterface import Account, Subscriber, SubEvent, Datalog
+from robonomicsinterface import Account, Subscriber, SubEvent, Datalog, RWS
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
 from aenum import extend_enum
 from homeassistant.core import callback, HomeAssistant
@@ -176,3 +176,13 @@ class Robonomics:
         """
         receipt = await self.send_datalog(data, self.sub_owner_seed, self.sub_owner_ed, True)
         return receipt
+
+    def get_devices_list(self):
+        try:
+            if self.sub_owner_ed:
+                account = Account(seed=self.sub_owner_seed, crypto_type=KeypairType.ED25519)
+            else:
+                account = Account(seed=self.sub_owner_seed)
+            return RWS(account).get_devices()
+        except Exception as e:
+            print(f"error while getting rws devices list {e}")

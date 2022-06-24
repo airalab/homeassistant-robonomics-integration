@@ -69,12 +69,13 @@ from .utils import encrypt_message, str2bool, generate_pass, decrypt_message, to
 from .robonomics import Robonomics
 import json
 
-
+manage_users_queue = 0
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Robonomics Control from a config entry."""
     # TODO Store an API object for your platforms to access
     # hass.data[DOMAIN][entry.entry_id] = MyApi(...)
+
 
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug(f"Robonomics user control starting set up")
@@ -100,6 +101,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not os.path.isdir(data_path):
         os.mkdir(data_path)
     api = ipfsApi.Client('127.0.0.1', 5001)
+
+
 
     @to_thread
     def add_to_ipfs(api: ipfsApi.Client, data: str, data_path, pinata: PinataPy = None) -> str:
@@ -173,11 +176,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(f"User was deleted: {user.name}")
         except Exception as e:
             _LOGGER.error(f"Exception in delete user: {e}")
+    
+    # manage_users_queue = 0
 
     async def manage_users(data: tp.Tuple(str)) -> None:
         """
         Compare users and data from transaction decide what users must be created or deleted
         """
+        global manage_users_queue
+        manage_users_queue += 1
+        my_queue = manage_users_queue
         provider = await get_provider()
         # users = await hass.auth.async_get_users()
         users = provider.data.users
@@ -217,12 +225,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         rec_kp = Keypair(
                             ss58_address=address, crypto_type=KeypairType.ED25519
                         )
-                        encrypted = encrypt_message(
-                            f"Username: {address}, password: {password}",
+                        encrypted_password = encrypt_message(
+                            password,
                             sender_kp,
                             rec_kp.public_key,
                         )
-                        await robonomics.send_datalog_creds(encrypted)
+                        message = {"address": address, "password": encrypted_password}
+                        message = json.dumps(message)
+                        await robonomics.send_datalog_creds(message)
                     except Exception as e:
                         _LOGGER.error(f"create keypair exception: {e}")
                     
@@ -232,7 +242,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if len(users_to_add) > 0 or len(users_to_delete) > 0:
             await provider.data.async_save()
             _LOGGER.debug(f"Finishing user managment, user list: {provider.data.users}")
+            if my_queue < manage_users_queue:
+                _LOGGER.debug(f"Another thread will restart homeassistant")
+                manage_users_queue -= 1
+                return
             _LOGGER.debug("Restarting...")
+            manage_users_queue -= 1
             await hass.services.async_call("homeassistant", "restart")
 
     async def get_ipfs_data(
@@ -388,10 +403,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.states.async_set(f"{DOMAIN}.state", "Online")
 
-    _LOGGER.debug(f"Robonomics user control successfuly set up")
+
+
+    #Checking rws devices to user list correlation
+    try:
+        hass.async_create_task(manage_users(('0', robonomics.get_devices_list())))
+    except Exception as e:
+        print(f"error while getting rws devices list {e}")
 
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
-
+    _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
