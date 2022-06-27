@@ -312,11 +312,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             message = literal_eval(decrypted)
         try:
             # domain="light", service="turn_on", service_data={"rgb_color": [30, 30, 230]}, target={"entity_id": "light.shapes_9275"}
+            if "rgb_color" in message["params"]:
+                service_data = {"rgb_color": literal_eval(message["params"]["rgb_color"])}
+            else:
+                service_data = None
             hass.async_create_task(
                 hass.services.async_call(
                     domain=message["platform"], 
                     service=message["name"], 
-                    service_data={"rgb_color": literal_eval(message["params"]["rgb_color"])},
+                    service_data=service_data,
                     target={"entity_id": message["params"]["entity_id"]}
                 )
             )

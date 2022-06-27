@@ -61,8 +61,6 @@ class Robonomics:
 
         """
         _LOGGER.debug(f"Got Robonomics event: {data}")
-        print(f"type {type(data[1])}")
-        print(f"ravno {type(data[1]) == list}")
         print(type(data[1]))
         if self.sub_owner_ed:
             subscription_owner = Account(
