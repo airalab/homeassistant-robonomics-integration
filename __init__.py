@@ -83,7 +83,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sending_timeout = timedelta(minutes=conf[CONF_SENDING_TIMEOUT])
     _LOGGER.debug(f"Sending interval: {conf[CONF_SENDING_TIMEOUT]} minutes")
     user_mnemonic: str = conf[CONF_USER_SEED]
+    if conf[CONF_USER_ED]:
+        sub_admin_acc = Account(user_mnemonic, crypto_type=KeypairType.ED25519)
+    else:
+        sub_admin_acc = Account(user_mnemonic)
+    _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
     sub_owner_seed: str = conf[CONF_SUB_OWNER_SEED]
+    if conf[CONF_SUB_OWNER_ED]:
+        sub_owner_acc = Account(sub_owner_seed, crypto_type=KeypairType.ED25519)
+    else:
+        sub_owner_acc = Account(sub_owner_seed)
+    _LOGGER.debug(f"sub owner: {sub_owner_acc.get_address()}")
     robonomics: Robonomics = Robonomics(
                             hass,
                             sub_owner_seed,
@@ -301,9 +311,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(f"Decrypted command: {decrypted}")
             message = literal_eval(decrypted)
         try:
+            # domain="light", service="turn_on", service_data={"rgb_color": [30, 30, 230]}, target={"entity_id": "light.shapes_9275"}
             hass.async_create_task(
                 hass.services.async_call(
-                    message["platform"], message["name"], message["params"]
+                    domain=message["platform"], 
+                    service=message["name"], 
+                    service_data={"rgb_color": literal_eval(message["params"]["rgb_color"])},
+                    target={"entity_id": message["params"]["entity_id"]}
                 )
             )
         except Exception as e:
