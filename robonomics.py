@@ -51,6 +51,8 @@ class Robonomics:
             Subscriber(account, SubEvent.MultiEvent, subscription_handler=self.callback_new_event)
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
+            time.sleep(4)
+            self.subscribe(handle_launch, manage_users)
     
     @callback
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
