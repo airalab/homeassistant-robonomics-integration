@@ -170,7 +170,7 @@ class Robonomics:
             self.on_queue += 1
             on_queue = self.on_queue
             while self.sending_states:
-                time.sleep(5)
+                await asyncio.sleep(5)
                 if on_queue < self.on_queue:
                     _LOGGER.debug("Stop waiting to send datalog")
                     return
@@ -197,7 +197,7 @@ class Robonomics:
         if self.sending_creds: 
             _LOGGER.debug("Another datalog is sending. Wait...")
             while self.sending_creds:
-                time.sleep(5)
+                await asyncio.sleep(5)
             self.sending_creds = True
             time.sleep(300)
         else:
