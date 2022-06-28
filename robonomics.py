@@ -31,6 +31,11 @@ class Robonomics:
         self.sending_states: bool = False
         self.sending_creds: bool = False
         self.on_queue: int = 0
+        extend_enum(
+                SubEvent,
+                "MultiEvent",
+                f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value}",
+            )
 
     def subscribe(self, handle_launch: tp.Callable, manage_users: tp.Callable) -> None:
         """
@@ -44,11 +49,6 @@ class Robonomics:
         self.manage_users: tp.Callable = manage_users
         try:
             account = Account()
-            extend_enum(
-                SubEvent,
-                "MultiEvent",
-                f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value}",
-            )
             Subscriber(account, SubEvent.MultiEvent, subscription_handler=self.callback_new_event)
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
@@ -104,22 +104,7 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
-        # _LOGGER.debug(f"Send datalog request, another datalog: {self.sending}")
-        # if self.sending: 
-        #     _LOGGER.debug("Another datalog is sending. Wait...")
-        #     self.on_queue += 1
-        #     on_queue = self.on_queue
-        #     while self.sending:
-        #         time.sleep(5)
-        #         if on_queue < self.on_queue:
-        #             _LOGGER.debug("Stop waiting to send datalog")
-        #             return
-        #     self.sending = True
-        #     self.on_queue = 0
-        #     time.sleep(300)
-        # else:
-        #     self.sending = True
-        #     self.on_queue = 0
+
         if crypto_type_ed:
             account = Account(seed=seed, crypto_type=KeypairType.ED25519)
         else:
