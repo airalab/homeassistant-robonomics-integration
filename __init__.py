@@ -331,9 +331,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             # domain="light", service="turn_on", service_data={"rgb_color": [30, 30, 230]}, target={"entity_id": "light.shapes_9275"}
             if "rgb_color" in message["params"]:
-                service_data = {"rgb_color": literal_eval(message["params"]["rgb_color"])}
+                service_data = {"rgb_color": json.loads(message["params"]["rgb_color"])}
             elif "color" in message["params"]:
-                service_data = {"rgb_color": literal_eval(message["params"]["color"])}
+                service_data = {"rgb_color": json.loads(message["params"]["color"])}
             else:
                 service_data = None
             hass.async_create_task(
