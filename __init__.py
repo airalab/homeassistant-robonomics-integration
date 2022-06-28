@@ -70,13 +70,18 @@ from .robonomics import Robonomics
 import json
 
 manage_users_queue = 0
+USERS_FILE = f"/home/{getpass.getuser()}/ha_users.json"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Robonomics Control from a config entry."""
     # TODO Store an API object for your platforms to access
     # hass.data[DOMAIN][entry.entry_id] = MyApi(...)
-
-
+    try:
+        f = open(USERS_FILE, 'r')
+        f.close()
+    except FileNotFoundError:
+        with open(USERS_FILE, 'w') as new_file:
+            json.dump([], new_file)
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
@@ -241,12 +246,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             rec_kp.public_key,
                         )
                         message = {"address": address, "password": encrypted_password}
+                        with open(USERS_FILE, 'r') as f:
+                            users_list = json.load(f)
+                        users_list.append(message)
+                        with open(USERS_FILE, 'w') as f:
+                            json.dump(users_list, f)
                         message = json.dumps(message)
                         await robonomics.send_datalog_creds(message)
                     except Exception as e:
                         _LOGGER.error(f"create keypair exception: {e}")
                     
         for user in users_to_delete:
+            with open(USERS_FILE, 'r') as f:
+                users_list = json.load(f)
+            users_list_new = []
+            for user_data in users_list:
+                if user_data['address'].lower != user:
+                    users_list_new.append(user_data)
+            with open(USERS_FILE, 'w') as f:
+                json.dump(users_list_new, f)
             await delete_user(provider, user)
 
         if len(users_to_add) > 0 or len(users_to_delete) > 0:
@@ -254,10 +272,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(f"Finishing user managment, user list: {provider.data.users}")
             if my_queue < manage_users_queue:
                 _LOGGER.debug(f"Another thread will restart homeassistant")
-                manage_users_queue -= 1
+                # manage_users_queue -= 1
                 return
             _LOGGER.debug("Restarting...")
-            manage_users_queue -= 1
+            manage_users_queue = 0
             await hass.services.async_call("homeassistant", "restart")
 
     async def get_ipfs_data(

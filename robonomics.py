@@ -28,7 +28,8 @@ class Robonomics:
         self.sub_owner_ed: bool = sub_owner_ed
         self.sub_admin_seed: str = sub_admin_seed
         self.sub_admin_ed: bool = sub_admin_ed
-        self.sending: bool = False
+        self.sending_states: bool = False
+        self.sending_creds: bool = False
         self.on_queue: int = 0
 
     def subscribe(self, handle_launch: tp.Callable, manage_users: tp.Callable) -> None:
@@ -103,22 +104,22 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
-        _LOGGER.debug(f"Send datalog request, another datalog: {self.sending}")
-        if self.sending: 
-            _LOGGER.debug("Another datalog is sending. Wait...")
-            self.on_queue += 1
-            on_queue = self.on_queue
-            while self.sending:
-                time.sleep(5)
-                if on_queue < self.on_queue:
-                    _LOGGER.debug("Stop waiting to send datalog")
-                    return
-            self.sending = True
-            self.on_queue = 0
-            time.sleep(300)
-        else:
-            self.sending = True
-            self.on_queue = 0
+        # _LOGGER.debug(f"Send datalog request, another datalog: {self.sending}")
+        # if self.sending: 
+        #     _LOGGER.debug("Another datalog is sending. Wait...")
+        #     self.on_queue += 1
+        #     on_queue = self.on_queue
+        #     while self.sending:
+        #         time.sleep(5)
+        #         if on_queue < self.on_queue:
+        #             _LOGGER.debug("Stop waiting to send datalog")
+        #             return
+        #     self.sending = True
+        #     self.on_queue = 0
+        #     time.sleep(300)
+        # else:
+        #     self.sending = True
+        #     self.on_queue = 0
         if crypto_type_ed:
             account = Account(seed=seed, crypto_type=KeypairType.ED25519)
         else:
@@ -145,12 +146,13 @@ class Robonomics:
                 _LOGGER.error(f"Create datalog class exception: {e}")
         try:    
             receipt = datalog.record(data)
-            self.sending = False
+            #self.sending = False
             _LOGGER.debug(f"Datalog created with hash: {receipt}")
             return receipt
         except Exception as e:
             _LOGGER.error(f"send datalog exception: {e}")
-            self.sending = False
+            #self.sending = False
+            return None
                 #raise e
 
     async def send_datalog_states(self, data: str) -> str:
@@ -162,7 +164,24 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
+        _LOGGER.debug(f"Send datalog states request, another datalog: {self.sending_states}")
+        if self.sending_states: 
+            _LOGGER.debug("Another datalog is sending. Wait...")
+            self.on_queue += 1
+            on_queue = self.on_queue
+            while self.sending_states:
+                time.sleep(5)
+                if on_queue < self.on_queue:
+                    _LOGGER.debug("Stop waiting to send datalog")
+                    return
+            self.sending_states = True
+            self.on_queue = 0
+            time.sleep(300)
+        else:
+            self.sending_states = True
+            self.on_queue = 0
         receipt = await self.send_datalog(data, self.sub_admin_seed, self.sub_admin_ed, True)
+        self.sending_states = False
         return receipt
 
     async def send_datalog_creds(self, data: str) -> str:
@@ -174,7 +193,17 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
+        _LOGGER.debug(f"Send datalog creds request, another datalog: {self.sending_creds}")
+        if self.sending_creds: 
+            _LOGGER.debug("Another datalog is sending. Wait...")
+            while self.sending_creds:
+                time.sleep(5)
+            self.sending_creds = True
+            time.sleep(300)
+        else:
+            self.sending_creds = True
         receipt = await self.send_datalog(data, self.sub_owner_seed, self.sub_owner_ed, True)
+        self.sending_creds = False
         return receipt
 
     def get_devices_list(self):
