@@ -14,6 +14,7 @@ from homeassistant.auth import auth_manager_from_config, auth_store, models
 from homeassistant.helpers.event import async_track_time_interval
 
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from substrateinterface import SubstrateInterface, Keypair, KeypairType
 from substrateinterface.exceptions import SubstrateRequestException
@@ -283,6 +284,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 gateways: tp.List[str] = [IPFS_GATEWAY, 
                                         MORALIS_GATEWAY]   
                 ) -> str:
+        # websession = aiohttp_client.async_create_clientsession(hass)
         client = http3.AsyncClient()
         try:
             for gateway in gateways:
@@ -290,6 +292,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     gateway += "/"
                 url = f"{gateway}{ipfs_hash}"
                 _LOGGER.debug(f"Request to {url}")
+                # async with websession.get(url) as resp:
+                #     pokemon = await resp.json()
+                #     print(pokemon['name'])
                 resp = await client.get(url)
                 _LOGGER.debug(f"Response from {gateway}: {resp.status_code}")
                 if resp.status_code == 200:

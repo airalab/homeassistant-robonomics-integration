@@ -31,11 +31,14 @@ class Robonomics:
         self.sending_states: bool = False
         self.sending_creds: bool = False
         self.on_queue: int = 0
-        extend_enum(
-                SubEvent,
-                "MultiEvent",
-                f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value}",
-            )
+        try:
+            extend_enum(
+                    SubEvent,
+                    "MultiEvent",
+                    f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value}",
+                )
+        except Exception as e:
+            _LOGGER.error(f"Exception in enum: {e}")
 
     def subscribe(self, handle_launch: tp.Callable, manage_users: tp.Callable) -> None:
         """
