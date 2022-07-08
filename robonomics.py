@@ -161,7 +161,7 @@ class Robonomics:
                     return
             self.sending_states = True
             self.on_queue = 0
-            time.sleep(300)
+            await asyncio.sleep(10)
         else:
             self.sending_states = True
             self.on_queue = 0

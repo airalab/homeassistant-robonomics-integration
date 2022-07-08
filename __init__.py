@@ -188,7 +188,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # await storage_collection.async_update_item(
             #         person[CONF_ID], {CONF_USER_ID: None}
             #     )
-            _LOGGER.debug(f"User was deleted: {user.name}")
+            _LOGGER.debug(f"User was deleted: {username}")
         except Exception as e:
             _LOGGER.error(f"Exception in delete user: {e}")
     
