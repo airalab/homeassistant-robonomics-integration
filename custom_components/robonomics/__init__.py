@@ -2,52 +2,33 @@ from __future__ import annotations
 from pickle import FALSE
 from platform import platform
 
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.person import async_create_person
-from homeassistant.const import TEMP_CELSIUS
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from homeassistant.core import StateMachine as sm
-from homeassistant.helpers.template import AllStates
-from homeassistant.auth import auth_manager_from_config, auth_store, models
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.auth import auth_manager_from_config, models
 from homeassistant.helpers.event import async_track_time_interval
 
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from substrateinterface import SubstrateInterface, Keypair, KeypairType
-from substrateinterface.exceptions import SubstrateRequestException
+from substrateinterface import Keypair, KeypairType
 import asyncio
-import nacl.secret
 import requests
 from homeassistant import *
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant, StateMachine
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import *
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
 import logging
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from robonomicsinterface import Account, Subscriber, SubEvent, Datalog
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
-from substrateinterface.utils.ss58 import is_valid_ss58_address
 import typing as tp
 from pinatapy import PinataPy
 import os
-from aenum import extend_enum
 from ast import literal_eval
 import ipfsApi
 import time
 import getpass
-# import http3
 from datetime import timedelta
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,7 +46,7 @@ from .const import (
     DOMAIN,
     CONF_SENDING_TIMEOUT
 )
-from .utils import encrypt_message, str2bool, generate_pass, decrypt_message, to_thread
+from .utils import encrypt_message, generate_pass, decrypt_message, to_thread
 from .robonomics import Robonomics
 import json
 
@@ -116,8 +97,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not os.path.isdir(data_path):
         os.mkdir(data_path)
     api = ipfsApi.Client('127.0.0.1', 5001)
-
-
 
     @to_thread
     def add_to_ipfs(api: ipfsApi.Client, data: str, data_path, pinata: PinataPy = None) -> str:
@@ -191,8 +170,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(f"User was deleted: {username}")
         except Exception as e:
             _LOGGER.error(f"Exception in delete user: {e}")
-    
-    # manage_users_queue = 0
 
     async def manage_users(data: tp.Tuple(str)) -> None:
         """
@@ -202,25 +179,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manage_users_queue += 1
         my_queue = manage_users_queue
         provider = await get_provider()
-        # users = await hass.auth.async_get_users()
         users = provider.data.users
         print(f"Begining users: {users}")
         usernames_hass = []
         for user in users:
             try:
                 username = user["username"]
-                # username = user.credentials[0].data['username']
-                # print(username)
                 if len(username) == 48 and username[0] == "4":
-                    # print(f"here {username}")
                     usernames_hass.append(username)
-                    # print(usernames_hass)
             except Exception as e:
                 _LOGGER.error(f"Exception from manage users: {e}")
         _LOGGER.debug(f"Users before: {provider.data.users}")
         devices = data[1]
         devices = [device.lower() for device in devices]
-        # _LOGGER.debug(f"Users {provider.data.users}")
         print(f"Devices: {set(devices)}")
         print(f"Users: {set(usernames_hass)}")
         users_to_add = list(set(devices) - set(usernames_hass))
@@ -272,7 +243,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(f"Finishing user managment, user list: {provider.data.users}")
             if my_queue < manage_users_queue:
                 _LOGGER.debug(f"Another thread will restart homeassistant")
-                # manage_users_queue -= 1
                 return
             _LOGGER.debug("Restarting...")
             manage_users_queue = 0
@@ -284,7 +254,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                                         MORALIS_GATEWAY]   
                 ) -> str:
         websession = async_create_clientsession(hass)
-        #client = http3.AsyncClient()
         try:
             for gateway in gateways:
                 if gateway[-1] != "/":
@@ -293,7 +262,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.debug(f"Request to {url}")
                 async with websession.get(url) as responce:
                     resp_text = await responce.text()
-                # resp = await client.get(url)
                 _LOGGER.debug(f"Response from {gateway}: {responce.status}")
                 if responce.status == 200:
                     return resp_text
