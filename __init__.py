@@ -48,7 +48,7 @@ from ast import literal_eval
 import ipfsApi
 import time
 import getpass
-import http3
+# import http3
 from datetime import timedelta
 
 _LOGGER = logging.getLogger(__name__)
@@ -284,25 +284,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 gateways: tp.List[str] = [IPFS_GATEWAY, 
                                         MORALIS_GATEWAY]   
                 ) -> str:
-        # websession = aiohttp_client.async_create_clientsession(hass)
-        client = http3.AsyncClient()
+        websession = async_create_clientsession(hass)
+        #client = http3.AsyncClient()
         try:
             for gateway in gateways:
                 if gateway[-1] != "/":
                     gateway += "/"
                 url = f"{gateway}{ipfs_hash}"
                 _LOGGER.debug(f"Request to {url}")
-                # async with websession.get(url) as resp:
-                #     pokemon = await resp.json()
-                #     print(pokemon['name'])
-                resp = await client.get(url)
-                _LOGGER.debug(f"Response from {gateway}: {resp.status_code}")
-                if resp.status_code == 200:
-                    return resp.text
+                async with websession.get(url) as responce:
+                    resp_text = await responce.text()
+                # resp = await client.get(url)
+                _LOGGER.debug(f"Response from {gateway}: {responce.status}")
+                if responce.status == 200:
+                    return resp_text
                 else:
+                    gateways = gateways[1:] + gateways[:1]
                     return await get_ipfs_data(ipfs_hash, gateways)
         except Exception as e:
             _LOGGER.error(f"Exception in get ipfs: {e}")
+            gateways = gateways[1:] + gateways[:1]
             return await get_ipfs_data(ipfs_hash, gateways)
 
     @callback
