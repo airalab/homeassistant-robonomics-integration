@@ -1,5 +1,5 @@
 from robonomicsinterface import Account, Subscriber, SubEvent
-from utils import decrypt_message
+from custom_components.robonomics_smart_home.utils import decrypt_message
 from substrateinterface import Keypair
 
 def callback(data):
