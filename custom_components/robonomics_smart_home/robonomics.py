@@ -7,13 +7,9 @@ import logging
 import typing as tp
 import asyncio
 import time
-from tenacity import retry, stop_after_attempt, wait_fixed
 from .utils import encrypt_message, str2bool, generate_pass, decrypt_message, to_thread
 
 _LOGGER = logging.getLogger(__name__)
-
-def fail_send_datalog(retry_state):
-        _LOGGER.error(f"Failed send datalog, retry_state: {retry_state}")
 
 class Robonomics:
     def __init__(self,
@@ -88,11 +84,6 @@ class Robonomics:
 
 
     @to_thread
-    # @retry(
-    #     stop=stop_after_attempt(5),
-    #     wait=wait_fixed(5),
-    #     retry_error_callback=fail_send_datalog,
-    # )
     def send_datalog(
         self, data: str, seed: str, crypto_type_ed: bool, subscription: bool
     ) -> str:
