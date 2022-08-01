@@ -5,9 +5,7 @@ CONF_IP = "ip"
 PLATFORMS = []
 
 CONF_USER_SEED = "admin_seed_secret"
-CONF_USER_ED = "user_ed"
-CONF_SUB_OWNER_SEED = "sub_owner_seed_secret"
-CONF_SUB_OWNER_ED = "sub_owner_ed"
+CONF_SUB_OWNER_ADDRESS = "sub_owner_address"
 CONF_PINATA_PUB = "pinata_pub"
 CONF_PINATA_SECRET = "pinata_secret"
 CONF_SENDING_TIMEOUT = "sending_timeout"

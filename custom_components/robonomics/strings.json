@@ -4,9 +4,7 @@
       "user": {
         "data": {
           "admin_seed_secret": "Robonomics admin account seed",
-          "user_ed": "Is your account type ED25519",
-          "sub_owner_seed_secret": "Robonomics subscription owner account seed",
-          "sub_owner_ed": "Is your account type ED25519",
+          "sub_owner_address": "Robonomics subscription owner address",
           "pinata_pub": "Pinata public key",
           "pinata_secret": "Pinata secret",
           "sending_timeout": "Timeout for sending data to Robonomics (min)"
@@ -18,8 +16,7 @@
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
       "unknown": "[%key:common::config_flow::error::unknown%]",
-      "invalid_sub_admin_seed": "[%key:common::config_flow::error::invalid_sub_admin_seed%]",
-      "invalid_sub_owner_seed": "[%key:common::config_flow::error::invalid_sub_owner_seed%]"
+      "invalid_sub_admin_seed": "[%key:common::config_flow::error::invalid_sub_admin_seed%]"
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"

@@ -16,9 +16,7 @@ from .exceptions import InvalidSubAdminSeed, InvalidSubOwnerSeed
 from .const import (
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
-    CONF_SUB_OWNER_ED,
-    CONF_SUB_OWNER_SEED,
-    CONF_USER_ED,
+    CONF_SUB_OWNER_ADDRESS,
     CONF_USER_SEED,
     DOMAIN,
     CONF_SENDING_TIMEOUT
@@ -30,9 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USER_SEED): str,
-        vol.Required(CONF_USER_ED): bool,
-        vol.Required(CONF_SUB_OWNER_SEED): str,
-        vol.Required(CONF_SUB_OWNER_ED): bool,
+        vol.Required(CONF_SUB_OWNER_ADDRESS): str,
         vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
         vol.Optional(CONF_PINATA_PUB): str,
         vol.Optional(CONF_PINATA_SECRET): str,
@@ -46,11 +42,11 @@ def is_valid_sub_admin_seed(sub_admin_seed: str) -> Optional[ValueError]:
     except Exception as e:
         return e
 
-def is_valid_sub_owner_seed(sub_owner_seed: str) -> Optional[ValueError]:
-    try:
-        account = Account(sub_owner_seed)
-    except Exception as e:
-        return e
+# def is_valid_sub_owner_seed(sub_owner_seed: str) -> Optional[ValueError]:
+#     try:
+#         account = Account(sub_owner_seed)
+#     except Exception as e:
+#         return e
 
 
 # class PlaceholderHub:
@@ -79,8 +75,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     # to the executor:
     if await hass.async_add_executor_job(is_valid_sub_admin_seed, data[CONF_USER_SEED]):
         raise InvalidSubAdminSeed
-    if await hass.async_add_executor_job(is_valid_sub_owner_seed, data[CONF_SUB_OWNER_SEED]):
-        raise InvalidSubOwnerSeed
+    # if await hass.async_add_executor_job(is_valid_sub_owner_seed, data[CONF_SUB_OWNER_SEED]):
+    #     raise InvalidSubOwnerSeed
 
     return {"title": "Robonomics"}
 
@@ -112,8 +108,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "invalid_auth"
         except InvalidSubAdminSeed:
             errors["base"] = "invalid_sub_admin_seed"
-        except InvalidSubOwnerSeed:
-            errors["base"] = "invalid_sub_owner_seed"
+        # except InvalidSubOwnerSeed:
+        #     errors["base"] = "invalid_sub_owner_seed"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"

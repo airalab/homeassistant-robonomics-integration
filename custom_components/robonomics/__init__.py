@@ -39,9 +39,7 @@ from .const import (
     INFURA_API,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
-    CONF_SUB_OWNER_ED,
-    CONF_SUB_OWNER_SEED,
-    CONF_USER_ED,
+    CONF_SUB_OWNER_ADDRESS,
     CONF_USER_SEED,
     DOMAIN,
     CONF_SENDING_TIMEOUT
@@ -69,23 +67,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sending_timeout = timedelta(minutes=conf[CONF_SENDING_TIMEOUT])
     _LOGGER.debug(f"Sending interval: {conf[CONF_SENDING_TIMEOUT]} minutes")
     user_mnemonic: str = conf[CONF_USER_SEED]
-    if conf[CONF_USER_ED]:
-        sub_admin_acc = Account(user_mnemonic, crypto_type=KeypairType.ED25519)
-    else:
-        sub_admin_acc = Account(user_mnemonic)
+    sub_owner_address: str = conf[CONF_SUB_OWNER_ADDRESS]
+
+    sub_admin_acc = Account(user_mnemonic, crypto_type=KeypairType.ED25519)
     _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
-    sub_owner_seed: str = conf[CONF_SUB_OWNER_SEED]
-    if conf[CONF_SUB_OWNER_ED]:
-        sub_owner_acc = Account(sub_owner_seed, crypto_type=KeypairType.ED25519)
-    else:
-        sub_owner_acc = Account(sub_owner_seed)
-    _LOGGER.debug(f"sub owner: {sub_owner_acc.get_address()}")
+    _LOGGER.debug(f"sub owner: {sub_owner_address}")
     robonomics: Robonomics = Robonomics(
                             hass,
-                            sub_owner_seed,
-                            conf[CONF_SUB_OWNER_ED],
-                            user_mnemonic,
-                            conf[CONF_USER_ED]
+                            sub_owner_address,
+                            user_mnemonic
                             )
     if (CONF_PINATA_PUB in conf) and (CONF_PINATA_SECRET in conf):
         pinata = PinataPy(conf[CONF_PINATA_PUB], conf[CONF_PINATA_SECRET])
@@ -145,7 +135,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 id=username,
                 is_new=True,
             )
-
             resp = await hass.auth.async_get_or_create_user(creds)
             # new_user = await hass.auth.async_create_user(username, ["system-users"])
             # await async_create_person(hass, username, user_id=new_user.id)
@@ -170,6 +159,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug(f"User was deleted: {username}")
         except Exception as e:
             _LOGGER.error(f"Exception in delete user: {e}")
+    
+    async def change_password(data):
+        _LOGGER.debug(f"Start setting password for username {data[0]}")
+        provider = await get_provider()
+        sender_kp = Keypair(
+                ss58_address=data[0], crypto_type=KeypairType.ED25519
+            )
+        rec_kp = Keypair.create_from_mnemonic(
+            user_mnemonic, crypto_type=KeypairType.ED25519
+        )
+        try:
+            message = json.loads(data[2])
+            password = str(decrypt_message(message["pass_for_admin"], sender_kp.public_key, rec_kp))
+            password = password[2:-1]
+            _LOGGER.debug(f"Decrypted password: {password}")
+        except Exception as e:
+            _LOGGER.error(f"Exception in change password decrypt: {e}")
+            return
+        try:
+            username = data[0].lower()
+            users = await hass.auth.async_get_users()
+            for user in users:
+                if user.name == username:
+                    await delete_user(provider, username)
+            await create_user(provider, username, password)
+            
+        except Exception as e:
+            _LOGGER.error(f"Exception in change password: {e}")
+        _LOGGER.debug("Restarting...")
+        await provider.data.async_save()
+        await hass.services.async_call("homeassistant", "restart")
 
     async def manage_users(data: tp.Tuple(str)) -> None:
         """
@@ -180,7 +200,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         my_queue = manage_users_queue
         provider = await get_provider()
         users = provider.data.users
-        print(f"Begining users: {users}")
+        _LOGGER.debug(f"Begining users: {users}")
         usernames_hass = []
         for user in users:
             try:
@@ -189,56 +209,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     usernames_hass.append(username)
             except Exception as e:
                 _LOGGER.error(f"Exception from manage users: {e}")
-        _LOGGER.debug(f"Users before: {provider.data.users}")
         devices = data[1]
+        robonomics.devices_list = devices.copy()
         devices = [device.lower() for device in devices]
-        print(f"Devices: {set(devices)}")
-        print(f"Users: {set(usernames_hass)}")
         users_to_add = list(set(devices) - set(usernames_hass))
-        _LOGGER.debug(f"New users will be created: {users_to_add}")
+        _LOGGER.debug(f"New users: {users_to_add}")
         users_to_delete = list(set(usernames_hass) - set(devices))
         _LOGGER.debug(f"Following users will be deleted: {users_to_delete}")
-
-        sender_kp = Keypair.create_from_mnemonic(
-            user_mnemonic, crypto_type=KeypairType.ED25519
-        )
+        rec_kp = Keypair.create_from_mnemonic(user_mnemonic, crypto_type=KeypairType.ED25519)
         for user in users_to_add:
-            password = generate_pass(10)
-            await create_user(provider, user, password)
-            for address in data[1]:
-                if address.lower() == user:
-                    try:
-                        rec_kp = Keypair(
-                            ss58_address=address, crypto_type=KeypairType.ED25519
-                        )
-                        encrypted_password = encrypt_message(
-                            password,
-                            sender_kp,
-                            rec_kp.public_key,
-                        )
-                        message = {"address": address, "password": encrypted_password}
-                        with open(USERS_FILE, 'r') as f:
-                            users_list = json.load(f)
-                        users_list.append(message)
-                        with open(USERS_FILE, 'w') as f:
-                            json.dump(users_list, f)
-                        message = json.dumps(message)
-                        await robonomics.send_datalog_creds(message)
-                    except Exception as e:
-                        _LOGGER.error(f"create keypair exception: {e}")
+            for device in robonomics.devices_list:
+                if device.lower() == user:
+                    sender_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
+                    encrypted_password = await robonomics.find_password(device)
+                    password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
+                    password = password[2:-1]
+            if password != None:
+                await create_user(provider, user, password)
+            else:
+                _LOGGER.debug(f"Password for user {user} wasn't found")
                     
         for user in users_to_delete:
-            with open(USERS_FILE, 'r') as f:
-                users_list = json.load(f)
-            users_list_new = []
-            for user_data in users_list:
-                if user_data['address'].lower != user:
-                    users_list_new.append(user_data)
-            with open(USERS_FILE, 'w') as f:
-                json.dump(users_list_new, f)
             await delete_user(provider, user)
 
-        if len(users_to_add) > 0 or len(users_to_delete) > 0:
+        if len(users_to_delete) > 0 or len(users_to_add) > 0:
             await provider.data.async_save()
             _LOGGER.debug(f"Finishing user managment, user list: {provider.data.users}")
             if my_queue < manage_users_queue:
@@ -247,6 +241,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug("Restarting...")
             manage_users_queue = 0
             await hass.services.async_call("homeassistant", "restart")
+
 
     async def get_ipfs_data(
                 ipfs_hash: str, 
@@ -287,34 +282,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             message = literal_eval(response_text)
         else:
             kp_sender = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
-            if conf[CONF_SUB_OWNER_ED]:
-                subscription_owner_kp = Keypair.create_from_mnemonic(
+            sub_admin_kp = Keypair.create_from_mnemonic(
                     user_mnemonic, crypto_type=KeypairType.ED25519
                 )
-            else:
-                subscription_owner_kp = Keypair.create_from_mnemonic(user_mnemonic, crypto_type=KeypairType.ED25519)
             try:
-                decrypted = decrypt_message(response_text, kp_sender.public_key, subscription_owner_kp)
+                decrypted = decrypt_message(response_text, kp_sender.public_key, sub_admin_kp)
             except Exception as e:
-                _LOGGER.error(f"Exception in decript command: {e}")
+                _LOGGER.error(f"Exception in decrypt command: {e}")
                 return
             decrypted = str(decrypted)[2:-1]
             _LOGGER.debug(f"Decrypted command: {decrypted}")
             message = literal_eval(decrypted)
         try:
             # domain="light", service="turn_on", service_data={"rgb_color": [30, 30, 230]}, target={"entity_id": "light.shapes_9275"}
-            if "rgb_color" in message["params"]:
-                service_data = {"rgb_color": message["params"]["rgb_color"]}
-            elif "color" in message["params"]:
-                service_data = {"rgb_color": message["params"]["color"]}
-            else:
-                service_data = None
+            message_entity_id = message["params"]["entity_id"]
+            params = message["params"].copy()
+            del params["entity_id"]
+            if params == {}:
+                params = None
+            # if "rgb_color" in message["params"]:
+            #     service_data = {"rgb_color": message["params"]["rgb_color"]}
+            # elif "color" in message["params"]:
+            #     service_data = {"rgb_color": message["params"]["color"]}
+            # else:
+            #     service_data = None
             hass.async_create_task(
                 hass.services.async_call(
                     domain=message["platform"], 
                     service=message["name"], 
-                    service_data=service_data,
-                    target={"entity_id": message["params"]["entity_id"]}
+                    service_data=params,
+                    target={"entity_id": message_entity_id}
                 )
             )
         except Exception as e:
@@ -399,6 +396,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in handle_state_changed: {e}")
 
+
     async def handle_time_changed(event):
         try:
             _LOGGER.debug(f"Time changed: {event}")
@@ -406,15 +404,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
-
-    #hass.bus.async_listen("state_changed", handle_state_changed)
+    hass.bus.async_listen("state_changed", handle_state_changed)
     async_track_time_interval(hass, handle_time_changed, sending_timeout)
-
-    hass.async_add_executor_job(robonomics.subscribe, handle_launch, manage_users)
-
+    hass.async_add_executor_job(robonomics.subscribe, handle_launch, manage_users, change_password)
     hass.states.async_set(f"{DOMAIN}.state", "Online")
-
-
 
     #Checking rws devices to user list correlation
     try:
@@ -426,10 +419,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True
 
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-
     _LOGGER.debug(f"setup data: {config.get(DOMAIN)}")
-
     return True
 
 
