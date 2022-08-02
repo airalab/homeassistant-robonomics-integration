@@ -171,7 +171,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         try:
             message = json.loads(data[2])
-            password = str(decrypt_message(message["pass_for_admin"], sender_kp.public_key, rec_kp))
+            password = str(decrypt_message(message["admin"], sender_kp.public_key, rec_kp))
             password = password[2:-1]
             _LOGGER.debug(f"Decrypted password: {password}")
         except Exception as e:
@@ -210,6 +210,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception as e:
                 _LOGGER.error(f"Exception from manage users: {e}")
         devices = data[1]
+        if sub_admin_acc.get_address() in devices:
+            devices.remove(sub_admin_acc.get_address())
+        if devices is None:
+            devices = []
         robonomics.devices_list = devices.copy()
         devices = [device.lower() for device in devices]
         users_to_add = list(set(devices) - set(usernames_hass))
@@ -222,8 +226,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if device.lower() == user:
                     sender_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
                     encrypted_password = await robonomics.find_password(device)
-                    password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
-                    password = password[2:-1]
+                    if encrypted_password != None:
+                        password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
+                        password = password[2:-1]
             if password != None:
                 await create_user(provider, user, password)
             else:
@@ -404,7 +409,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
-    hass.bus.async_listen("state_changed", handle_state_changed)
+    #hass.bus.async_listen("state_changed", handle_state_changed)
     async_track_time_interval(hass, handle_time_changed, sending_timeout)
     hass.async_add_executor_job(robonomics.subscribe, handle_launch, manage_users, change_password)
     hass.states.async_set(f"{DOMAIN}.state", "Online")

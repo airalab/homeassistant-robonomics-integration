@@ -41,12 +41,11 @@ class Robonomics:
             try:
                 _LOGGER.debug(datalog.get_item(address, i)[1])
                 data = json.loads(datalog.get_item(address, i)[1])
-                _LOGGER.debug(data)
+                if "admin" in data:
+                    return data["admin"]
             except Exception as e:
-                _LOGGER.error(f"Exception in find password {e}")
+                #_LOGGER.error(f"Exception in find password {e}")
                 continue
-            if "pass_for_admin" in data:
-                return data["pass_for_admin"]
         else:
             return None
 
@@ -67,6 +66,7 @@ class Robonomics:
             Subscriber(account, SubEvent.MultiEvent, subscription_handler=self.callback_new_event)
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
+
             time.sleep(4)
             self.subscribe(handle_launch, manage_users)
     
@@ -88,6 +88,8 @@ class Robonomics:
             self.hass.async_create_task(self.change_password(data))
         elif type(data[1]) == list and data[0] == self.sub_owner_address:
             self.hass.async_create_task(self.manage_users(data))
+            #self.hass.states.async_set(f"{DOMAIN}.rws.state", data)
+            #print(data)
 
     @to_thread
     def send_datalog(
@@ -180,7 +182,18 @@ class Robonomics:
 
     def get_devices_list(self):
         try:
-            self.devices_list = RWS(Account()).get_devices(self.sub_owner_address)
+            devices_list = RWS(Account()).get_devices(self.sub_owner_address)
+            _LOGGER.debug(f"Got devices list: {devices_list}")
+            sub_admin = Account(
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
+            if devices_list != None:
+                devices_list.remove(sub_admin.get_address())
+                try:
+                    devices_list.remove(self.sub_owner_address)
+                except:
+                    pass
+            self.devices_list = devices_list
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
