@@ -1,6 +1,7 @@
 """Config flow for Robonomics Control integration."""
 from __future__ import annotations
 from robonomicsinterface import Account
+from substrateinterface.utils.ss58 import is_valid_ss58_address
 
 import logging
 from typing import Any, Optional
@@ -11,7 +12,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
-from .exceptions import InvalidSubAdminSeed, InvalidSubOwnerSeed
+from .exceptions import InvalidSubAdminSeed, InvalidSubOwnerAddress
 
 from .const import (
     CONF_PINATA_PUB,
@@ -38,15 +39,13 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 def is_valid_sub_admin_seed(sub_admin_seed: str) -> Optional[ValueError]:
     try:
-        account = Account(sub_admin_seed)
+        Account(sub_admin_seed)
     except Exception as e:
         return e
 
-# def is_valid_sub_owner_seed(sub_owner_seed: str) -> Optional[ValueError]:
-#     try:
-#         account = Account(sub_owner_seed)
-#     except Exception as e:
-#         return e
+def is_valid_sub_owner_address(sub_owner_address: str) -> Optional[ValueError]:
+    return is_valid_ss58_address(sub_owner_address, valid_ss58_format=32)
+
 
 
 # class PlaceholderHub:
@@ -75,8 +74,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     # to the executor:
     if await hass.async_add_executor_job(is_valid_sub_admin_seed, data[CONF_USER_SEED]):
         raise InvalidSubAdminSeed
-    # if await hass.async_add_executor_job(is_valid_sub_owner_seed, data[CONF_SUB_OWNER_SEED]):
-    #     raise InvalidSubOwnerSeed
+    if not is_valid_ss58_address(data[CONF_SUB_OWNER_ADDRESS], valid_ss58_format=32):
+        raise InvalidSubOwnerAddress
 
     return {"title": "Robonomics"}
 
