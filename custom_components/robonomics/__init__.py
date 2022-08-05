@@ -169,27 +169,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         rec_kp = Keypair.create_from_mnemonic(
             user_mnemonic, crypto_type=KeypairType.ED25519
         )
-        try:
-            message = json.loads(data[2])
-            password = str(decrypt_message(message["admin"], sender_kp.public_key, rec_kp))
-            password = password[2:-1]
-            _LOGGER.debug(f"Decrypted password: {password}")
-        except Exception as e:
-            _LOGGER.error(f"Exception in change password decrypt: {e}")
-            return
-        try:
-            username = data[0].lower()
-            users = await hass.auth.async_get_users()
-            for user in users:
-                if user.name == username:
-                    await delete_user(provider, username)
-            await create_user(provider, username, password)
-            
-        except Exception as e:
-            _LOGGER.error(f"Exception in change password: {e}")
-        _LOGGER.debug("Restarting...")
-        await provider.data.async_save()
-        await hass.services.async_call("homeassistant", "restart")
+        message = json.loads(data[2])
+        if ("admin" in message) and (message["sub_owner"] == sub_owner_address):
+            try:
+                password = str(decrypt_message(message["admin"], sender_kp.public_key, rec_kp))
+                password = password[2:-1]
+                _LOGGER.debug(f"Decrypted password: {password}")
+            except Exception as e:
+                _LOGGER.error(f"Exception in change password decrypt: {e}")
+                return
+            try:
+                username = data[0].lower()
+                users = await hass.auth.async_get_users()
+                for user in users:
+                    if user.name == username:
+                        await delete_user(provider, username)
+                await create_user(provider, username, password)
+                
+            except Exception as e:
+                _LOGGER.error(f"Exception in change password: {e}")
+            _LOGGER.debug("Restarting...")
+            await provider.data.async_save()
+            await hass.services.async_call("homeassistant", "restart")
 
     async def manage_users(data: tp.Tuple(str)) -> None:
         """

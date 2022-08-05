@@ -8,7 +8,7 @@ import typing as tp
 import asyncio
 import time
 import json
-from .utils import encrypt_message, str2bool, generate_pass, decrypt_message, to_thread
+from .utils import to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +42,8 @@ class Robonomics:
                 _LOGGER.debug(datalog.get_item(address, i)[1])
                 data = json.loads(datalog.get_item(address, i)[1])
                 if "admin" in data:
-                    return data["admin"]
+                    if data["sub_owner"] == self.sub_owner_address:
+                        return data["admin"]
             except Exception as e:
                 #_LOGGER.error(f"Exception in find password {e}")
                 continue
@@ -157,28 +158,6 @@ class Robonomics:
         receipt = await self.send_datalog(data, self.sub_admin_seed, True)
         self.sending_states = False
         return receipt
-
-    # async def send_datalog_creds(self, data: str) -> str:
-    #     """
-    #     Record datalog from subscription owner
-
-    #     :param data: Data to record
-
-    #     :return: Exstrinsic hash
-
-    #     """
-    #     _LOGGER.debug(f"Send datalog creds request, another datalog: {self.sending_creds}")
-    #     if self.sending_creds: 
-    #         _LOGGER.debug("Another datalog is sending. Wait...")
-    #         while self.sending_creds:
-    #             await asyncio.sleep(5)
-    #         self.sending_creds = True
-    #         time.sleep(300)
-    #     else:
-    #         self.sending_creds = True
-    #     receipt = await self.send_datalog(data, self.sub_owner_seed, self.sub_owner_ed, True)
-    #     self.sending_creds = False
-    #     return receipt
 
     def get_devices_list(self):
         try:

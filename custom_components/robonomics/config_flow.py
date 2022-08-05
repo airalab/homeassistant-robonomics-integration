@@ -107,8 +107,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "invalid_auth"
         except InvalidSubAdminSeed:
             errors["base"] = "invalid_sub_admin_seed"
-        # except InvalidSubOwnerSeed:
-        #     errors["base"] = "invalid_sub_owner_seed"
+        except InvalidSubOwnerAddress:
+            errors["base"] = "invalid_sub_owner_address"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
