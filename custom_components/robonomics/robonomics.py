@@ -42,7 +42,7 @@ class Robonomics:
                 _LOGGER.debug(datalog.get_item(address, i)[1])
                 data = json.loads(datalog.get_item(address, i)[1])
                 if "admin" in data:
-                    if data["sub_owner"] == self.sub_owner_address:
+                    if data["subscription"] == self.sub_owner_address:
                         return data["admin"]
             except Exception as e:
                 #_LOGGER.error(f"Exception in find password {e}")

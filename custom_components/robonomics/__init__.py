@@ -170,7 +170,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             user_mnemonic, crypto_type=KeypairType.ED25519
         )
         message = json.loads(data[2])
-        if ("admin" in message) and (message["sub_owner"] == sub_owner_address):
+        if ("admin" in message) and (message["subscription"] == sub_owner_address):
             try:
                 password = str(decrypt_message(message["admin"], sender_kp.public_key, rec_kp))
                 password = password[2:-1]
@@ -230,10 +230,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     if encrypted_password != None:
                         password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
                         password = password[2:-1]
-            if password != None:
-                await create_user(provider, user, password)
-            else:
-                _LOGGER.debug(f"Password for user {user} wasn't found")
+                        await create_user(provider, user, password)
+                        break
+                    else:
+                        _LOGGER.debug(f"Password for user {user} wasn't found")
                     
         for user in users_to_delete:
             await delete_user(provider, user)
