@@ -9,7 +9,7 @@ from typing import Any, Optional
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from .exceptions import InvalidSubAdminSeed, InvalidSubOwnerAddress
@@ -18,17 +18,16 @@ from .const import (
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
     CONF_SUB_OWNER_ADDRESS,
-    CONF_USER_SEED,
+    CONF_ADMIN_SEED,
     DOMAIN,
     CONF_SENDING_TIMEOUT
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO adjust the data schema to the data that you need
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_USER_SEED): str,
+        vol.Required(CONF_ADMIN_SEED): str,
         vol.Required(CONF_SUB_OWNER_ADDRESS): str,
         vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
         vol.Optional(CONF_PINATA_PUB): str,
@@ -72,7 +71,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     # If your PyPI package is not built with async, pass your methods
     # to the executor:
-    if await hass.async_add_executor_job(is_valid_sub_admin_seed, data[CONF_USER_SEED]):
+    if await hass.async_add_executor_job(is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]):
         raise InvalidSubAdminSeed
     if not is_valid_ss58_address(data[CONF_SUB_OWNER_ADDRESS], valid_ss58_format=32):
         raise InvalidSubOwnerAddress
@@ -84,6 +83,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Robonomics Control."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> MQTTOptionsFlowHandler:
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler(config_entry)
     
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -120,6 +127,42 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+        _LOGGER.debug(config_entry.data)
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        if CONF_PINATA_PUB in self.config_entry.data:
+            pinata_pub = self.config_entry.data[CONF_PINATA_PUB]
+            pinata_secret = self.config_entry.data[CONF_PINATA_SECRET]
+            OPTIONS_DATA_SCHEMA = vol.Schema(
+                {
+                    vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                    vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
+                    vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
+                }
+            )
+        else:
+            OPTIONS_DATA_SCHEMA = vol.Schema(
+                {
+                    vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                    vol.Optional(CONF_PINATA_PUB): str,
+                    vol.Optional(CONF_PINATA_SECRET): str,
+                }
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=OPTIONS_DATA_SCHEMA,
+        )
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
