@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.auth import auth_manager_from_config, models
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.components.recorder import get_instance, history
 
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -29,7 +30,7 @@ from ast import literal_eval
 import ipfsApi
 import time
 import getpass
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,7 +57,9 @@ import json
 manage_users_queue = 0
 
 async def update_listener(hass, entry):
-    """Handle options update."""
+    """
+    Handle options update.
+    """
     try:
         _LOGGER.debug("Reconfigure Robonomics Integration")
         _LOGGER.debug(f"HASS.data before: {hass.data[DOMAIN]}")
@@ -74,9 +77,9 @@ async def update_listener(hass, entry):
         _LOGGER.error(f"Exception in update_listener: {e}")
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Robonomics Control from a config entry."""
-    # TODO Store an API object for your platforms to access
-    # hass.data[DOMAIN][entry.entry_id] = MyApi(...)
+    """
+    Set up Robonomics Control from a config entry.
+    """
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
@@ -107,7 +110,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
     @to_thread
-    def add_to_ipfs(api: ipfsApi.Client, data: str, data_path, pinata: PinataPy = None) -> str:
+    def add_to_ipfs(api: ipfsApi.Client, data: str, data_path: str, pinata: PinataPy = None) -> str:
+        """
+        Create file with data and pin it to IPFS.
+        """
         filename = f"{data_path}/data{time.time()}"
         with open(filename, "w") as f:
             f.write(data)
@@ -132,6 +138,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return ipfs_hash_local
 
     async def get_provider():
+        """
+        Returns Home Assistant auth provider
+        """
         hass.auth = await auth_manager_from_config(
             hass, [{"type": "homeassistant"}], []
         )
@@ -179,6 +188,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(f"Exception in delete user: {e}")
     
     async def change_password(data):
+        """
+        Chage password for existing user or create new user
+        """
         _LOGGER.debug(f"Start setting password for username {data[0]}")
         provider = await get_provider()
         sender_kp = Keypair(
@@ -274,6 +286,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 gateways: tp.List[str] = [IPFS_GATEWAY, 
                                         MORALIS_GATEWAY]   
                 ) -> str:
+        """
+        Get data from IPFS
+        """
         websession = async_create_clientsession(hass)
         try:
             for gateway in gateways:
@@ -296,6 +311,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     @callback
     async def handle_launch(data: tp.List[str]) -> None:
+        """
+        Handle a command from launch transaction
+        """
         _LOGGER.debug("Start handle launch")
         try:
             ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
@@ -326,12 +344,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             del params["entity_id"]
             if params == {}:
                 params = None
-            # if "rgb_color" in message["params"]:
-            #     service_data = {"rgb_color": message["params"]["rgb_color"]}
-            # elif "color" in message["params"]:
-            #     service_data = {"rgb_color": message["params"]["color"]}
-            # else:
-            #     service_data = None
             hass.async_create_task(
                 hass.services.async_call(
                     domain=message["platform"], 
@@ -342,16 +354,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         except Exception as e:
             _LOGGER.error(f"Exception in sending command: {e}")
+
+    def state_changes_during_period(
+        start: datetime.datetime, end: datetime.datetime, entity_id: str
+    ) -> list[State]:
+        return history.state_changes_during_period(
+                hass,
+                start,
+                end,
+                entity_id,
+                include_start_time_state=True,
+                no_attributes=True,
+            ).get(entity_id, [])
+
+    async def get_state_history(entity_id: str) -> tp.List[tp.Tuple[str, str]]:
+        """ 
+        Get 24 hours history for given entity
+        """
+        start = datetime.now() - timedelta(hours=24)
+        end = datetime.now()
+        instance = get_instance(hass)
+        states = await instance.async_add_executor_job(
+            state_changes_during_period,
+            start,
+            end,
+            entity_id,
+        )
+        states = states[1:]
+        list_states = []
+        for state in states:
+            list_states.append({"state": state.state, "date": str(state.last_changed)})
+        #_LOGGER.debug(f"List of states in history: {list_states}")
+        return list_states
             
 
-    def get_states() -> tp.Dict[
+    async def get_states() -> tp.Dict[
         str,
         tp.Dict[str, tp.Union[str, tp.Dict[str, tp.Dict[str, tp.Union[str, float]]]]],
     ]:
+        """
+        Get info about all entities with 24 hours history
+        """ 
         registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
         devices_data = {}
         data = {}
+
         for entity in entity_registry.entities:
             entity_data = entity_registry.async_get(entity)
             if entity_data.device_id != None:
@@ -361,9 +409,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         units = str(entity_state.attributes.get("unit_of_measurement"))
                     except:
                         units = "None"
+                    history = await get_state_history(entity_data.entity_id)
                     entity_info = {
                         "units": units,
                         "state": str(entity_state.state),
+                        "history": history
                     }
                     if entity_data.device_id not in devices_data:
                         device = registry.async_get(entity_data.device_id)
@@ -395,7 +445,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
             sender_kp = sender_acc.keypair
-            data = get_states()
+            data = await get_states()
             data = json.dumps(data)
             _LOGGER.debug(f"Got states to send datalog")
             encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
@@ -444,6 +494,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as e:
         print(f"error while getting rws devices list {e}")
 
+    entity = "sensor.weather_bedroom_temperature"
+    await get_state_history(entity)
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True

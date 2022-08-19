@@ -35,6 +35,13 @@ class Robonomics:
             _LOGGER.error(f"Exception in enum: {e}")
 
     async def find_password(self, address: str) -> tp.Optional[str]:
+        """
+        Look for encrypted password in the datalog of the given account
+
+        :param address: The address of the account
+
+        :return: Encrypted password or None if password wasn't found
+        """
         _LOGGER.debug(f"Start look for password for {address}")
         datalog = Datalog(Account())
         for i in range(100):
@@ -160,6 +167,11 @@ class Robonomics:
         return receipt
 
     def get_devices_list(self):
+        """
+        Return devices list for sub owner account
+
+        :return: List of devices
+        """
         try:
             devices_list = RWS(Account()).get_devices(self.sub_owner_address)
             _LOGGER.debug(f"Got devices list: {devices_list}")
