@@ -17,9 +17,16 @@
                     "pinata_secret": "Pinata secret",
                     "admin_seed_secret": "Robonomics admin account seed",
                     "sub_owner_address": "Robonomics subscription owner address",
-                    "sending_timeout": "Timeout for sending data to Robonomics (min)"
+                    "sending_timeout": "Timeout for sending data to Robonomics (min)",
+                    "carbon_service": "Connect to carbon footprint service"
                 },
                 "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account, without it data files will be pinned to IPFS only from your local node."
+            },
+            "energy": {
+                "data": {
+                    "energy_sensor": "Entities with kWh"
+                },
+                "description": "Choose sensors that track energy"
             }
         }
     },
@@ -29,9 +36,16 @@
                 "data": {
                     "pinata_pub": "Pinata public key",
                     "pinata_secret": "Pinata secret",
-                    "sending_timeout": "Timeout for sending data to Robonomics (min)"
+                    "sending_timeout": "Timeout for sending data to Robonomics (min)",
+                    "carbon_service": "Connect to carbon footprint service"
                 },
                 "description": "Configure sending timeout and Pinata credentials."
+            },
+            "energy": {
+                "data": {
+                    "energy_sensor": "Entities with kWh"
+                },
+                "description": "Choose sensors that track energy"
             }
         }
     }

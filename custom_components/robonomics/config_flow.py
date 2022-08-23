@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from .exceptions import InvalidSubAdminSeed, InvalidSubOwnerAddress
+import homeassistant.helpers.config_validation as cv
 
 from .const import (
     CONF_PINATA_PUB,
@@ -20,7 +21,9 @@ from .const import (
     CONF_SUB_OWNER_ADDRESS,
     CONF_ADMIN_SEED,
     DOMAIN,
-    CONF_SENDING_TIMEOUT
+    CONF_SENDING_TIMEOUT,
+    CONF_CARBON_SERVICE,
+    CONF_ENERGY_SENSORS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,6 +35,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
         vol.Optional(CONF_PINATA_PUB): str,
         vol.Optional(CONF_PINATA_SECRET): str,
+        vol.Required(CONF_CARBON_SERVICE): bool,
     }
 )
 
@@ -44,8 +48,6 @@ def is_valid_sub_admin_seed(sub_admin_seed: str) -> Optional[ValueError]:
 
 def is_valid_sub_owner_address(sub_owner_address: str) -> Optional[ValueError]:
     return is_valid_ss58_address(sub_owner_address, valid_ss58_format=32)
-
-
 
 # class PlaceholderHub:
 #     """Placeholder class to make tests pass.
@@ -88,7 +90,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
-    ) -> MQTTOptionsFlowHandler:
+    ) -> OptionsFlowHandler:
         """Get the options flow for this handler."""
         return OptionsFlowHandler(config_entry)
     
@@ -120,11 +122,45 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            return self.async_create_entry(title=info["title"], data=user_input)
-
-        # return self.async_create_entry(title=info["title"], data=user_input)
+            if user_input[CONF_CARBON_SERVICE]:
+                return self.async_step_energy()
+            else:
+                return self.async_create_entry(title=info["title"], data=user_input)
+        
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
+
+    
+    async def async_step_energy(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Options for carbon footprint service.
+        """
+        if user_input is not None:
+            self.updated_config.update(user_input)
+            self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=self.updated_config
+                )
+            return self.async_create_entry(title="", data=self.updated_config)
+        all_sensors = self.hass.states.async_entity_ids('sensor')
+
+        if CONF_ENERGY_SENSORS in self.config_entry.data:
+            energy_sensors = self.config_entry.data[CONF_ENERGY_SENSORS]
+        else:
+            energy_sensors = []
+
+        ENERGY_OPTIONS_DATA_SCHEMA = vol.Schema(
+                {
+                    vol.Required(CONF_ENERGY_SENSORS, default=energy_sensors): cv.multi_select(sorted(all_sensors)),
+                }
+            )
+        
+        return self.async_show_form(
+            step_id="energy",
+            data_schema=ENERGY_OPTIONS_DATA_SCHEMA,
+            last_step=True,
         )
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
@@ -132,13 +168,24 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         self.config_entry = config_entry
         _LOGGER.debug(config_entry.data)
+        self.updated_config = self.config_entry.data.copy()
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options."""
+        """
+        Manage the options.
+        """
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            self.updated_config.update(user_input)
+            if user_input[CONF_CARBON_SERVICE]:
+                return await self.async_step_energy()
+            else:
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=self.updated_config
+                )
+                return self.async_create_entry(title="", data=user_input)
+        #_LOGGER.debug(f"Config flow entities: {self.hass.states.async_entity_ids('sensor')}")
 
         if CONF_PINATA_PUB in self.config_entry.data:
             pinata_pub = self.config_entry.data[CONF_PINATA_PUB]
@@ -148,6 +195,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
                     vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
                     vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
+                    vol.Required(CONF_CARBON_SERVICE, default=self.config_entry.data[CONF_CARBON_SERVICE]): bool,
                 }
             )
         else:
@@ -156,13 +204,47 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
                     vol.Optional(CONF_PINATA_PUB): str,
                     vol.Optional(CONF_PINATA_SECRET): str,
+                    vol.Required(CONF_CARBON_SERVICE, default=self.config_entry.data[CONF_CARBON_SERVICE]): bool,
                 }
             )
 
         return self.async_show_form(
             step_id="init",
             data_schema=OPTIONS_DATA_SCHEMA,
+            last_step=False,
         )
+
+    async def async_step_energy(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Options for carbon footprint service.
+        """
+        if user_input is not None:
+            self.updated_config.update(user_input)
+            self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=self.updated_config
+                )
+            return self.async_create_entry(title="", data=self.updated_config)
+        all_sensors = self.hass.states.async_entity_ids('sensor')
+
+        if CONF_ENERGY_SENSORS in self.config_entry.data:
+            energy_sensors = self.config_entry.data[CONF_ENERGY_SENSORS]
+        else:
+            energy_sensors = []
+
+        ENERGY_OPTIONS_DATA_SCHEMA = vol.Schema(
+                {
+                    vol.Required(CONF_ENERGY_SENSORS, default=energy_sensors): cv.multi_select(sorted(all_sensors)),
+                }
+            )
+        
+        return self.async_show_form(
+            step_id="energy",
+            data_schema=ENERGY_OPTIONS_DATA_SCHEMA,
+            last_step=True,
+        )
+
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""

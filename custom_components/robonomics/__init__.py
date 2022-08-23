@@ -47,8 +47,9 @@ from .const import (
     ROBONOMICS,
     PINATA,
     IPFS_API,HANDLE_TIME_CHANGE,
-    TIME_CHANGE_UNSUB
-
+    TIME_CHANGE_UNSUB,
+    CONF_CARBON_SERVICE,
+    CONF_ENERGY_SENSORS,
 )
 from .utils import encrypt_message, generate_pass, decrypt_message, to_thread
 from .robonomics import Robonomics
@@ -63,6 +64,12 @@ async def update_listener(hass, entry):
     try:
         _LOGGER.debug("Reconfigure Robonomics Integration")
         _LOGGER.debug(f"HASS.data before: {hass.data[DOMAIN]}")
+        _LOGGER.debug(f"entry options before: {entry.options}")
+        hass.data[DOMAIN][CONF_CARBON_SERVICE] = entry.options[CONF_CARBON_SERVICE]
+        if entry.options[CONF_CARBON_SERVICE]:
+            hass.data[DOMAIN][CONF_ENERGY_SENSORS] = entry.options[CONF_ENERGY_SENSORS]
+        else:
+            hass.data[DOMAIN][CONF_ENERGY_SENSORS] = []
         hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(minutes=entry.options[CONF_SENDING_TIMEOUT])
         if (CONF_PINATA_PUB in entry.options) and (CONF_PINATA_SECRET in entry.options):
             hass.data[DOMAIN][PINATA] = PinataPy(entry.options[CONF_PINATA_PUB], entry.options[CONF_PINATA_SECRET])
@@ -83,6 +90,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
+    hass.data[DOMAIN][CONF_CARBON_SERVICE] = conf[CONF_CARBON_SERVICE]
+    if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
+        hass.data[DOMAIN][CONF_ENERGY_SENSORS] = conf[CONF_ENERGY_SENSORS]
     hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(minutes=conf[CONF_SENDING_TIMEOUT])
     _LOGGER.debug(f"Sending interval: {conf[CONF_SENDING_TIMEOUT]} minutes")
     hass.data[DOMAIN][CONF_ADMIN_SEED] = conf[CONF_ADMIN_SEED]
@@ -399,6 +409,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entity_registry = er.async_get(hass)
         devices_data = {}
         data = {}
+        used_energy = 0
 
         for entity in entity_registry.entities:
             entity_data = entity_registry.async_get(entity)
@@ -410,6 +421,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     except:
                         units = "None"
                     history = await get_state_history(entity_data.entity_id)
+                    if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
+                        if entity_data.entity_id in hass.data[DOMAIN][CONF_ENERGY_SENSORS]:
+                            used_energy += float(entity_state.state)
                     entity_info = {
                         "units": units,
                         "state": str(entity_state.state),
@@ -430,6 +444,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         devices_data[entity_data.device_id]["entities"][
                             entity_data.entity_id
                         ] = entity_info
+        if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
+            geo = hass.states.get('zone.home')
+            devices_data["energy"] = {"energy": used_energy, "geo": (geo.attributes['latitude'], geo.attributes['longitude'])}
         return devices_data
 
     # async def handle_datalog(call):

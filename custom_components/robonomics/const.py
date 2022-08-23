@@ -9,6 +9,8 @@ CONF_SUB_OWNER_ADDRESS = "sub_owner_address"
 CONF_PINATA_PUB = "pinata_pub"
 CONF_PINATA_SECRET = "pinata_secret"
 CONF_SENDING_TIMEOUT = "sending_timeout"
+CONF_CARBON_SERVICE = "carbon_service"
+CONF_ENERGY_SENSORS = "energy_sensors"
 
 INFURA_API = "https://ipfs.infura.io:5001/api/v0/add"
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
