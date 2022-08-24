@@ -123,7 +123,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
         else:
             if user_input[CONF_CARBON_SERVICE]:
-                return self.async_step_energy()
+                return await self.async_step_energy()
             else:
                 return self.async_create_entry(title=info["title"], data=user_input)
         
