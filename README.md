@@ -14,8 +14,9 @@ Clone the [repository]() and copy `custop_components` folder to your Home Assist
 
 ## Configure
 
-For the Robonomics integration you need an [account](https://wiki.robonomics.network/docs/en/create-account-in-dapp/) with [subscription](https://wiki.robonomics.network/docs/en/get-subscription/). Also you need an admin account added to subscription as a device (all accounts must be ed25519 type). Admin account will send telemetry from Home Assistant and will be able to send commands to smart devices.  
+For the Robonomics integration you need an [account](https://wiki.robonomics.network/docs/en/create-account-in-dapp/) with [subscription](https://wiki.robonomics.network/docs/en/get-subscription/). Also you need an admin account added to subscription as a device (it must be ed25519 type). Admin account will send telemetry from Home Assistant and will be able to send commands to smart devices.  
 
-![robonomics-users](images/config.png)
+![robonomics-users](images/ha_settings.jpg)
 
-Write mnemonic seeds from Robonomics accounts (first is the admin account in the subscriptions, second is subscription owner) and don't forget check boxes under accounts seeds if needed. Integration use IPFS to save encrypted data, by defaul it uses local node and infura IPFS API, but you can use your Pinata account in addition.
+Write mnemonic seed of your Robonomics admin account and the address of subscription owner account. Integration use IPFS to save encrypted data, by defaul it uses local node and infura IPFS API, but you can use your Pinata account in addition.
+
