@@ -3,9 +3,11 @@
     "name": "Robonomics",
     "config_flow": true,
     "documentation": "https://wiki.robonomics.network/en/",
+    "dependencies": ["recorder"],
     "issue_tracker": "https://github.com/airalab/homeassistant-robonomics-integration/issues",
     "requirements": ["robonomics-interface~=1.1", "pinatapy-vourhey==0.1.3", "aenum==3.1.11", "ipfs-api==0.2.3"],
     "codeowners": ["@airalab"],
     "iot_class": "cloud_push",
     "version": "1.0.0"
   }
+

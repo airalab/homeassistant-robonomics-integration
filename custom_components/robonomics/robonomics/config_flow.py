@@ -49,12 +49,30 @@ def is_valid_sub_admin_seed(sub_admin_seed: str) -> Optional[ValueError]:
 def is_valid_sub_owner_address(sub_owner_address: str) -> Optional[ValueError]:
     return is_valid_ss58_address(sub_owner_address, valid_ss58_format=32)
 
+# class PlaceholderHub:
+#     """Placeholder class to make tests pass.
+
+#     TODO Remove this placeholder class and replace with things from your PyPI package.
+#     """
+
+#     def __init__(self, host: str) -> None:
+#         """Initialize."""
+#         self.host = host
+
+#     async def authenticate(self, username: str, password: str) -> bool:
+#         """Test if we can authenticate with the host."""
+#         return True
+
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
+    # TODO validate the data can be used to set up a connection.
+
+    # If your PyPI package is not built with async, pass your methods
+    # to the executor:
     if await hass.async_add_executor_job(is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]):
         raise InvalidSubAdminSeed
     if not is_valid_ss58_address(data[CONF_SUB_OWNER_ADDRESS], valid_ss58_format=32):
@@ -80,7 +98,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
-        self.updated_config = {}
         device_unique_id = "robonomics"
         await self.async_set_unique_id(device_unique_id)
         self._abort_if_unique_id_configured()
@@ -106,7 +123,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
         else:
             if user_input[CONF_CARBON_SERVICE]:
-                self.updated_config.update(user_input)
                 return await self.async_step_energy()
             else:
                 return self.async_create_entry(title=info["title"], data=user_input)
@@ -124,15 +140,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """
         if user_input is not None:
             self.updated_config.update(user_input)
-            # self.hass.config_entries.async_update_entry(
-            #         self.config_entry, data=self.updated_config
-            #     )
+            self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=self.updated_config
+                )
             return self.async_create_entry(title="", data=self.updated_config)
         all_sensors = self.hass.states.async_entity_ids('sensor')
 
+        if CONF_ENERGY_SENSORS in self.config_entry.data:
+            energy_sensors = self.config_entry.data[CONF_ENERGY_SENSORS]
+        else:
+            energy_sensors = []
+
         ENERGY_OPTIONS_DATA_SCHEMA = vol.Schema(
                 {
-                    vol.Required(CONF_ENERGY_SENSORS): cv.multi_select(sorted(all_sensors)),
+                    vol.Required(CONF_ENERGY_SENSORS, default=energy_sensors): cv.multi_select(sorted(all_sensors)),
                 }
             )
         
@@ -164,6 +185,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     self.config_entry, data=self.updated_config
                 )
                 return self.async_create_entry(title="", data=user_input)
+        #_LOGGER.debug(f"Config flow entities: {self.hass.states.async_entity_ids('sensor')}")
 
         if CONF_PINATA_PUB in self.config_entry.data:
             pinata_pub = self.config_entry.data[CONF_PINATA_PUB]
