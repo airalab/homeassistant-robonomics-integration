@@ -232,7 +232,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await provider.data.async_save()
             await hass.services.async_call("homeassistant", "restart")
 
-    async def manage_users(data: tp.Tuple(str)) -> None:
+    async def manage_users(data: tp.Tuple(str), add_users: bool = True) -> None:
         """
         Compare users and data from transaction decide what users must be created or deleted
         """
@@ -253,6 +253,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         devices = data[1]
         if sub_admin_acc.get_address() in devices:
             devices.remove(sub_admin_acc.get_address())
+        if hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS] in devices:
+            devices.remove(hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
         if devices is None:
             devices = []
         hass.data[DOMAIN][ROBONOMICS].devices_list = devices.copy()
@@ -263,19 +265,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug(f"Following users will be deleted: {users_to_delete}")
         rec_kp = Keypair.create_from_mnemonic(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
         created_users = 0
-        for user in users_to_add:
-            for device in hass.data[DOMAIN][ROBONOMICS].devices_list:
-                if device.lower() == user:
-                    sender_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
-                    encrypted_password = await hass.data[DOMAIN][ROBONOMICS].find_password(device)
-                    if encrypted_password != None:
-                        password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
-                        password = password[2:-1]
-                        await create_user(provider, user, password)
-                        created_users += 1
-                        break
-                    else:
-                        _LOGGER.debug(f"Password for user {user} wasn't found")
+        if add_users:
+            for user in users_to_add:
+                for device in hass.data[DOMAIN][ROBONOMICS].devices_list:
+                    if device.lower() == user:
+                        sender_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
+                        encrypted_password = await hass.data[DOMAIN][ROBONOMICS].find_password(device)
+                        if encrypted_password != None:
+                            password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
+                            password = password[2:-1]
+                            await create_user(provider, user, password)
+                            created_users += 1
+                            break
+                        else:
+                            _LOGGER.debug(f"Password for user {user} wasn't found")
                     
         for user in users_to_delete:
             await delete_user(provider, user)
@@ -289,23 +292,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug("Restarting...")
             manage_users_queue = 0
             await hass.services.async_call("homeassistant", "restart")
-
-
+            
     async def get_ipfs_data(
                 ipfs_hash: str, 
+                number_of_request: int,
                 gateways: tp.List[str] = [IPFS_GATEWAY, 
                                         MORALIS_GATEWAY]   
                 ) -> str:
         """
         Get data from IPFS
         """
+        if number_of_request > 4:
+            return None
         websession = async_create_clientsession(hass)
         try:
             for gateway in gateways:
                 if gateway[-1] != "/":
                     gateway += "/"
                 url = f"{gateway}{ipfs_hash}"
-                _LOGGER.debug(f"Request to {url}")
+                _LOGGER.debug(f"Request to {url}, number {number_of_request}")
                 async with websession.get(url) as responce:
                     resp_text = await responce.text()
                 _LOGGER.debug(f"Response from {gateway}: {responce.status}")
@@ -313,11 +318,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     return resp_text
                 else:
                     gateways = gateways[1:] + gateways[:1]
-                    return await get_ipfs_data(ipfs_hash, gateways)
+                    return await get_ipfs_data(ipfs_hash, number_of_request + 1, gateways)
         except Exception as e:
             _LOGGER.error(f"Exception in get ipfs: {e}")
-            gateways = gateways[1:] + gateways[:1]
-            return await get_ipfs_data(ipfs_hash, gateways)
+            # gateways = gateways[1:] + gateways[:1]
+            # return await get_ipfs_data(ipfs_hash, gateways)
 
     @callback
     async def handle_launch(data: tp.List[str]) -> None:
@@ -327,7 +332,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug("Start handle launch")
         try:
             ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
-            response_text = await get_ipfs_data(ipfs_hash)  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
+            response_text = await get_ipfs_data(ipfs_hash, 0)  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
+            if response_text is None:
+                _LOGGER.debug(f"Can't get command from {ipfs_hash}")
+                return
         except Exception as e:
             _LOGGER.error(f"Exception in get ipfs command: {e}")
             return

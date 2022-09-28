@@ -111,7 +111,7 @@ class Robonomics:
         elif type(data[1]) == int and data[0] in self.devices_list:
             self.hass.async_create_task(self.change_password(data))
         elif type(data[1]) == list and data[0] == self.sub_owner_address:
-            self.hass.async_create_task(self.manage_users(data))
+            self.hass.async_create_task(self.manage_users(data, add_users=False))
             #self.hass.states.async_set(f"{DOMAIN}.rws.state", data)
             #print(data)
 
