@@ -15,6 +15,7 @@ CONF_ENERGY_SENSORS = "energy_sensors"
 INFURA_API = "https://ipfs.infura.io:5001/api/v0/add"
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
+CRUST_GATEWAY = "https://crustwebsites.net/ipfs/"
 
 SENDING_TIMEOUT = "sending_timeout"
 ROBONOMICS = "robonomics"
