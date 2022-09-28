@@ -50,6 +50,7 @@ from .const import (
     TIME_CHANGE_UNSUB,
     CONF_CARBON_SERVICE,
     CONF_ENERGY_SENSORS,
+    CRUST_GATEWAY,
 )
 from .utils import encrypt_message, generate_pass, decrypt_message, to_thread
 from .robonomics import Robonomics
@@ -296,7 +297,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def get_ipfs_data(
                 ipfs_hash: str, 
                 number_of_request: int,
-                gateways: tp.List[str] = [IPFS_GATEWAY, 
+                gateways: tp.List[str] = [CRUST_GATEWAY, 
+                                        IPFS_GATEWAY,
                                         MORALIS_GATEWAY]   
                 ) -> str:
         """
@@ -509,8 +511,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     #hass.bus.async_listen("state_changed", handle_state_changed)
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(hass, hass.data[DOMAIN][HANDLE_TIME_CHANGE], hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
-    hass.async_add_executor_job(hass.data[DOMAIN][ROBONOMICS].subscribe, handle_launch, manage_users, change_password)
-    
+    asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].subscribe(handle_launch, manage_users, change_password))
+ 
     hass.states.async_set(f"{DOMAIN}.state", "Online")
 
     #Checking rws devices to user list correlation
