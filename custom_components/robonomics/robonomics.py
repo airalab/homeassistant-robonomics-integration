@@ -73,6 +73,7 @@ class Robonomics:
         else:
             return None
 
+    @to_thread
     def subscribe(self, handle_launch: tp.Callable, manage_users: tp.Callable, change_password: tp.Callable) -> None:
         """
         Subscribe to NewDevices and NewLaunch events
@@ -92,7 +93,7 @@ class Robonomics:
             _LOGGER.debug(f"subscribe exception {e}")
 
             time.sleep(4)
-            self.subscribe(handle_launch, manage_users, change_password)
+            asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].subscribe(handle_launch, manage_users, change_password))
     
     @callback
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
