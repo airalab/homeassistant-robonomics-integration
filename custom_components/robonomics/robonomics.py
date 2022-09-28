@@ -44,10 +44,26 @@ class Robonomics:
         """
         _LOGGER.debug(f"Start look for password for {address}")
         datalog = Datalog(Account())
-        for i in range(100):
+        try:
+            last_datalog = datalog.get_item(address, 0)[1]
+        except:
+            return
+        _LOGGER.debug(f"Last datalog: {last_datalog}")
+        try:
+            data = json.loads(last_datalog)
+            if "admin" in data:
+                    if data["subscription"] == self.sub_owner_address:
+                        return data["admin"]
+        except:
+            pass
+        indexes = datalog.get_index(address)
+        last_datalog_index = indexes['end'] - 2
+        _LOGGER.debug(f"Last index {last_datalog_index}")
+        for i in range(5):
             try:
-                _LOGGER.debug(datalog.get_item(address, i)[1])
-                data = json.loads(datalog.get_item(address, i)[1])
+                datalog_data = datalog.get_item(address, last_datalog_index - i)[1]
+                _LOGGER.debug(datalog_data)
+                data = json.loads(datalog_data)
                 if "admin" in data:
                     if data["subscription"] == self.sub_owner_address:
                         return data["admin"]
