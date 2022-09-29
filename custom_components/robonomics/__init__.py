@@ -51,6 +51,8 @@ from .const import (
     CONF_CARBON_SERVICE,
     CONF_ENERGY_SENSORS,
     CRUST_GATEWAY,
+    LOCAL_GATEWAY,
+    HANDLE_LAUNCH,
 )
 from .utils import encrypt_message, generate_pass, decrypt_message, to_thread
 from .robonomics import Robonomics
@@ -117,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not os.path.isdir(data_path):
         os.mkdir(data_path)
     hass.data[DOMAIN][IPFS_API] = ipfsApi.Client('127.0.0.1', 5001)
+    hass.data[DOMAIN][HANDLE_LAUNCH] = False
 
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
@@ -293,64 +296,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug("Restarting...")
             manage_users_queue = 0
             await hass.services.async_call("homeassistant", "restart")
-            
-    async def get_ipfs_data(
-                ipfs_hash: str, 
-                number_of_request: int,
-                gateways: tp.List[str] = [CRUST_GATEWAY, 
-                                        IPFS_GATEWAY,
-                                        MORALIS_GATEWAY]   
-                ) -> str:
-        """
-        Get data from IPFS
-        """
-        if number_of_request > 4:
-            return None
-        websession = async_create_clientsession(hass)
-        try:
-            for gateway in gateways:
-                if gateway[-1] != "/":
-                    gateway += "/"
-                url = f"{gateway}{ipfs_hash}"
-                _LOGGER.debug(f"Request to {url}, number {number_of_request}")
-                async with websession.get(url) as responce:
-                    resp_text = await responce.text()
-                _LOGGER.debug(f"Response from {gateway}: {responce.status}")
-                if responce.status == 200:
-                    return resp_text
-                else:
-                    gateways = gateways[1:] + gateways[:1]
-                    return await get_ipfs_data(ipfs_hash, number_of_request + 1, gateways)
-        except Exception as e:
-            _LOGGER.error(f"Exception in get ipfs: {e}")
-            # gateways = gateways[1:] + gateways[:1]
-            # return await get_ipfs_data(ipfs_hash, gateways)
 
-    @callback
-    async def handle_launch(data: tp.List[str]) -> None:
-        """
-        Handle a command from launch transaction
-        """
-        _LOGGER.debug("Start handle launch")
+
+    def run_launch_command(encrypted_command: str, sender_address: str):
         try:
-            ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
-            response_text = await get_ipfs_data(ipfs_hash, 0)  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
-            if response_text is None:
-                _LOGGER.debug(f"Can't get command from {ipfs_hash}")
+            if encrypted_command is None:
+                _LOGGER.error(f"Can't get command")
                 return
         except Exception as e:
             _LOGGER.error(f"Exception in get ipfs command: {e}")
             return
-        _LOGGER.debug(f"Got from launch: {response_text}")
-        if "platform" in response_text:
-            message = literal_eval(response_text)
+        _LOGGER.debug(f"Got from launch: {encrypted_command}")
+        if "platform" in encrypted_command:
+            message = literal_eval(encrypted_command)
         else:
-            kp_sender = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
+            kp_sender = Keypair(ss58_address=sender_address, crypto_type=KeypairType.ED25519)
             sub_admin_kp = Keypair.create_from_mnemonic(
                     hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
                 )
             try:
-                decrypted = decrypt_message(response_text, kp_sender.public_key, sub_admin_kp)
+                decrypted = decrypt_message(encrypted_command, kp_sender.public_key, sub_admin_kp)
             except Exception as e:
                 _LOGGER.error(f"Exception in decrypt command: {e}")
                 return
@@ -374,6 +339,61 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         except Exception as e:
             _LOGGER.error(f"Exception in sending command: {e}")
+    
+    async def get_request(websession, url: str, sender_address: str) -> None:
+        resp = await websession.get(url)
+        _LOGGER.debug(f"Responce from {url} is {resp.status}")
+        if resp.status == 200:
+            if hass.data[DOMAIN][HANDLE_LAUNCH]:
+                hass.data[DOMAIN][HANDLE_LAUNCH] = False
+                result = await resp.text()
+                _LOGGER.debug(f"Result: {result}")
+                run_launch_command(result, sender_address)
+            
+    async def get_ipfs_data(
+                ipfs_hash: str, 
+                sender_address: str,
+                number_of_request: int,
+                gateways: tp.List[str] = [CRUST_GATEWAY, 
+                                        LOCAL_GATEWAY,
+                                        IPFS_GATEWAY,
+                                        MORALIS_GATEWAY]   
+                ) -> str:
+        """
+        Get data from IPFS
+        """
+        if number_of_request > 4:
+            return None
+        websession = async_create_clientsession(hass)
+        try:
+            tasks = []
+            _LOGGER.debug(f"Request to IPFS number {number_of_request}")
+            for gateway in gateways:
+                if gateway[-1] != "/":
+                    gateway += "/"
+                url = f"{gateway}{ipfs_hash}"
+                tasks.append(asyncio.create_task(get_request(websession, url, sender_address)))
+            for task in tasks:
+                await task
+        except Exception as e:
+            _LOGGER.error(f"Exception in get ipfs: {e}")
+            if hass.data[DOMAIN][HANDLE_LAUNCH]:
+                await get_ipfs_data(ipfs_hash, number_of_request + 1, gateways)
+
+    @callback
+    async def handle_launch(data: tp.List[str]) -> None:
+        """
+        Handle a command from launch transaction
+        """
+        _LOGGER.debug("Start handle launch")
+        hass.data[DOMAIN][HANDLE_LAUNCH] = True
+        try:
+            ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
+            response_text = await get_ipfs_data(ipfs_hash, data[0], 0)  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
+        except Exception as e:
+            _LOGGER.error(f"Exception in get ipfs command: {e}")
+            return
+    
 
     def state_changes_during_period(
         start: datetime.datetime, end: datetime.datetime, entity_id: str
