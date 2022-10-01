@@ -115,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else: 
         hass.data[DOMAIN][PINATA] = None
         _LOGGER.debug("Use local node to pin files")
-    data_path = f"/home/{getpass.getuser()}/ha_robonomics_data"
+    data_path = f"{os.path.expanduser('~')}/ha_robonomics_data"
     if not os.path.isdir(data_path):
         os.mkdir(data_path)
     hass.data[DOMAIN][IPFS_API] = ipfsApi.Client('127.0.0.1', 5001)
