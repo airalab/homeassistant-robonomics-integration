@@ -22,7 +22,7 @@ import logging
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from robonomicsinterface import Account, Subscriber, SubEvent, Datalog
-from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
+from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_upload_content
 import typing as tp
 from pinatapy import PinataPy
 import os
@@ -135,20 +135,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             res = pinata.pin_file_to_ipfs(filename)
             if 'IpfsHash' in res:
                 ipfs_hash = res['IpfsHash']
-        files = {
-        'file': (data),
-        }
-        try:
-            response = requests.post(INFURA_API, files=files)
-            p = response.json()
-            ipfs_hash_infura = p['Hash']
-            _LOGGER.debug(f"Data pinned to infura {ipfs_hash_infura}")
-        except Exception as e:
-            _LOGGER.error(f"Pin to infura exception: {e}")
+        _LOGGER.debug(f"IPFS data file: {filename}")
         res = api.add(filename)
         ipfs_hash_local = res[0]['Hash']
 
-        _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash_local}")
+        # Pin to Crust
+        try:
+            crust_res = ipfs_upload_content(hass.data[DOMAIN][CONF_ADMIN_SEED], data, pin=True)
+        except Exception as e:
+            _LOGGER.error(f"Exception in add ipfs crust: {e}")
+            crust_res = ['error']
+
+        _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash_local}, crust hash: {crust_res[0]}")
         return ipfs_hash_local
 
     async def get_provider():
