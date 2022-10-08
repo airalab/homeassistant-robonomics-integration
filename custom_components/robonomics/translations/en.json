@@ -15,7 +15,7 @@
                 "data": {
                     "pinata_pub": "Pinata public key",
                     "pinata_secret": "Pinata secret",
-                    "admin_seed_secret": "Robonomics controlle account seed",
+                    "admin_seed_secret": "Robonomics controller account seed",
                     "sub_owner_address": "Robonomics subscription owner address",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
                     "carbon_service": "Connect to carbon footprint service"
