@@ -1,6 +1,6 @@
 from substrateinterface import SubstrateInterface, Keypair, KeypairType
-from robonomicsinterface import Account, Subscriber, SubEvent, Datalog, RWS, Datalog
-from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
+from robonomicsinterface import Account, Subscriber, SubEvent, Datalog, RWS, Datalog, DigitalTwin
+from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from aenum import extend_enum
 from homeassistant.core import callback, HomeAssistant
 import logging
@@ -11,6 +11,8 @@ import json
 from .utils import to_thread
 
 _LOGGER = logging.getLogger(__name__)
+
+ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
 
 class Robonomics:
     def __init__(self,
@@ -34,7 +36,47 @@ class Robonomics:
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
 
-    async def find_password(self, address: str) -> tp.Optional[str]:
+    @to_thread
+    def create_digital_twin(self) -> int:
+        """
+        Create new digital twin
+
+        :return: Number of created twin or -1 if failed
+        """
+        try:
+            sub_admin = Account(
+                    seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+                )
+            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            dt_it, tr_hash = dt.create()
+            _LOGGER.debug(f"Digital twin number {dt_it} was created with transaction hash {tr_hash}")
+            return dt_it
+        except Exception as e:
+            _LOGGER.error(f"Exception in creating digital twin: {e}")
+            return -1
+
+    @to_thread
+    def set_config_topic(self, ipfs_hash: str, twin_number: int) -> None:
+        try:
+            sub_admin = Account(
+                    seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+                )
+            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            info = dt.get_info(twin_number)
+            if info is not None:
+                for topic in info:
+                    _LOGGER.debug(f"Topic {topic}")
+                    if topic[1] == sub_admin.get_address():
+                        dt.set_source(twin_number, topic[0], ZERO_ACC)
+                        _LOGGER.debug(f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
+            bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
+            dt.set_source(twin_number, bytes_hash, sub_admin.get_address())
+            _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
+        except Exception as e:
+            _LOGGER.error(f"Exception in set config topic {e}")
+
+    @to_thread
+    def find_password(self, address: str) -> tp.Optional[str]:
         """
         Look for encrypted password in the datalog of the given account
 

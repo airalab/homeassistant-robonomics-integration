@@ -7,9 +7,12 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.auth import auth_manager_from_config, models
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.components.recorder import get_instance, history
+from homeassistant.components.lovelace.dashboard import LovelaceConfig
+from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.service import async_get_all_descriptions
 
 from substrateinterface import Keypair, KeypairType
 import asyncio
@@ -53,6 +56,10 @@ from .const import (
     CRUST_GATEWAY,
     LOCAL_GATEWAY,
     HANDLE_LAUNCH,
+    DATA_CONFIG_PATH,
+    DATA_PATH,
+    IPFS_HASH_CONFIG,
+    TWIN_ID
 )
 from .utils import encrypt_message, generate_pass, decrypt_message, to_thread
 from .robonomics import Robonomics
@@ -115,20 +122,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else: 
         hass.data[DOMAIN][PINATA] = None
         _LOGGER.debug("Use local node to pin files")
-    data_path = f"{os.path.expanduser('~')}/ha_robonomics_data"
+    data_path = f"{os.path.expanduser('~')}/{DATA_PATH}"
     if not os.path.isdir(data_path):
         os.mkdir(data_path)
+    data_config_path = f"{os.path.expanduser('~')}/{DATA_CONFIG_PATH}"
+    if not os.path.isdir(data_config_path):
+        os.mkdir(data_config_path)
+    if not os.path.exists(f"{data_config_path}/config"):
+        with open(f"{data_config_path}/config", "w"):
+            pass
+
     hass.data[DOMAIN][IPFS_API] = ipfsApi.Client('127.0.0.1', 5001)
     hass.data[DOMAIN][HANDLE_LAUNCH] = False
+
+    if TWIN_ID not in hass.data[DOMAIN]:
+        try:
+            with open(f"{data_config_path}/config", "r") as f:
+                current_config = json.load(f)
+                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
+                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
+        except Exception as e:
+            _LOGGER.debug(f"Can't load config: {e}")
+            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                
+
 
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
     @to_thread
-    def add_to_ipfs(api: ipfsApi.Client, data: str, data_path: str, pinata: PinataPy = None) -> str:
+    def add_to_ipfs(api: ipfsApi.Client, data: str, data_path: str, pinata: PinataPy = None, config: bool = False) -> str:
         """
         Create file with data and pin it to IPFS.
         """
-        filename = f"{data_path}/data{time.time()}"
+        if config:
+            filename = f"{data_path}/config_encrypted"
+        else:
+            filename = f"{data_path}/data{time.time()}"
         with open(filename, "w") as f:
             f.write(data)
         if pinata is not None:
@@ -143,8 +173,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             crust_res = ipfs_upload_content(hass.data[DOMAIN][CONF_ADMIN_SEED], data, pin=True)
         except Exception as e:
-            _LOGGER.error(f"Exception in add ipfs crust: {e}")
-            crust_res = ['error']
+            if str(e) == "202":
+                _LOGGER.warn(f"202 response from crust")
+                crust_res = ['202']
+            else:
+                _LOGGER.error(f"Exception in add ipfs crust: {e}")
+                crust_res = ['error']
 
         _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash_local}, crust hash: {crust_res[0]}")
         return ipfs_hash_local
@@ -424,7 +458,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             list_states.append({"state": state.state, "date": str(state.last_changed)})
         #_LOGGER.debug(f"List of states in history: {list_states}")
         return list_states
-            
+
+    async def get_dashboard_and_services() -> None:
+        _LOGGER.debug("Start getting info about dashboard and services")
+        entity_registry = er.async_get(hass)
+        try:
+            descriptions = json.loads(json.dumps(await async_get_all_descriptions(hass)))
+        except Exception as e:
+            _LOGGER.error(f"Exception in getting descriptions: {e}")
+        services_list = {}
+        for entity in entity_registry.entities:
+            entity_data = entity_registry.async_get(entity)
+            if platform not in services_list and platform in descriptions:
+                services_list[platform] = descriptions[platform]
+        dashboard = hass.data[LOVELACE_DOMAIN]['dashboards'].get(None)
+        config_dashboard = await dashboard.async_load(False)
+        with open(f"{data_config_path}/config", "r") as f:
+            try:
+                current_config = json.load(f)
+            except Exception as e:
+                _LOGGER.error(f"Exceprion in json load config: {e}")
+                current_config = {}
+        new_config = {"services": services_list, "dashboard": config_dashboard, "twin_id": hass.data[DOMAIN][TWIN_ID]}
+        if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
+            if current_config != new_config:
+                _LOGGER.debug("Config was changed")
+                with open(f"{data_config_path}/config", "w") as f:
+                    json.dump(new_config, f)
+                sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+                sender_kp = sender_acc.keypair
+                encrypted_data = encrypt_message(str(new_config), sender_kp, sender_kp.public_key)
+            else:
+                with open(f"{data_config_path}/config_encrypted") as f:
+                    encrypted_data = f.read()
+            hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_to_ipfs(hass.data[DOMAIN][IPFS_API], 
+                                                                    encrypted_data, 
+                                                                    data_config_path, 
+                                                                    pinata=hass.data[DOMAIN][PINATA],
+                                                                    config=True)
+            _LOGGER.debug(f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}")
+            await hass.data[DOMAIN][ROBONOMICS].set_config_topic(hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID])
+        
 
     async def get_states() -> tp.Dict[
         str,
@@ -433,6 +507,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """
         Get info about all entities with 24 hours history
         """ 
+        await get_dashboard_and_services()
         registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
         devices_data = {}
@@ -475,6 +550,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
             geo = hass.states.get('zone.home')
             devices_data["energy"] = {"energy": used_energy, "geo": (geo.attributes['latitude'], geo.attributes['longitude'])}
+        devices_data['twin_id'] = hass.data[DOMAIN][TWIN_ID]
         return devices_data
 
     # async def handle_datalog(call):
@@ -538,9 +614,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.async_create_task(manage_users(('0', hass.data[DOMAIN][ROBONOMICS].get_devices_list())))
     except Exception as e:
         print(f"error while getting rws devices list {e}")
-
-    entity = "sensor.weather_bedroom_temperature"
-    await get_state_history(entity)
+    
+    await get_and_send_data()
+    
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True

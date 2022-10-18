@@ -25,3 +25,8 @@ IPFS_API = "ipfs_api"
 HANDLE_TIME_CHANGE = "hadle_time_change"
 TIME_CHANGE_UNSUB = "time_change_unsub"
 HANDLE_LAUNCH = "handle_launch"
+
+DATA_PATH = ".ha_robonomics_data"
+DATA_CONFIG_PATH = ".ha_robonomics_data/dashboard_services"
+IPFS_HASH_CONFIG = "ipfs_hash_config"
+TWIN_ID = "twin_id"
