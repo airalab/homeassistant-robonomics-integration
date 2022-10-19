@@ -469,6 +469,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         services_list = {}
         for entity in entity_registry.entities:
             entity_data = entity_registry.async_get(entity)
+            platform = entity_data.entity_id.split('.')[0]
             if platform not in services_list and platform in descriptions:
                 services_list[platform] = descriptions[platform]
         dashboard = hass.data[LOVELACE_DOMAIN]['dashboards'].get(None)
