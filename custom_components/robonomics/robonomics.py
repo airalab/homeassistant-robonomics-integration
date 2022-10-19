@@ -244,6 +244,7 @@ class Robonomics:
                 except:
                     pass
             self.devices_list = devices_list
+            _LOGGER.debug(f"Devices list to return: self: {self.devices_list}, list: {devices_list}")
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
