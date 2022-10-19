@@ -287,12 +287,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception as e:
                 _LOGGER.error(f"Exception from manage users: {e}")
         devices = data[1]
-        if sub_admin_acc.get_address() in devices:
-            devices.remove(sub_admin_acc.get_address())
-        if hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS] in devices:
-            devices.remove(hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
         if devices is None:
             devices = []
+        try:
+            if sub_admin_acc.get_address() in devices:
+                devices.remove(sub_admin_acc.get_address())
+            if hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS] in devices:
+                devices.remove(hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
+        except Exception as e:
+            _LOGGER.error(f"Exception in deleting sub admin and sub owner from devices: {e}")
         hass.data[DOMAIN][ROBONOMICS].devices_list = devices.copy()
         devices = [device.lower() for device in devices]
         users_to_add = list(set(devices) - set(usernames_hass))
@@ -612,7 +615,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     #Checking rws devices to user list correlation
     try:
-        hass.async_create_task(manage_users(('0', hass.data[DOMAIN][ROBONOMICS].get_devices_list())))
+        start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
+        _LOGGER.debug(f"Start devices list is {start_devices_list}")
+        hass.async_create_task(manage_users(('0', start_devices_list)))
     except Exception as e:
         print(f"error while getting rws devices list {e}")
     
