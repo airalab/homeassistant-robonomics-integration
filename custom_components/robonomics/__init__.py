@@ -413,7 +413,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in get ipfs: {e}")
             if hass.data[DOMAIN][HANDLE_LAUNCH]:
-                await get_ipfs_data(ipfs_hash, number_of_request + 1, gateways)
+                await get_ipfs_data(ipfs_hash, sender_address, number_of_request + 1, gateways)
 
     @callback
     async def handle_launch(data: tp.List[str]) -> None:

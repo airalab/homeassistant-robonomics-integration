@@ -149,12 +149,12 @@ class Robonomics:
         sub_admin = Account(
                 seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
             )
-        if type(data[1]) == str and data[1] == sub_admin.get_address():
+        if type(data[1]) == str and data[1] == sub_admin.get_address() and data[0] in self.devices_list:
             self.hass.async_create_task(self.handle_launch(data)) 
         elif type(data[1]) == int and data[0] in self.devices_list:
             self.hass.async_create_task(self.change_password(data))
         elif type(data[1]) == list and data[0] == self.sub_owner_address:
-            self.hass.async_create_task(self.manage_users(data, add_users=False))
+            self.hass.async_create_task(self.manage_users(data))
             #self.hass.states.async_set(f"{DOMAIN}.rws.state", data)
             #print(data)
 
