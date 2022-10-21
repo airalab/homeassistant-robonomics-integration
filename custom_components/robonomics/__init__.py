@@ -135,19 +135,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][IPFS_API] = ipfsApi.Client('127.0.0.1', 5001)
     hass.data[DOMAIN][HANDLE_LAUNCH] = False
 
-    if TWIN_ID not in hass.data[DOMAIN]:
-        try:
-            with open(f"{data_config_path}/config", "r") as f:
-                current_config = json.load(f)
-                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
-                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
-        except Exception as e:
-            _LOGGER.debug(f"Can't load config: {e}")
-            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
-                
-
-
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
     @to_thread
@@ -610,6 +597,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     #hass.bus.async_listen("state_changed", handle_state_changed)
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(hass, hass.data[DOMAIN][HANDLE_TIME_CHANGE], hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
     asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].subscribe(handle_launch, manage_users, change_password))
+
+    if TWIN_ID not in hass.data[DOMAIN]:
+        try:
+            with open(f"{data_config_path}/config", "r") as f:
+                current_config = json.load(f)
+                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
+                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
+        except Exception as e:
+            _LOGGER.debug(f"Can't load config: {e}")
+            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
  
     hass.states.async_set(f"{DOMAIN}.state", "Online")
 

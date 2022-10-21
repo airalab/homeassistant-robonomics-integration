@@ -149,8 +149,11 @@ class Robonomics:
         sub_admin = Account(
                 seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
             )
-        if type(data[1]) == str and data[1] == sub_admin.get_address() and data[0] in self.devices_list:
-            self.hass.async_create_task(self.handle_launch(data)) 
+        if type(data[1]) == str and data[1] == sub_admin.get_address():
+            if data[0] in self.devices_list:
+                self.hass.async_create_task(self.handle_launch(data)) 
+            else:
+                _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
         elif type(data[1]) == int and data[0] in self.devices_list:
             self.hass.async_create_task(self.change_password(data))
         elif type(data[1]) == list and data[0] == self.sub_owner_address:
@@ -244,7 +247,6 @@ class Robonomics:
                 except:
                     pass
             self.devices_list = devices_list
-            _LOGGER.debug(f"Devices list to return: self: {self.devices_list}, list: {devices_list}")
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
