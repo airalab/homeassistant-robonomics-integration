@@ -149,12 +149,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         with open(filename, "w") as f:
             f.write(data)
         if pinata is not None:
-            res = pinata.pin_file_to_ipfs(filename)
-            if 'IpfsHash' in res:
-                ipfs_hash = res['IpfsHash']
+            try:
+                res = pinata.pin_file_to_ipfs(filename)
+                if 'IpfsHash' in res:
+                    ipfs_hash = res['IpfsHash']
+            except Exception as e:
+                _LOGGER.error(f"Exception in pinata: {e}")
         _LOGGER.debug(f"IPFS data file: {filename}")
-        res = api.add(filename)
-        ipfs_hash_local = res[0]['Hash']
+        try:
+            res = api.add(filename)
+            ipfs_hash_local = res[0]['Hash']
+        except Exception as e:
+            _LOGGER.error(f"Exception in add data to ipfs witk local node: {e}")
+            ipfs_hash_local = None
 
         # Pin to Crust
         try:
@@ -456,39 +463,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             descriptions = json.loads(json.dumps(await async_get_all_descriptions(hass)))
         except Exception as e:
             _LOGGER.error(f"Exception in getting descriptions: {e}")
-        services_list = {}
-        for entity in entity_registry.entities:
-            entity_data = entity_registry.async_get(entity)
-            platform = entity_data.entity_id.split('.')[0]
-            if platform not in services_list and platform in descriptions:
-                services_list[platform] = descriptions[platform]
-        dashboard = hass.data[LOVELACE_DOMAIN]['dashboards'].get(None)
-        config_dashboard = await dashboard.async_load(False)
-        with open(f"{data_config_path}/config", "r") as f:
-            try:
+        try:
+            services_list = {}
+            for entity in entity_registry.entities:
+                entity_data = entity_registry.async_get(entity)
+                platform = entity_data.entity_id.split('.')[0]
+                if platform not in services_list and platform in descriptions:
+                    services_list[platform] = descriptions[platform]
+            dashboard = hass.data[LOVELACE_DOMAIN]['dashboards'].get(None)
+            config_dashboard = await dashboard.async_load(False)
+        except Exception as e:
+            _LOGGER.error(f"Exception in get services and dashboard: {e}")
+        try:
+            with open(f"{data_config_path}/config", "r") as f:
                 current_config = json.load(f)
-            except Exception as e:
-                _LOGGER.error(f"Exceprion in json load config: {e}")
-                current_config = {}
-        new_config = {"services": services_list, "dashboard": config_dashboard, "twin_id": hass.data[DOMAIN][TWIN_ID]}
-        if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
-            if current_config != new_config:
-                _LOGGER.debug("Config was changed")
-                with open(f"{data_config_path}/config", "w") as f:
-                    json.dump(new_config, f)
-                sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
-                sender_kp = sender_acc.keypair
-                encrypted_data = encrypt_message(str(new_config), sender_kp, sender_kp.public_key)
-            else:
-                with open(f"{data_config_path}/config_encrypted") as f:
-                    encrypted_data = f.read()
-            hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_to_ipfs(hass.data[DOMAIN][IPFS_API], 
-                                                                    encrypted_data, 
-                                                                    data_config_path, 
-                                                                    pinata=hass.data[DOMAIN][PINATA],
-                                                                    config=True)
-            _LOGGER.debug(f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}")
-            await hass.data[DOMAIN][ROBONOMICS].set_config_topic(hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID])
+        except Exception as e:
+            _LOGGER.error(f"Exceprion in json load config: {e}")
+            current_config = {}
+        try:
+            new_config = {"services": services_list, "dashboard": config_dashboard, "twin_id": hass.data[DOMAIN][TWIN_ID]}
+            if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
+                if current_config != new_config:
+                    _LOGGER.debug("Config was changed")
+                    with open(f"{data_config_path}/config", "w") as f:
+                        json.dump(new_config, f)
+                    sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+                    sender_kp = sender_acc.keypair
+                    encrypted_data = encrypt_message(str(new_config), sender_kp, sender_kp.public_key)
+                else:
+                    with open(f"{data_config_path}/config_encrypted") as f:
+                        encrypted_data = f.read()
+                hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_to_ipfs(hass.data[DOMAIN][IPFS_API], 
+                                                                        encrypted_data, 
+                                                                        data_config_path, 
+                                                                        pinata=hass.data[DOMAIN][PINATA],
+                                                                        config=True)
+                _LOGGER.debug(f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}")
+                await hass.data[DOMAIN][ROBONOMICS].set_config_topic(hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID])
+        except Exception as e:
+            _LOGGER.error(f"Exception in change config: {e}")
         
 
     async def get_states() -> tp.Dict[
@@ -557,9 +570,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
             sender_kp = sender_acc.keypair
+        except Exception as e:
+            _LOGGER.error(f"Exception in create keypair during get and senf data: {e}")
+        try:
             data = await get_states()
             data = json.dumps(data)
             _LOGGER.debug(f"Got states to send datalog")
+        except Exception as e:
+            _LOGGER.error(f"Exception in get states and json: {e}")
+        try:
             encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
             await asyncio.sleep(2)
             ipfs_hash = await add_to_ipfs(hass.data[DOMAIN][IPFS_API], encrypted_data, data_path, pinata=hass.data[DOMAIN][PINATA])
