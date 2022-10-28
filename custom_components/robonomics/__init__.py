@@ -1,5 +1,4 @@
 from __future__ import annotations
-from pickle import FALSE
 from platform import platform
 
 from homeassistant.core import HomeAssistant, callback
@@ -10,17 +9,14 @@ from homeassistant.components.recorder import get_instance, history
 from homeassistant.components.lovelace.dashboard import LovelaceConfig
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.service import async_get_all_descriptions
 
 from substrateinterface import Keypair, KeypairType
 import asyncio
 import requests
-from homeassistant import *
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import *
 import logging
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -560,9 +556,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data = await get_states()
             data = json.dumps(data)
             _LOGGER.debug(f"Got states to send datalog")
-            encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
+            random_seed = Keypair.generate_mnemonic()
+            random_acc = Account(random_seed)
+            encrypted_data = encrypt_message(str(data), sender_kp, random_acc.keypair.public_key)
+            encrypted_keys = {}
+            for device in hass.data[DOMAIN][ROBONOMICS].devices_list:
+                receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
+                encrypted_key = encrypt_message(random_seed, sender_kp, receiver_kp.public_key)
+                encrypted_keys[device] = encrypted_key
+            encrypted_keys['data'] = encrypted_data
+            data_final = json.dumps(encrypted_keys)
             await asyncio.sleep(2)
-            ipfs_hash = await add_to_ipfs(hass.data[DOMAIN][IPFS_API], encrypted_data, data_path, pinata=hass.data[DOMAIN][PINATA])
+            ipfs_hash = await add_to_ipfs(hass.data[DOMAIN][IPFS_API], data_final, data_path, pinata=hass.data[DOMAIN][PINATA])
             await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
         except Exception as e:
             _LOGGER.error(f"Exception in get_and_send_data: {e}")
