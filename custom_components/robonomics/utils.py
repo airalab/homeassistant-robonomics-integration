@@ -1,14 +1,12 @@
-import nacl.bindings
-import nacl.public
 from substrateinterface import Keypair, KeypairType
-import secrets
+from robonomicsinterface import Account
 from typing import Union
-import base64
 import random, string
 import functools
 import typing as tp
 import asyncio
 import logging
+import json
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,6 +38,36 @@ def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_
     bytes_encrypted = bytes.fromhex(encrypted_message)
 
     return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
+
+def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) -> str:
+    """
+    Encrypt data for random generated private key, then encrypt this key for device from the list
+
+    :param data: Data to encrypt
+    :param sender_kp: ED25519 account keypair that encrypts the data
+    :param devices: List of ss58 ED25519 addresses
+
+    :return: String with json consists of encrypted data and encrypted for all accounts from the list random generated key
+    """
+    try:
+        random_seed = Keypair.generate_mnemonic()
+        random_acc = Account(random_seed, crypto_type=KeypairType.ED25519)
+        encrypted_data = encrypt_message(str(data), sender_kp, random_acc.keypair.public_key)
+        encrypted_keys = {}
+        _LOGGER.debug(f"Encrypt states for following devices: {devices}")
+        for device in devices:
+            try:
+                receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
+                encrypted_key = encrypt_message(random_seed, sender_kp, receiver_kp.public_key)
+            except Exception as e:
+                _LOGGER.warning(f"Faild to encrypt key for: {device} with error: {e}")
+            encrypted_keys[device] = encrypted_key
+        encrypted_keys['data'] = encrypted_data
+        data_final = json.dumps(encrypted_keys)
+        return data_final
+    except Exception as e:
+        _LOGGER.error(f"Exception in encrypt for devices: {e}")
+
 
 def str2bool(v):
     return v.lower() in ("on", "true", "t", "1", 'y', 'yes', 'yeah')

@@ -6,7 +6,6 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.auth import auth_manager_from_config, models
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.components.recorder import get_instance, history
-from homeassistant.components.lovelace.dashboard import LovelaceConfig
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -14,13 +13,12 @@ from homeassistant.helpers.service import async_get_all_descriptions
 
 from substrateinterface import Keypair, KeypairType
 import asyncio
-import requests
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 import logging
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from robonomicsinterface import Account, Subscriber, SubEvent, Datalog
+from robonomicsinterface import Account
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_upload_content
 import typing as tp
 from pinatapy import PinataPy
@@ -28,7 +26,6 @@ import os
 from ast import literal_eval
 import ipfsApi
 import time
-import getpass
 from datetime import timedelta, datetime
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,7 +33,6 @@ _LOGGER = logging.getLogger(__name__)
 from .const import (
     MORALIS_GATEWAY,
     IPFS_GATEWAY,
-    INFURA_API,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
     CONF_SUB_OWNER_ADDRESS,
@@ -57,7 +53,7 @@ from .const import (
     IPFS_HASH_CONFIG,
     TWIN_ID
 )
-from .utils import encrypt_message, generate_pass, decrypt_message, to_thread
+from .utils import decrypt_message, to_thread, encrypt_for_devices
 from .robonomics import Robonomics
 import json
 
@@ -474,7 +470,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     json.dump(new_config, f)
                 sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
                 sender_kp = sender_acc.keypair
-                encrypted_data = encrypt_message(str(new_config), sender_kp, sender_kp.public_key)
+                devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
+                devices_list_with_admin.append(sender_acc.get_address())
+                data_final = encrypt_for_devices(str(new_config), sender_kp, devices_list_with_admin)
             else:
                 with open(f"{data_config_path}/config_encrypted") as f:
                     encrypted_data = f.read()
@@ -556,16 +554,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data = await get_states()
             data = json.dumps(data)
             _LOGGER.debug(f"Got states to send datalog")
-            random_seed = Keypair.generate_mnemonic()
-            random_acc = Account(random_seed)
-            encrypted_data = encrypt_message(str(data), sender_kp, random_acc.keypair.public_key)
-            encrypted_keys = {}
-            for device in hass.data[DOMAIN][ROBONOMICS].devices_list:
-                receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
-                encrypted_key = encrypt_message(random_seed, sender_kp, receiver_kp.public_key)
-                encrypted_keys[device] = encrypted_key
-            encrypted_keys['data'] = encrypted_data
-            data_final = json.dumps(encrypted_keys)
+            devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
+            devices_list_with_admin.append(sender_acc.get_address())
+            data_final = encrypt_for_devices(data, sender_kp, devices_list_with_admin)
             await asyncio.sleep(2)
             ipfs_hash = await add_to_ipfs(hass.data[DOMAIN][IPFS_API], data_final, data_path, pinata=hass.data[DOMAIN][PINATA])
             await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
