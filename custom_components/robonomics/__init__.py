@@ -507,47 +507,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await get_dashboard_and_services()
         registry = dr.async_get(hass)
         entity_registry = er.async_get(hass)
-        devices_data = {}
+        devices_data = {'entities': {}}
         data = {}
         used_energy = 0
 
         for entity in entity_registry.entities:
             entity_data = entity_registry.async_get(entity)
-            if entity_data.device_id != None:
-                entity_state = hass.states.get(entity)
-                if entity_state != None:
-                    try:
-                        units = str(entity_state.attributes.get("unit_of_measurement"))
-                    except:
-                        units = "None"
-                    history = await get_state_history(entity_data.entity_id)
-                    if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
-                        if entity_data.entity_id in hass.data[DOMAIN][CONF_ENERGY_SENSORS]:
-                            used_energy += float(entity_state.state)
-                    entity_info = {
-                        "units": units,
-                        "state": str(entity_state.state),
-                        "history": history
-                    }
-                    if entity_data.device_id not in devices_data:
-                        device = registry.async_get(entity_data.device_id)
-                        device_name = (
-                            str(device.name_by_user)
-                            if device.name_by_user != None
-                            else str(device.name)
-                        )
-                        devices_data[entity_data.device_id] = {
-                            "name": device_name,
-                            "entities": {entity_data.entity_id: entity_info},
-                        }
-                    else:
-                        devices_data[entity_data.device_id]["entities"][
-                            entity_data.entity_id
-                        ] = entity_info
+            #_LOGGER.debug(f"Entity_data: {entity_data}")
+            entity_state = hass.states.get(entity)
+            if entity_state != None:
+                try:
+                    units = str(entity_state.attributes.get("unit_of_measurement"))
+                except:
+                    units = "None"
+                history = await get_state_history(entity_data.entity_id)
+                if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
+                    if entity_data.entity_id in hass.data[DOMAIN][CONF_ENERGY_SENSORS]:
+                        used_energy += float(entity_state.state)
+                if entity_data.name != None:
+                    entity_name = entity_data.name
+                else:
+                    entity_name = entity_data.original_name
+                entity_info = {
+                    "name": entity_name,
+                    "units": units,
+                    "state": str(entity_state.state),
+                    "history": history
+                }
+                _LOGGER.debug(f"Entity info: {entity_name}")
+                devices_data['entities'][entity_data.entity_id] = entity_info
         if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
             geo = hass.states.get('zone.home')
-            devices_data["energy"] = {"energy": used_energy, "geo": (geo.attributes['latitude'], geo.attributes['longitude'])}
-        devices_data['twin_id'] = hass.data[DOMAIN][TWIN_ID]
+            devices_data["energy"] = {"energy": used_energy, "geo": (geo.attributes["latitude"], geo.attributes["longitude"])}
+        devices_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
         return devices_data
 
     # async def handle_datalog(call):
@@ -568,6 +560,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             data = await get_states()
             data = json.dumps(data)
+            with open('/home/homeassistant/ha_test_data', 'w') as f:
+                f.write(data)
             _LOGGER.debug(f"Got states to send datalog")
             devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
             devices_list_with_admin.append(sender_acc.get_address())
