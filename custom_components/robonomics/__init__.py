@@ -627,6 +627,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as e:
         print(f"error while getting rws devices list {e}")
     
+    await asyncio.sleep(60)
     await get_and_send_data()
     
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
