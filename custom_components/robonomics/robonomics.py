@@ -63,13 +63,18 @@ class Robonomics:
                 )
             dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
             info = dt.get_info(twin_number)
+            bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
+            _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
             if info is not None:
                 for topic in info:
-                    _LOGGER.debug(f"Topic {topic}")
+                    _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
+                    if topic[0] == bytes_hash:
+                        if topic[1] == sub_admin.get_address():
+                            _LOGGER.debug(f"Topic with this config exists")
+                            return
                     if topic[1] == sub_admin.get_address():
                         dt.set_source(twin_number, topic[0], ZERO_ACC)
                         _LOGGER.debug(f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
-            bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
             dt.set_source(twin_number, bytes_hash, sub_admin.get_address())
             _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
         except Exception as e:

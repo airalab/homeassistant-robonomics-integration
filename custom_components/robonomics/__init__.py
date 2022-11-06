@@ -518,7 +518,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         for entity in entity_registry.entities:
             entity_data = entity_registry.async_get(entity)
-            #_LOGGER.debug(f"Entity_data: {entity_data}")
             entity_state = hass.states.get(entity)
             if entity_state != None:
                 try:
@@ -539,7 +538,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "state": str(entity_state.state),
                     "history": history
                 }
-                _LOGGER.debug(f"Entity info: {entity_name}")
                 devices_data['entities'][entity_data.entity_id] = entity_info
         if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
             geo = hass.states.get('zone.home')
