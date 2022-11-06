@@ -231,7 +231,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         rec_kp = Keypair.create_from_mnemonic(
             hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
         )
-        message = json.loads(data[2])
+        try:
+            message = json.loads(data[2])
+        except Exception as e:
+            _LOGGER.warning(f"Message in Datalog is in wrong format: {e}\nMessage: {data[2]}")
+            return
         if ("admin" in message) and (message["subscription"] == hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]):
             try:
                 password = str(decrypt_message(message["admin"], sender_kp.public_key, rec_kp))
@@ -250,6 +254,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 
             except Exception as e:
                 _LOGGER.error(f"Exception in change password: {e}")
+                return
             _LOGGER.debug("Restarting...")
             await provider.data.async_save()
             await hass.services.async_call("homeassistant", "restart")
