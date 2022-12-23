@@ -566,6 +566,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # hass.services.async_register(DOMAIN, "datalog_send", handle_datalog)
 
+    def clear_files():
+        files = os.listdir(data_path)
+        for datafile in files:
+            if datafile[:4] == 'data':
+                os.remove(f"{data_path}/{datafile}")
+
     async def get_and_send_data():
         try:
             sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
