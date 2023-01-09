@@ -574,6 +574,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def get_and_send_data():
         try:
+            clear_files()
             sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
             sender_kp = sender_acc.keypair
         except Exception as e:
