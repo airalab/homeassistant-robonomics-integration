@@ -13,20 +13,15 @@
         "step": {
             "user": {
                 "data": {
-                    "pinata_pub": "Pinata public key",
-                    "pinata_secret": "Pinata secret",
+                    "pinata_pub": "Pinata public key (optional)",
+                    "pinata_secret": "Pinata secret (optional)",
                     "admin_seed_secret": "Robonomics controller account seed",
                     "sub_owner_address": "Robonomics subscription owner address",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
-                    "carbon_service": "Connect to carbon footprint service"
+                    "user_ipfs_gateway": "Custom IPFS gateway (optional)",
+                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)"
                 },
                 "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account, without it data files will be pinned to IPFS only from your local node."
-            },
-            "energy": {
-                "data": {
-                    "energy_sensor": "Entities with kWh"
-                },
-                "description": "Choose sensors that track energy"
             }
         }
     },
@@ -34,18 +29,13 @@
         "step": {
             "init": {
                 "data": {
-                    "pinata_pub": "Pinata public key",
-                    "pinata_secret": "Pinata secret",
+                    "pinata_pub": "Pinata public key (optional)",
+                    "pinata_secret": "Pinata secret (optional)",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
-                    "carbon_service": "Connect to carbon footprint service"
+                    "user_ipfs_gateway": "Custom IPFS gateway (optional)",
+                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)"
                 },
                 "description": "Configure sending timeout and Pinata credentials."
-            },
-            "energy": {
-                "data": {
-                    "energy_sensor": "Entities with kWh"
-                },
-                "description": "Choose sensors that track energy"
             }
         }
     }

@@ -9,10 +9,29 @@ import asyncio
 import time
 import json
 from .utils import to_thread
+from .ipfs import get_ipfs_data
+from .manage_users import change_password, manage_users
+from .const import HANDLE_LAUNCH, DOMAIN, ROBONOMICS, TWIN_ID
 
 _LOGGER = logging.getLogger(__name__)
 
 ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+@callback
+async def handle_launch(hass: HomeAssistant, data: tp.List[str]) -> None:
+    """
+    Handle a command from launch transaction
+    """
+    _LOGGER.debug("Start handle launch")
+    hass.data[DOMAIN][HANDLE_LAUNCH] = True
+    try:
+        ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
+        response_text = await get_ipfs_data(
+            hass, ipfs_hash, data[0], 0
+        )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
+    except Exception as e:
+        _LOGGER.error(f"Exception in get ipfs command: {e}")
+        return
 
 class Robonomics:
     def __init__(self,
@@ -59,19 +78,30 @@ class Robonomics:
     def set_config_topic(self, ipfs_hash: str, twin_number: int) -> None:
         try:
             sub_admin = Account(
-                    seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
-                )
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
             dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
             info = dt.get_info(twin_number)
+            bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
+            _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
             if info is not None:
                 for topic in info:
-                    _LOGGER.debug(f"Topic {topic}")
+                    _LOGGER.debug(
+                        f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
+                    )
+                    if topic[0] == bytes_hash:
+                        if topic[1] == sub_admin.get_address():
+                            _LOGGER.debug(f"Topic with this config exists")
+                            return
                     if topic[1] == sub_admin.get_address():
                         dt.set_source(twin_number, topic[0], ZERO_ACC)
-                        _LOGGER.debug(f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
-            bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
+                        _LOGGER.debug(
+                            f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
+                        )
             dt.set_source(twin_number, bytes_hash, sub_admin.get_address())
-            _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
+            _LOGGER.debug(
+                f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}"
+            )
         except Exception as e:
             _LOGGER.error(f"Exception in set config topic {e}")
 
@@ -116,7 +146,7 @@ class Robonomics:
             return None
 
     @to_thread
-    def subscribe(self, handle_launch: tp.Callable, manage_users: tp.Callable, change_password: tp.Callable) -> None:
+    def subscribe(self) -> None:
         """
         Subscribe to NewDevices and NewLaunch events
 
@@ -125,9 +155,6 @@ class Robonomics:
         :param change_password: Call this function if NewRecord event from one of devices
 
         """
-        self.handle_launch: tp.Callable = handle_launch
-        self.manage_users: tp.Callable = manage_users
-        self.change_password: tp.Callable = change_password
         try:
             account = Account()
             Subscriber(account, SubEvent.MultiEvent, subscription_handler=self.callback_new_event)
@@ -135,7 +162,7 @@ class Robonomics:
             _LOGGER.debug(f"subscribe exception {e}")
 
             time.sleep(4)
-            asyncio.ensure_future(self.hass.data[DOMAIN][ROBONOMICS].subscribe(handle_launch, manage_users, change_password))
+            asyncio.ensure_future(self.hass.data[DOMAIN][ROBONOMICS].subscribe())
     
     @callback
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
@@ -151,13 +178,13 @@ class Robonomics:
             )
         if type(data[1]) == str and data[1] == sub_admin.get_address():
             if data[0] in self.devices_list:
-                self.hass.async_create_task(self.handle_launch(data)) 
+                self.hass.async_create_task(handle_launch(self.hass, data)) 
             else:
                 _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
         elif type(data[1]) == int and data[0] in self.devices_list:
-            self.hass.async_create_task(self.change_password(data))
+            self.hass.async_create_task(change_password(self.hass, data))
         elif type(data[1]) == list and data[0] == self.sub_owner_address:
-            self.hass.async_create_task(self.manage_users(data))
+            self.hass.async_create_task(manage_users(self.hass, data))
             #self.hass.states.async_set(f"{DOMAIN}.rws.state", data)
             #print(data)
 

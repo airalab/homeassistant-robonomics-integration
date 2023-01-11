@@ -22,8 +22,8 @@ from .const import (
     CONF_ADMIN_SEED,
     DOMAIN,
     CONF_SENDING_TIMEOUT,
-    CONF_CARBON_SERVICE,
-    CONF_ENERGY_SENSORS,
+    CONF_IPFS_GATEWAY,
+    CONF_IPFS_GATEWAY_AUTH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,9 +33,10 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_ADMIN_SEED): str,
         vol.Required(CONF_SUB_OWNER_ADDRESS): str,
         vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
+        vol.Optional(CONF_IPFS_GATEWAY): str,
+        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
         vol.Optional(CONF_PINATA_PUB): str,
         vol.Optional(CONF_PINATA_SECRET): str,
-        vol.Required(CONF_CARBON_SERVICE): bool,
     }
 )
 
@@ -105,42 +106,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            if user_input[CONF_CARBON_SERVICE]:
-                self.updated_config.update(user_input)
-                return await self.async_step_energy()
-            else:
-                return self.async_create_entry(title=info["title"], data=user_input)
+            return self.async_create_entry(title=info["title"], data=user_input)
         
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    
-    async def async_step_energy(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Options for carbon footprint service.
-        """
-        if user_input is not None:
-            self.updated_config.update(user_input)
-            # self.hass.config_entries.async_update_entry(
-            #         self.config_entry, data=self.updated_config
-            #     )
-            return self.async_create_entry(title="", data=self.updated_config)
-        all_sensors = self.hass.states.async_entity_ids('sensor')
-
-        ENERGY_OPTIONS_DATA_SCHEMA = vol.Schema(
-                {
-                    vol.Required(CONF_ENERGY_SENSORS): cv.multi_select(sorted(all_sensors)),
-                }
-            )
-        
-        return self.async_show_form(
-            step_id="energy",
-            data_schema=ENERGY_OPTIONS_DATA_SCHEMA,
-            last_step=True,
-        )
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
@@ -157,70 +128,65 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         """
         if user_input is not None:
             self.updated_config.update(user_input)
-            if user_input[CONF_CARBON_SERVICE]:
-                return await self.async_step_energy()
-            else:
-                self.hass.config_entries.async_update_entry(
-                    self.config_entry, data=self.updated_config
-                )
-                return self.async_create_entry(title="", data=user_input)
+
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=self.updated_config
+            )
+            return self.async_create_entry(title="", data=user_input)
 
         if CONF_PINATA_PUB in self.config_entry.data:
             pinata_pub = self.config_entry.data[CONF_PINATA_PUB]
             pinata_secret = self.config_entry.data[CONF_PINATA_SECRET]
-            OPTIONS_DATA_SCHEMA = vol.Schema(
-                {
-                    vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
-                    vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
-                    vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
-                    vol.Required(CONF_CARBON_SERVICE, default=self.config_entry.data[CONF_CARBON_SERVICE]): bool,
-                }
-            )
+            if CONF_IPFS_GATEWAY in self.config_entry.data:
+                custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
+                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
+                OPTIONS_DATA_SCHEMA = vol.Schema(
+                    {
+                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
+                        vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
+                        vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
+                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
+                    }
+                )
+            else:
+                OPTIONS_DATA_SCHEMA = vol.Schema(
+                    {
+                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
+                        vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
+                        vol.Optional(CONF_IPFS_GATEWAY): str,
+                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
+                    }
+                )
         else:
-            OPTIONS_DATA_SCHEMA = vol.Schema(
-                {
-                    vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
-                    vol.Optional(CONF_PINATA_PUB): str,
-                    vol.Optional(CONF_PINATA_SECRET): str,
-                    vol.Required(CONF_CARBON_SERVICE, default=self.config_entry.data[CONF_CARBON_SERVICE]): bool,
-                }
-            )
+            if CONF_IPFS_GATEWAY in self.config_entry.data:
+                custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
+                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
+                OPTIONS_DATA_SCHEMA = vol.Schema(
+                    {
+                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Optional(CONF_PINATA_PUB): str,
+                        vol.Optional(CONF_PINATA_SECRET): str,
+                        vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
+                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
+                    }
+                )
+            else:
+                OPTIONS_DATA_SCHEMA = vol.Schema(
+                    {
+                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Optional(CONF_PINATA_PUB): str,
+                        vol.Optional(CONF_PINATA_SECRET): str,
+                        vol.Optional(CONF_IPFS_GATEWAY): str,
+                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
+                    }
+                )
 
         return self.async_show_form(
             step_id="init",
             data_schema=OPTIONS_DATA_SCHEMA,
             last_step=False,
-        )
-
-    async def async_step_energy(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """
-        Options for carbon footprint service.
-        """
-        if user_input is not None:
-            self.updated_config.update(user_input)
-            self.hass.config_entries.async_update_entry(
-                    self.config_entry, data=self.updated_config
-                )
-            return self.async_create_entry(title="", data=self.updated_config)
-        all_sensors = self.hass.states.async_entity_ids('sensor')
-
-        if CONF_ENERGY_SENSORS in self.config_entry.data:
-            energy_sensors = self.config_entry.data[CONF_ENERGY_SENSORS]
-        else:
-            energy_sensors = []
-
-        ENERGY_OPTIONS_DATA_SCHEMA = vol.Schema(
-                {
-                    vol.Required(CONF_ENERGY_SENSORS, default=energy_sensors): cv.multi_select(sorted(all_sensors)),
-                }
-            )
-        
-        return self.async_show_form(
-            step_id="energy",
-            data_schema=ENERGY_OPTIONS_DATA_SCHEMA,
-            last_step=True,
         )
 
 
