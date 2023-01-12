@@ -43,6 +43,7 @@ from .const import (
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
     RWS_DAYS_LEFT_NOTIFY,
+    TIME_CHANGE_COUNT,
 )
 from .utils import decrypt_message, to_thread
 from .robonomics import Robonomics, check_subscription_left_days
@@ -156,13 +157,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in handle_state_changed: {e}")
 
-    time_change_count = 0
-    time_change_count_in_day = 24*60/(hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds/60)
+    hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
     async def handle_time_changed(event):
         try:
-            time_change_count += 1
-            if time_change_count >= time_change_count_in_day:
-                time_change_count = 0
+            time_change_count_in_day = 24*60/(hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds/60)
+            hass.data[DOMAIN][TIME_CHANGE_COUNT] += 1
+            if hass.data[DOMAIN][TIME_CHANGE_COUNT] >= time_change_count_in_day:
+                hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
                 await check_subscription_left_days(hass)
             _LOGGER.debug(f"Time changed: {event}")
             await get_and_send_data(hass)

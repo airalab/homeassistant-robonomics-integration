@@ -33,3 +33,4 @@ IPFS_HASH_CONFIG = "ipfs_hash_config"
 TWIN_ID = "twin_id"
 
 RWS_DAYS_LEFT_NOTIFY = 5
+TIME_CHANGE_COUNT = "time_change_count"
