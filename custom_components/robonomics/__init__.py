@@ -15,7 +15,6 @@ from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
 import typing as tp
 from pinatapy import PinataPy
 import os
-import ipfsApi
 import time
 import json
 from datetime import timedelta

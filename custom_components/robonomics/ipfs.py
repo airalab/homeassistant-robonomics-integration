@@ -14,7 +14,6 @@ from robonomicsinterface.ipfs_utils import ipfs_get_content, ipfs_upload_content
 import typing as tp
 from pinatapy import PinataPy
 from ast import literal_eval
-import ipfsApi
 import time
 import os
 from pathlib import Path
