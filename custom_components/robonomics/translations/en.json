@@ -8,10 +8,18 @@
             "invalid_auth": "Invalid authentication",
             "unknown": "Unexpected error",
             "invalid_sub_admin_seed": "Invalid controller seed",
-            "invalid_sub_owner_address": "Invalid subscription owner address"
+            "invalid_sub_owner_address": "Invalid subscription owner address",
+            "warnings": "You should tick all points before using Robonomics Integration"
         },
         "step": {
             "user": {
+                "data": {
+                    "warn_data_sending": "Integration will store your encrypted data in IPFS local node and save the hash in blockchain.",
+                    "warn_account_managment": "Integration will be able to create or delete Home Assistant users based on the list of your Robonomics subscription devices."
+                },
+                "description": "To use Robonomics Integration you shoul know the following:"
+            },
+            "conf": {
                 "data": {
                     "pinata_pub": "Pinata public key (optional)",
                     "pinata_secret": "Pinata secret (optional)",
@@ -21,7 +29,7 @@
                     "user_ipfs_gateway": "Custom IPFS gateway (optional)",
                     "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)"
                 },
-                "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account, without it data files will be pinned to IPFS only from your local node."
+                "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account or custom IPFS gateway, without it data files will be pinned to IPFS only from your local node."
             }
         }
     },

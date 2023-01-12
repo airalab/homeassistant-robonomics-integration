@@ -8,6 +8,7 @@ from substrateinterface import Keypair, KeypairType
 from robonomicsinterface import Account
 import logging
 import typing as tp
+import asyncio
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,8 +49,6 @@ async def create_user(hass: HomeAssistant, provider, username: str, password: st
             is_new=True,
         )
         resp = await hass.auth.async_get_or_create_user(creds)
-        # new_user = await hass.auth.async_create_user(username, ["system-users"])
-        # await async_create_person(hass, username, user_id=new_user.id)
         _LOGGER.debug(f"User was created: {username}, password: {password}")
     except Exception as e:
         _LOGGER.error(f"Exception in create user: {e}")
@@ -65,9 +64,6 @@ async def delete_user(hass: HomeAssistant, provider, username: str) -> None:
         for user in users:
             if user.name == username:
                 await hass.auth.async_remove_user(user)
-        # await storage_collection.async_update_item(
-        #         person[CONF_ID], {CONF_USER_ID: None}
-        #     )
         _LOGGER.debug(f"User was deleted: {username}")
     except Exception as e:
         _LOGGER.error(f"Exception in delete user: {e}")
@@ -110,6 +106,9 @@ async def change_password(hass: HomeAssistant, data):
             return
         _LOGGER.debug("Restarting...")
         await provider.data.async_save()
+        # hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
+        # while hass.data[DOMAIN][ROBONOMICS].subscriber._subscription.is_alive():
+        #     await asyncio.sleep(0.5)
         await hass.services.async_call("homeassistant", "restart")
 
 async def manage_users(hass: HomeAssistant, data: tp.Tuple(str), add_users: bool = True) -> None:

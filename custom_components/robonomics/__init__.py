@@ -42,12 +42,37 @@ from .const import (
     TWIN_ID,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
+    RWS_DAYS_LEFT_NOTIFY,
 )
 from .utils import decrypt_message, to_thread
-from .robonomics import Robonomics
+from .robonomics import Robonomics, check_subscription_left_days
 from .ipfs import get_ipfs_data, add_to_ipfs, write_data_to_file
 from .get_states import get_and_send_data
 from .manage_users import change_password, manage_users
+
+async def init_integration(hass: HomeAssistant, data_config_path: str,) -> None:
+    await check_subscription_left_days(hass)
+    if TWIN_ID not in hass.data[DOMAIN]:
+        try:
+            with open(f"{data_config_path}/config", "r") as f:
+                current_config = json.load(f)
+                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
+                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
+        except Exception as e:
+            _LOGGER.debug(f"Can't load config: {e}")
+            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+
+    #Checking rws devices to user list correlation
+    try:
+        start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
+        _LOGGER.debug(f"Start devices list is {start_devices_list}")
+        hass.async_create_task(manage_users(hass, ('0', start_devices_list)))
+    except Exception as e:
+        print(f"Exception in fist check devices {e}")
+    
+    await asyncio.sleep(60)
+    await get_and_send_data(hass)
 
 async def update_listener(hass, entry):
     """
@@ -131,9 +156,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.error(f"Exception in handle_state_changed: {e}")
 
-
+    time_change_count = 0
+    time_change_count_in_day = 24*60/(hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds/60)
     async def handle_time_changed(event):
         try:
+            time_change_count += 1
+            if time_change_count >= time_change_count_in_day:
+                time_change_count = 0
+                await check_subscription_left_days(hass)
             _LOGGER.debug(f"Time changed: {event}")
             await get_and_send_data(hass)
         except Exception as e:
@@ -143,31 +173,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     #hass.bus.async_listen("state_changed", handle_state_changed)
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(hass, hass.data[DOMAIN][HANDLE_TIME_CHANGE], hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
-    asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].subscribe())
+    hass.data[DOMAIN][ROBONOMICS].subscribe()
 
-    if TWIN_ID not in hass.data[DOMAIN]:
-        try:
-            with open(f"{data_config_path}/config", "r") as f:
-                current_config = json.load(f)
-                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
-                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
-        except Exception as e:
-            _LOGGER.debug(f"Can't load config: {e}")
-            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
- 
-    hass.states.async_set(f"{DOMAIN}.state", "Online")
-
-    #Checking rws devices to user list correlation
-    try:
-        start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
-        _LOGGER.debug(f"Start devices list is {start_devices_list}")
-        hass.async_create_task(manage_users(hass, ('0', start_devices_list)))
-    except Exception as e:
-        print(f"Exception in fist check devices {e}")
-    
-    await asyncio.sleep(60)
-    await get_and_send_data(hass)
+    asyncio.ensure_future(init_integration(hass, data_config_path))
     
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")

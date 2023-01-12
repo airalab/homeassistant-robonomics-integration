@@ -12,6 +12,8 @@ CONF_SENDING_TIMEOUT = "sending_timeout"
 CONF_ENERGY_SENSORS = "energy_sensors"
 CONF_IPFS_GATEWAY = "user_ipfs_gateway"
 CONF_IPFS_GATEWAY_AUTH = "user_ipfs_gateway_auth"
+CONF_WARN_DATA_SENDING = "warn_data_sending"
+CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
 
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
@@ -29,3 +31,5 @@ DATA_PATH = ".ha_robonomics_data"
 DATA_CONFIG_PATH = ".ha_robonomics_data/dashboard_services"
 IPFS_HASH_CONFIG = "ipfs_hash_config"
 TWIN_ID = "twin_id"
+
+RWS_DAYS_LEFT_NOTIFY = 5

@@ -3,6 +3,7 @@ from robonomicsinterface import Account, Subscriber, SubEvent, Datalog, RWS, Dat
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from aenum import extend_enum
 from homeassistant.core import callback, HomeAssistant
+from threading import Thread
 import logging
 import typing as tp
 import asyncio
@@ -11,11 +12,19 @@ import json
 from .utils import to_thread
 from .ipfs import get_ipfs_data
 from .manage_users import change_password, manage_users
-from .const import HANDLE_LAUNCH, DOMAIN, ROBONOMICS, TWIN_ID
+from .const import HANDLE_LAUNCH, DOMAIN, ROBONOMICS, TWIN_ID, RWS_DAYS_LEFT_NOTIFY
+from datetime import datetime, timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
 ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+async def check_subscription_left_days(hass: HomeAssistant) -> None:
+    await hass.data[DOMAIN][ROBONOMICS].get_rws_left_days()
+    hass.states.async_set(f"{DOMAIN}.subscription_left_days", hass.data[DOMAIN][ROBONOMICS].rws_days_left)
+    if hass.data[DOMAIN][ROBONOMICS].rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
+        service_data = {"message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed", "title": "Robonomics Subscription Expires"}
+        await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
 
 @callback
 async def handle_launch(hass: HomeAssistant, data: tp.List[str]) -> None:
@@ -46,6 +55,8 @@ class Robonomics:
         self.sending_creds: bool = False
         self.on_queue: int = 0
         self.devices_list: tp.List[str] = []
+        self.subscriber: tp.Optional[Thread] = None
+        self.rws_days_left = 30
         try:
             extend_enum(
                     SubEvent,
@@ -54,6 +65,22 @@ class Robonomics:
                 )
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
+
+    @to_thread
+    def get_rws_left_days(self):
+        try:
+            _LOGGER.debug(f"Start getting RWS date info")
+            rws = RWS(Account())
+            res = rws.get_ledger(self.sub_owner_address)
+            start_timestamp = res['issue_time']/1000
+            start_date = datetime.fromtimestamp(start_timestamp)
+            now_date = datetime.now()
+            delta = now_date - start_date
+            self.rws_days_left = 30 - delta.days
+            _LOGGER.debug(f"RWS left {self.rws_days_left} days")
+        except Exception as e:
+            _LOGGER.debug(f"Exception in getting rws left days: {e}")
+
 
     @to_thread
     def create_digital_twin(self) -> int:
@@ -145,7 +172,6 @@ class Robonomics:
         else:
             return None
 
-    @to_thread
     def subscribe(self) -> None:
         """
         Subscribe to NewDevices and NewLaunch events
@@ -157,12 +183,12 @@ class Robonomics:
         """
         try:
             account = Account()
-            Subscriber(account, SubEvent.MultiEvent, subscription_handler=self.callback_new_event)
+            self.subscriber = Subscriber(account, SubEvent.MultiEvent, subscription_handler=self.callback_new_event)
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
 
             time.sleep(4)
-            asyncio.ensure_future(self.hass.data[DOMAIN][ROBONOMICS].subscribe())
+            self.hass.data[DOMAIN][ROBONOMICS].subscribe()
     
     @callback
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
