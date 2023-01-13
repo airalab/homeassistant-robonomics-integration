@@ -29,8 +29,21 @@ HANDLE_LAUNCH = "handle_launch"
 
 DATA_PATH = ".ha_robonomics_data"
 DATA_CONFIG_PATH = ".ha_robonomics_data/dashboard_services"
+DATA_BACKUP_ENCRYPTED_PATH = ".ha_robonomics_data/backups/backup_remote_encrypted"
+DATA_BACKUP_PATH = ".ha_robonomics_data/backups"
 IPFS_HASH_CONFIG = "ipfs_hash_config"
 TWIN_ID = "twin_id"
 
 RWS_DAYS_LEFT_NOTIFY = 5
 TIME_CHANGE_COUNT = "time_change_count"
+
+EXCLUDE_FROM_BACKUP = [
+    "__pycache__/*",
+    ".DS_Store",
+    "*.db",
+    "*.db-*",
+    "*.log.*",
+    "*.log",
+    "backups/*",
+    "OZW_Log.txt",
+]

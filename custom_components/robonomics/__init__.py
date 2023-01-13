@@ -43,12 +43,14 @@ from .const import (
     CONF_IPFS_GATEWAY_AUTH,
     RWS_DAYS_LEFT_NOTIFY,
     TIME_CHANGE_COUNT,
+    DATA_BACKUP_PATH,
 )
 from .utils import decrypt_message, to_thread
 from .robonomics import Robonomics, check_subscription_left_days
 from .ipfs import get_ipfs_data, add_to_ipfs, write_data_to_file
 from .get_states import get_and_send_data
 from .manage_users import change_password, manage_users
+from .backup_control import restore_from_backup, create_secure_backup, unpack_backup, check_backup_change
 
 async def init_integration(hass: HomeAssistant, data_config_path: str,) -> None:
     await check_subscription_left_days(hass)
@@ -71,6 +73,7 @@ async def init_integration(hass: HomeAssistant, data_config_path: str,) -> None:
     except Exception as e:
         print(f"Exception in fist check devices {e}")
     
+    await check_backup_change(hass)
     await asyncio.sleep(60)
     await get_and_send_data(hass)
 
@@ -136,6 +139,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not os.path.exists(f"{data_config_path}/config"):
         with open(f"{data_config_path}/config", "w"):
             pass
+    data_backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"
 
     hass.data[DOMAIN][HANDLE_LAUNCH] = False
     entry.async_on_unload(entry.add_update_listener(update_listener))
@@ -170,6 +174,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
     
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
+
+    async def handle_save_backup(call):
+        if os.path.isdir(data_backup_path):
+            shutil.rmtree(data_backup_path)
+            os.mkdir(data_backup_path)
+        else:
+            os.mkdir(data_backup_path)
+        backup_path = await create_secure_backup(hass, Path(hass.config.path()), Path(data_backup_path), admin_keypair=sub_admin_acc.keypair)
+        ipfs_hash = await add_to_ipfs(hass, backup_path, pinata=hass.data[DOMAIN][PINATA])
+        _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
+        await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(
+            ipfs_hash, hass.data[DOMAIN][TWIN_ID]
+        )
+
+    async def handle_restore_from_backup(call):
+        try:
+            config_path = Path(hass.config.path())
+            backup_encrypted_path = call.data.get("backup_path")
+            hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
+            if backup_encrypted_path is None:
+                hass.data[DOMAIN][HANDLE_LAUNCH] = True
+                _LOGGER.debug("Start looking for backup ipfs hash")
+                ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
+                await get_ipfs_data(hass, ipfs_backup_hash, sub_admin_acc.get_address(), 0, launch=False)
+            else:
+                backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
+                await restore_from_backup(hass, config_path)
+                _LOGGER.debug(f"Config restored, restarting...")
+        except Exception as e:
+            _LOGGER.error(f"Exception in restore from backup service call: {e}")
+
+    hass.services.async_register(DOMAIN, "save_backup_to_robonomics", handle_save_backup)
+    hass.services.async_register(DOMAIN, "restore_from_robonomics_backup", handle_restore_from_backup)
 
     #hass.bus.async_listen("state_changed", handle_state_changed)
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(hass, hass.data[DOMAIN][HANDLE_TIME_CHANGE], hass.data[DOMAIN][CONF_SENDING_TIMEOUT])

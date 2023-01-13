@@ -42,6 +42,15 @@ async def handle_launch(hass: HomeAssistant, data: tp.List[str]) -> None:
         _LOGGER.error(f"Exception in get ipfs command: {e}")
         return
 
+@callback
+async def handle_backup_change(hass: HomeAssistant, data: tp.List[str]) -> None:
+    """
+    Handle change a backup hash in digital twin
+    """
+    _LOGGER.debug("Start handle backup change")
+    service_data = {"message": "Backup was updated in Robonomics", "title": "Update Backup"}
+    await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
+
 class Robonomics:
     def __init__(self,
                 hass: HomeAssistant, 
@@ -100,6 +109,58 @@ class Robonomics:
         except Exception as e:
             _LOGGER.error(f"Exception in creating digital twin: {e}")
             return -1
+
+    @to_thread
+    def get_backup_hash(self, twin_number: int) -> tp.Optional[str]:
+        try:
+            sub_admin = Account(
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
+            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            info = dt.get_info(twin_number)
+            if info is not None:
+                for topic in info:
+                    if topic[1] == self.sub_owner_address:
+                        backup_hash = ipfs_32_bytes_to_qm_hash(topic[0])
+                        _LOGGER.debug(f"Backup hash is {backup_hash}")
+                        return backup_hash
+                else:
+                    _LOGGER.debug(f"No backup topic was found")
+                    return None
+        except Exception as e:
+            _LOGGER.error(f"Exception in getting backup hash: {e}")
+            return None
+
+    @to_thread
+    def set_backup_topic(self, ipfs_hash: str, twin_number: int) -> None:
+        try:
+            sub_admin = Account(
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
+            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            info = dt.get_info(twin_number)
+            bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
+            _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
+            if info is not None:
+                for topic in info:
+                    _LOGGER.debug(
+                        f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
+                    )
+                    if topic[0] == bytes_hash:
+                        if topic[1] == self.sub_owner_address:
+                            _LOGGER.debug(f"Topic with this backup exists")
+                            return
+                    if topic[1] == self.sub_owner_address:
+                        dt.set_source(twin_number, topic[0], ZERO_ACC)
+                        _LOGGER.debug(
+                            f"Old backup topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
+                        )
+            dt.set_source(twin_number, bytes_hash, self.sub_owner_address)
+            _LOGGER.debug(
+                f"New backup topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}"
+            )
+        except Exception as e:
+            _LOGGER.error(f"Exception in set config topic {e}")
 
     @to_thread
     def set_config_topic(self, ipfs_hash: str, twin_number: int) -> None:
@@ -199,20 +260,18 @@ class Robonomics:
 
         """
         # _LOGGER.debug(f"Got Robonomics event: {data}")
-        sub_admin = Account(
-                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
-            )
-        if type(data[1]) == str and data[1] == sub_admin.get_address():
+        sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
+        if type(data[1]) == str and data[1] == sub_admin.get_address():    ## Launch
             if data[0] in self.devices_list:
-                self.hass.async_create_task(handle_launch(self.hass, data)) 
+                self.hass.async_create_task(handle_launch(self.hass, data))
             else:
                 _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
-        elif type(data[1]) == int and data[0] in self.devices_list:
+        elif data[1] == self.hass.data[DOMAIN][TWIN_ID] and data[3] == self.sub_owner_address:  ## Change backup topic in Digital Twin
+            self.hass.async_create_task(handle_backup_change(self.hass, data))
+        elif type(data[1]) == int and data[0] in self.devices_list:       ## Datalog to change password
             self.hass.async_create_task(change_password(self.hass, data))
-        elif type(data[1]) == list and data[0] == self.sub_owner_address:
+        elif type(data[1]) == list and data[0] == self.sub_owner_address:     ## New Device in subscription
             self.hass.async_create_task(manage_users(self.hass, data))
-            #self.hass.states.async_set(f"{DOMAIN}.rws.state", data)
-            #print(data)
 
     @to_thread
     def send_datalog(

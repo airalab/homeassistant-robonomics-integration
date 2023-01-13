@@ -32,8 +32,10 @@ from .const import (
     HANDLE_LAUNCH,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
+    DATA_BACKUP_ENCRYPTED_PATH,
 )
 from .utils import decrypt_message, to_thread
+from .backup_control import restore_from_backup, unpack_backup
 
 def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
     if config:
@@ -154,7 +156,15 @@ async def get_request(
             if launch:
                 _LOGGER.debug(f"Result: {result}")
                 run_launch_command(hass, result, sender_address)
-                
+            else:
+                backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
+                with open(backup_path, "w") as f:
+                    f.write(result)
+                sub_admin_kp = Keypair.create_from_mnemonic(
+                        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+                    )
+                await unpack_backup(hass, Path(backup_path), sub_admin_kp)
+                await restore_from_backup(hass, Path(hass.config.path()))
 
 
 async def get_ipfs_data(
