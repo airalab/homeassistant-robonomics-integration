@@ -7,7 +7,8 @@ restore_from_robonomics_backup:
   description: Get the latest backup from Robonomics Network and restore from it
   fields:
     backup_path:
-      name: Path to the backup
+      description: Path to the backup enrypted file (if doesn't set get backup from Robonomics blockchain)
+      name: Path to the backup (Optional)
       required: false
       advanced: true
       example: "/home/homeassistant/.homeassistant/backups/example.tar.xz"
