@@ -22,9 +22,13 @@ ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
 async def check_subscription_left_days(hass: HomeAssistant) -> None:
     await hass.data[DOMAIN][ROBONOMICS].get_rws_left_days()
     hass.states.async_set(f"{DOMAIN}.subscription_left_days", hass.data[DOMAIN][ROBONOMICS].rws_days_left)
-    if hass.data[DOMAIN][ROBONOMICS].rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
-        service_data = {"message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed", "title": "Robonomics Subscription Expires"}
+    if hass.data[DOMAIN][ROBONOMICS].rws_days_left <= 0:
+        service_data = {"message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).", "title": "Robonomics Subscription Expires"}
         await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
+    elif hass.data[DOMAIN][ROBONOMICS].rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
+        service_data = {"message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).", "title": "Robonomics Subscription Expires"}
+        await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
+
 
 @callback
 async def handle_launch(hass: HomeAssistant, data: tp.List[str]) -> None:
