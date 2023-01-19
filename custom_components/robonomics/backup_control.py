@@ -54,7 +54,7 @@ async def check_backup_change(hass: HomeAssistant) -> None:
         else:
             _LOGGER.debug("No backups exist")
     except Exception as e:
-        _LOGGER.error(f"Exception in chack backup change: {e}")
+        _LOGGER.error(f"Exception in check backup change: {e}")
 
 @to_thread
 def create_secure_backup(hass: HomeAssistant, config_path: Path, path_for_tar: Path, admin_keypair: Keypair=None) -> str:

@@ -80,6 +80,22 @@ class Robonomics:
             _LOGGER.error(f"Exception in enum: {e}")
 
     @to_thread
+    def get_last_telemetry_hash(self) -> tp.Optional[str]:
+        try:
+            sub_admin = Account(
+                    seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+                )
+            datalog = Datalog(Account())
+            last_hash = datalog.get_item(sub_admin.get_address())
+            _LOGGER.debug(f"Got last hash from datalog: {last_hash}")
+            if last_hash[1][:2] != "Qm":
+                return None
+            else:
+                return last_hash[1]
+        except Exception as e:
+            _LOGGER.debug(f"Exception in getting last telemetry hash: {e}")
+
+    @to_thread
     def get_rws_left_days(self):
         try:
             _LOGGER.debug(f"Start getting RWS date info")

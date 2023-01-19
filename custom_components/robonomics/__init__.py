@@ -53,6 +53,7 @@ from .manage_users import change_password, manage_users
 from .backup_control import restore_from_backup, create_secure_backup, unpack_backup, check_backup_change
 
 async def init_integration(hass: HomeAssistant, data_config_path: str,) -> None:
+    sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
     await check_subscription_left_days(hass)
     if TWIN_ID not in hass.data[DOMAIN]:
         try:
@@ -62,8 +63,22 @@ async def init_integration(hass: HomeAssistant, data_config_path: str,) -> None:
                 hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
         except Exception as e:
             _LOGGER.debug(f"Can't load config: {e}")
-            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+            last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
+            if last_telemetry_hash is not None:
+                hass.data[DOMAIN][HANDLE_LAUNCH] = True
+                await get_ipfs_data(hass, last_telemetry_hash, sub_admin_acc.get_address(), 0, launch=False, telemetry=True)
+                while hass.data[DOMAIN][HANDLE_LAUNCH]:
+                    await asyncio.sleep(0.5)
+                    pass
+                await asyncio.sleep(0.5)
+                if TWIN_ID not in hass.data[DOMAIN]:
+                    hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                    _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                else:
+                    _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
+            else:
+                hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
     #Checking rws devices to user list correlation
     try:
@@ -140,6 +155,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         with open(f"{data_config_path}/config", "w"):
             pass
     data_backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"
+    if not os.path.isdir(data_backup_path):
+        os.mkdir(data_backup_path)
 
     hass.data[DOMAIN][HANDLE_LAUNCH] = False
     entry.async_on_unload(entry.add_update_listener(update_listener))

@@ -16,6 +16,7 @@ from pinatapy import PinataPy
 from ast import literal_eval
 import time
 import os
+import json
 from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ from .const import (
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
     DATA_BACKUP_ENCRYPTED_PATH,
+    TWIN_ID,
 )
 from .utils import decrypt_message, to_thread
 from .backup_control import restore_from_backup, unpack_backup
@@ -145,10 +147,10 @@ def run_launch_command(
 
 
 async def get_request(
-    hass: HomeAssistant, websession, url: str, sender_address: str, launch: bool
+    hass: HomeAssistant, websession, url: str, sender_address: str, launch: bool, telemetry: bool
 ) -> None:
     resp = await websession.get(url)
-    _LOGGER.debug(f"Responce from {url} is {resp.status}")
+    _LOGGER.debug(f"Responce from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}")
     if resp.status == 200:
         if hass.data[DOMAIN][HANDLE_LAUNCH]:
             hass.data[DOMAIN][HANDLE_LAUNCH] = False
@@ -156,6 +158,22 @@ async def get_request(
             if launch:
                 _LOGGER.debug(f"Result: {result}")
                 run_launch_command(hass, result, sender_address)
+            elif telemetry:
+                try:
+                    _LOGGER.debug("Start getting info about telemetry")
+                    sub_admin_kp = Keypair.create_from_mnemonic(
+                        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+                    )
+                    decrypted = decrypt_message(
+                        result, sub_admin_kp.public_key, sub_admin_kp
+                    )
+                    ##############################################
+                    decrypted_str = decrypted.decode("utf-8")
+                    decrypted_json = json.loads(decrypted_str)
+                    _LOGGER.debug(f"Restored twin id is {decrypted_json['twin_id']}")
+                    hass.data[DOMAIN][TWIN_ID] = decrypted_json["twin_id"]
+                except Exception as e:
+                    _LOGGER.debug(f"Can't decrypt last telemetry: {e}")
             else:
                 backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
                 with open(backup_path, "w") as f:
@@ -173,6 +191,7 @@ async def get_ipfs_data(
     sender_address: str,
     number_of_request: int,
     launch: bool = True,
+    telemetry: bool = False,
     gateways: tp.List[str] = [
         LOCAL_GATEWAY,
         IPFS_GATEWAY,
@@ -196,13 +215,13 @@ async def get_ipfs_data(
                 if custom_gateway[-5:] != "ipfs/":
                     custom_gateway += "ipfs/"
                 url = f"{custom_gateway}{ipfs_hash}"
-                tasks.append(asyncio.create_task(get_request(hass, websession, url, sender_address, launch)))
+                tasks.append(asyncio.create_task(get_request(hass, websession, url, sender_address, launch, telemetry)))
         for gateway in gateways:
             if gateway[-1] != "/":
                 gateway += "/"
             url = f"{gateway}{ipfs_hash}"
             tasks.append(
-                asyncio.create_task(get_request(hass, websession, url, sender_address, launch))
+                asyncio.create_task(get_request(hass, websession, url, sender_address, launch, telemetry))
             )
         for task in tasks:
             await task
