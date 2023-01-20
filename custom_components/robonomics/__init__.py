@@ -54,31 +54,6 @@ from .backup_control import restore_from_backup, create_secure_backup, unpack_ba
 
 async def init_integration(hass: HomeAssistant, data_config_path: str,) -> None:
     sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
-    await check_subscription_left_days(hass)
-    if TWIN_ID not in hass.data[DOMAIN]:
-        try:
-            with open(f"{data_config_path}/config", "r") as f:
-                current_config = json.load(f)
-                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
-                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
-        except Exception as e:
-            _LOGGER.debug(f"Can't load config: {e}")
-            last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
-            if last_telemetry_hash is not None:
-                hass.data[DOMAIN][HANDLE_LAUNCH] = True
-                await get_ipfs_data(hass, last_telemetry_hash, sub_admin_acc.get_address(), 0, launch=False, telemetry=True)
-                while hass.data[DOMAIN][HANDLE_LAUNCH]:
-                    await asyncio.sleep(0.5)
-                    pass
-                await asyncio.sleep(0.5)
-                if TWIN_ID not in hass.data[DOMAIN]:
-                    hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-                    _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
-                else:
-                    _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
-            else:
-                hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-                _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
     #Checking rws devices to user list correlation
     try:
@@ -228,6 +203,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     #hass.bus.async_listen("state_changed", handle_state_changed)
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(hass, hass.data[DOMAIN][HANDLE_TIME_CHANGE], hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
     hass.data[DOMAIN][ROBONOMICS].subscribe()
+    await check_subscription_left_days(hass)
+    if TWIN_ID not in hass.data[DOMAIN]:
+        try:
+            with open(f"{data_config_path}/config", "r") as f:
+                current_config = json.load(f)
+                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
+                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
+        except Exception as e:
+            _LOGGER.debug(f"Can't load config: {e}")
+            last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
+            if last_telemetry_hash is not None:
+                hass.data[DOMAIN][HANDLE_LAUNCH] = True
+                res = await get_ipfs_data(hass, last_telemetry_hash, sub_admin_acc.get_address(), 0, launch=False, telemetry=True)
+                _LOGGER.debug(f"IPFS res: {res}")
+                while hass.data[DOMAIN][HANDLE_LAUNCH]:
+                    await asyncio.sleep(0.5)
+                    pass
+                await asyncio.sleep(0.5)
+                if TWIN_ID not in hass.data[DOMAIN]:
+                    hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                    _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                else:
+                    _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
+            else:
+                hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
     asyncio.ensure_future(init_integration(hass, data_config_path))
     

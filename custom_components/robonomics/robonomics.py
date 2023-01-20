@@ -26,7 +26,7 @@ async def check_subscription_left_days(hass: HomeAssistant) -> None:
         service_data = {"message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).", "title": "Robonomics Subscription Expires"}
         await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
     elif hass.data[DOMAIN][ROBONOMICS].rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
-        service_data = {"message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed. You can do it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).", "title": "Robonomics Subscription Expires"}
+        service_data = {"message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).", "title": "Robonomics Subscription Expires"}
         await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
 
 
@@ -74,7 +74,7 @@ class Robonomics:
             extend_enum(
                     SubEvent,
                     "MultiEvent",
-                    f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value, SubEvent.NewRecord.value}",
+                    f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value, SubEvent.NewRecord.value, SubEvent.TopicChanged.value}",
                 )
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
@@ -280,18 +280,24 @@ class Robonomics:
 
         """
         # _LOGGER.debug(f"Got Robonomics event: {data}")
-        sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-        if type(data[1]) == str and data[1] == sub_admin.get_address():    ## Launch
-            if data[0] in self.devices_list:
-                self.hass.async_create_task(handle_launch(self.hass, data))
-            else:
-                _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
-        elif data[1] == self.hass.data[DOMAIN][TWIN_ID] and data[3] == self.sub_owner_address:  ## Change backup topic in Digital Twin
-            self.hass.async_create_task(handle_backup_change(self.hass, data))
-        elif type(data[1]) == int and data[0] in self.devices_list:       ## Datalog to change password
-            self.hass.async_create_task(change_password(self.hass, data))
-        elif type(data[1]) == list and data[0] == self.sub_owner_address:     ## New Device in subscription
-            self.hass.async_create_task(manage_users(self.hass, data))
+        try:
+            _LOGGER.debug(f"Data from subscription callback: {data}")
+            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
+            if type(data[1]) == str and data[1] == sub_admin.get_address():    ## Launch
+                if data[0] in self.devices_list:
+                    self.hass.async_create_task(handle_launch(self.hass, data))
+                else:
+                    _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
+            elif type(data[1]) == int and len(data) == 4:
+                if TWIN_ID in self.hass.data[DOMAIN]:
+                    if data[1] == self.hass.data[DOMAIN][TWIN_ID] and data[3] == self.sub_owner_address:  ## Change backup topic in Digital Twin
+                        self.hass.async_create_task(handle_backup_change(self.hass, data))
+            elif type(data[1]) == int and data[0] in self.devices_list:       ## Datalog to change password
+                self.hass.async_create_task(change_password(self.hass, data))
+            elif type(data[1]) == list and data[0] == self.sub_owner_address:     ## New Device in subscription
+                self.hass.async_create_task(manage_users(self.hass, data))
+        except Exception as e:
+            _LOGGER.warning(f"Exception in subscription callback: {e}")
 
     @to_thread
     def send_datalog(

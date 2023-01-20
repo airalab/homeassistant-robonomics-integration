@@ -197,12 +197,12 @@ async def get_ipfs_data(
         IPFS_GATEWAY,
         MORALIS_GATEWAY,
     ],
-) -> str:
+) -> bool:
     """
     Get data from IPFS
     """
-    if number_of_request > 4:
-        return None
+    if number_of_request > 2:
+        return False
     websession = async_create_clientsession(hass)
     try:
         tasks = []
@@ -225,9 +225,11 @@ async def get_ipfs_data(
             )
         for task in tasks:
             await task
+        return True
     except Exception as e:
         _LOGGER.error(f"Exception in get ipfs: {e}")
         if hass.data[DOMAIN][HANDLE_LAUNCH]:
-            await get_ipfs_data(
+            res = await get_ipfs_data(
                 hass, ipfs_hash, sender_address, number_of_request + 1, gateways
             )
+            return res
