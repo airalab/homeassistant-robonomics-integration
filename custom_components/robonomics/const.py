@@ -36,6 +36,7 @@ TWIN_ID = "twin_id"
 
 RWS_DAYS_LEFT_NOTIFY = 5
 TIME_CHANGE_COUNT = "time_change_count"
+MAX_NUMBER_OF_REQUESTS = 4
 
 EXCLUDE_FROM_BACKUP = [
     "__pycache__/*",

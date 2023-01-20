@@ -35,6 +35,7 @@ from .const import (
     CONF_IPFS_GATEWAY_AUTH,
     DATA_BACKUP_ENCRYPTED_PATH,
     TWIN_ID,
+    MAX_NUMBER_OF_REQUESTS,
 )
 from .utils import decrypt_message, to_thread
 from .backup_control import restore_from_backup, unpack_backup
@@ -149,6 +150,7 @@ def run_launch_command(
 async def get_request(
     hass: HomeAssistant, websession, url: str, sender_address: str, launch: bool, telemetry: bool
 ) -> None:
+    _LOGGER.debug(f"Request to {url}")
     resp = await websession.get(url)
     _LOGGER.debug(f"Responce from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}")
     if resp.status == 200:
@@ -201,7 +203,7 @@ async def get_ipfs_data(
     """
     Get data from IPFS
     """
-    if number_of_request > 2:
+    if number_of_request >= MAX_NUMBER_OF_REQUESTS:
         return False
     websession = async_create_clientsession(hass)
     try:
@@ -230,6 +232,6 @@ async def get_ipfs_data(
         _LOGGER.error(f"Exception in get ipfs: {e}")
         if hass.data[DOMAIN][HANDLE_LAUNCH]:
             res = await get_ipfs_data(
-                hass, ipfs_hash, sender_address, number_of_request + 1, gateways
+                hass, ipfs_hash, sender_address, number_of_request + 1, launch=launch, telemetry=telemetry, gateways=gateways
             )
             return res

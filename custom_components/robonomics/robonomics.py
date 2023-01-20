@@ -279,9 +279,8 @@ class Robonomics:
         :param data: Data from event
 
         """
-        # _LOGGER.debug(f"Got Robonomics event: {data}")
         try:
-            _LOGGER.debug(f"Data from subscription callback: {data}")
+            #_LOGGER.debug(f"Data from subscription callback: {data}")
             sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
             if type(data[1]) == str and data[1] == sub_admin.get_address():    ## Launch
                 if data[0] in self.devices_list:

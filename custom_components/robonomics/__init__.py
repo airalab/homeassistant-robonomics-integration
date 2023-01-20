@@ -44,6 +44,7 @@ from .const import (
     RWS_DAYS_LEFT_NOTIFY,
     TIME_CHANGE_COUNT,
     DATA_BACKUP_PATH,
+    MAX_NUMBER_OF_REQUESTS,
 )
 from .utils import decrypt_message, to_thread
 from .robonomics import Robonomics, check_subscription_left_days
@@ -215,17 +216,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
             if last_telemetry_hash is not None:
                 hass.data[DOMAIN][HANDLE_LAUNCH] = True
-                res = await get_ipfs_data(hass, last_telemetry_hash, sub_admin_acc.get_address(), 0, launch=False, telemetry=True)
+                res = await get_ipfs_data(hass, last_telemetry_hash, sub_admin_acc.get_address(), MAX_NUMBER_OF_REQUESTS - 1, launch=False, telemetry=True)
                 _LOGGER.debug(f"IPFS res: {res}")
-                while hass.data[DOMAIN][HANDLE_LAUNCH]:
-                    await asyncio.sleep(0.5)
-                    pass
                 await asyncio.sleep(0.5)
-                if TWIN_ID not in hass.data[DOMAIN]:
-                    hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-                    _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
-                else:
-                    _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
+                try:
+                    if (TWIN_ID not in hass.data[DOMAIN]):
+                        _LOGGER.debug(f"Start creating new digital twin")
+                        hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                        _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                    else:
+                        _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
+                except Exception as e:
+                    _LOGGER.debug(f"Exception in configure digital twin: {e}")
             else:
                 hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                 _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
