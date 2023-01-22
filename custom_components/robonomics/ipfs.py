@@ -160,6 +160,7 @@ async def get_request(
             if launch:
                 _LOGGER.debug(f"Result: {result}")
                 run_launch_command(hass, result, sender_address)
+                return True
             elif telemetry:
                 try:
                     _LOGGER.debug("Start getting info about telemetry")
@@ -174,8 +175,10 @@ async def get_request(
                     decrypted_json = json.loads(decrypted_str)
                     _LOGGER.debug(f"Restored twin id is {decrypted_json['twin_id']}")
                     hass.data[DOMAIN][TWIN_ID] = decrypted_json["twin_id"]
+                    return True
                 except Exception as e:
                     _LOGGER.debug(f"Can't decrypt last telemetry: {e}")
+                    return False
             else:
                 backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
                 with open(backup_path, "w") as f:
@@ -185,6 +188,11 @@ async def get_request(
                     )
                 await unpack_backup(hass, Path(backup_path), sub_admin_kp)
                 await restore_from_backup(hass, Path(hass.config.path()))
+                return True
+        else:
+            return False
+    else:
+        return False
 
 
 async def get_ipfs_data(
@@ -226,8 +234,15 @@ async def get_ipfs_data(
                 asyncio.create_task(get_request(hass, websession, url, sender_address, launch, telemetry))
             )
         for task in tasks:
-            await task
-        return True
+            res = await task
+            if res:
+                return True
+        else:
+            if hass.data[DOMAIN][HANDLE_LAUNCH]:
+                res = await get_ipfs_data(
+                    hass, ipfs_hash, sender_address, number_of_request + 1, launch=launch, telemetry=telemetry, gateways=gateways
+                )
+                return res
     except Exception as e:
         _LOGGER.error(f"Exception in get ipfs: {e}")
         if hass.data[DOMAIN][HANDLE_LAUNCH]:
