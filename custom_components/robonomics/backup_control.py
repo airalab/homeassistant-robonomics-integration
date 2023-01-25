@@ -129,19 +129,28 @@ async def restore_from_backup(
     try:
         old_config_files = os.listdir(path_to_old_config)
         for old_file in old_config_files:
-            if os.path.isdir(f"{path_to_old_config}/{old_file}"):
-                shutil.rmtree(f"{path_to_old_config}/{old_file}")
-            else:
-                os.remove(f"{path_to_old_config}/{old_file}")
+            try:
+                if os.path.isdir(f"{path_to_old_config}/{old_file}"):
+                    shutil.rmtree(f"{path_to_old_config}/{old_file}")
+                else:
+                    os.remove(f"{path_to_old_config}/{old_file}")
+            except Exception as e:
+                _LOGGER.debug(f"Exception in deleting files: {e}")
         for dirname, dirnames, filenames in os.walk(path_to_new_config_dir):
             if 'configuration.yaml' in filenames:
                 path_to_new_config = dirname
                 new_config_files = filenames
                 new_config_dirs = dirnames
         for new_dir in new_config_dirs:
-            shutil.copytree(f"{path_to_new_config}/{new_dir}", f"{path_to_old_config}/{new_dir}")
+            try:
+                shutil.copytree(f"{path_to_new_config}/{new_dir}", f"{path_to_old_config}/{new_dir}")
+            except Exception as e:
+                _LOGGER.debug(f"Exception in copy directories: {e}")
         for new_file in new_config_files:
-            shutil.copy(f"{path_to_new_config}/{new_file}", f"{path_to_old_config}/{new_file}")
+            try:
+                shutil.copy(f"{path_to_new_config}/{new_file}", f"{path_to_old_config}/{new_file}")
+            except Exception as e:
+                _LOGGER.debug(f"Exception in copy files: {e}")
         shutil.rmtree(path_to_new_config_dir)
         _LOGGER.debug(f"Config was replaced")
         hass.states.async_set(f"{DOMAIN}.backup", "Restored")
