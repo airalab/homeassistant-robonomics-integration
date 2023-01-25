@@ -124,15 +124,29 @@ def unpack_backup(
 async def restore_from_backup(
         hass: HomeAssistant,
         path_to_old_config: Path,
-        path_to_new_config: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
+        path_to_new_config_dir: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
     ) -> None:
     try:
-        shutil.rmtree(path_to_old_config)
-        os.replace(f"{path_to_new_config}/home/homeassistant/.homeassistant", path_to_old_config)
+        old_config_files = os.listdir(path_to_old_config)
+        for old_file in old_config_files:
+            if os.path.isdir(f"{path_to_old_config}/{old_file}"):
+                shutil.rmtree(f"{path_to_old_config}/{old_file}")
+            else:
+                os.remove(f"{path_to_old_config}/{old_file}")
+        for dirname, dirnames, filenames in os.walk(path_to_new_config_dir):
+            if 'configuration.yaml' in filenames:
+                path_to_new_config = dirname
+                new_config_files = filenames
+                new_config_dirs = dirnames
+        for new_dir in new_config_dirs:
+            shutil.copytree(f"{path_to_new_config}/{new_dir}", f"{path_to_old_config}/{new_dir}")
+        for new_file in new_config_files:
+            shutil.copy(f"{path_to_new_config}/{new_file}", f"{path_to_old_config}/{new_file}")
+        shutil.rmtree(path_to_new_config_dir)
         _LOGGER.debug(f"Config was replaced")
         hass.states.async_set(f"{DOMAIN}.backup", "Restored")
         await hass.services.async_call("homeassistant", "restart")
     except Exception as e:
-        _LOGGER.debug(f"Exception in restoer from backup: {e}")
+        _LOGGER.debug(f"Exception in restore from backup: {e}")
     # service_data = {"message": "Configuration was restored from remote Robonomics backup. Restart Home Assistant.", "title": "Configuration Restored"}
     # hass.async_create_task(hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data))
