@@ -27,7 +27,8 @@
                     "sub_owner_address": "Robonomics subscription owner address",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
                     "user_ipfs_gateway": "Custom IPFS gateway (optional)",
-                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)"
+                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)",
+                    "user_ipfs_gateway_port": "Port for the custom IPFS gateway (optional)"
                 },
                 "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account or custom IPFS gateway, without it data files will be pinned to IPFS only from your local node."
             }
@@ -41,7 +42,8 @@
                     "pinata_secret": "Pinata secret (optional)",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
                     "user_ipfs_gateway": "Custom IPFS gateway (optional)",
-                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)"
+                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)",
+                    "user_ipfs_gateway_port": "Port for the custom IPFS gateway (optional)"
                 },
                 "description": "Configure sending timeout and Pinata credentials."
             }

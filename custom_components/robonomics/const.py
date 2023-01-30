@@ -12,6 +12,7 @@ CONF_SENDING_TIMEOUT = "sending_timeout"
 CONF_ENERGY_SENSORS = "energy_sensors"
 CONF_IPFS_GATEWAY = "user_ipfs_gateway"
 CONF_IPFS_GATEWAY_AUTH = "user_ipfs_gateway_auth"
+CONF_IPFS_GATEWAY_PORT = "user_ipfs_gateway_port"
 CONF_WARN_DATA_SENDING = "warn_data_sending"
 CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
 
@@ -32,11 +33,16 @@ DATA_CONFIG_PATH = ".ha_robonomics_data/dashboard_services"
 DATA_BACKUP_ENCRYPTED_PATH = ".ha_robonomics_data/backups/backup_remote_encrypted"
 DATA_BACKUP_PATH = ".ha_robonomics_data/backups"
 IPFS_HASH_CONFIG = "ipfs_hash_config"
+IPFS_TELEMETRY_PATH = "/ha_robonomics_telemetry"
+IPFS_BACKUP_PATH = "/ha_robonomics_backup"
+IPFS_CONFIG_PATH = "/ha_robonomics_config"
 TWIN_ID = "twin_id"
 
 RWS_DAYS_LEFT_NOTIFY = 5
 TIME_CHANGE_COUNT = "time_change_count"
 MAX_NUMBER_OF_REQUESTS = 4
+SECONDS_IN_DAY = 24 * 60 * 60
+IPFS_MAX_FILE_NUMBER = 700
 
 EXCLUDE_FROM_BACKUP = [
     "__pycache__/*",

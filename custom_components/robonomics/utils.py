@@ -12,7 +12,10 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
-def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
+
+def encrypt_message(
+    message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes
+) -> str:
     """
     Encrypt message with sender private key and recepient public key
 
@@ -25,7 +28,10 @@ def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipie
     encrypted = sender_keypair.encrypt_message(message, recipient_public_key)
     return f"0x{encrypted.hex()}"
 
-def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+
+def decrypt_message(
+    encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair
+) -> str:
     """
     Decrypt message with recepient private key and sender puplic key
 
@@ -41,8 +47,10 @@ def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_
 
     return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
 
+
 def str2bool(v):
-    return v.lower() in ("on", "true", "t", "1", 'y', 'yes', 'yeah')
+    return v.lower() in ("on", "true", "t", "1", "y", "yes", "yeah")
+
 
 def generate_pass(length: int) -> str:
     """
@@ -53,10 +61,12 @@ def generate_pass(length: int) -> str:
     :return: Generated password
     """
     letters = string.ascii_lowercase
-    return ''.join(random.choice(letters) for i in range(length))
+    return "".join(random.choice(letters) for i in range(length))
+
 
 def to_thread(func: tp.Callable) -> tp.Coroutine:
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         return await asyncio.to_thread(func, *args, **kwargs)
+
     return wrapper

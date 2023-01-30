@@ -10,7 +10,7 @@ import asyncio
 import logging
 from robonomicsinterface import Account
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
-from robonomicsinterface.ipfs_utils import ipfs_get_content, ipfs_upload_content, web_3_auth
+from robonomicsinterface.utils import web_3_auth
 import typing as tp
 from pinatapy import PinataPy
 from ast import literal_eval
@@ -18,6 +18,9 @@ import time
 import os
 import json
 from pathlib import Path
+import ipfshttpclient2
+import io
+from datetime import datetime, timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,66 +39,295 @@ from .const import (
     DATA_BACKUP_ENCRYPTED_PATH,
     TWIN_ID,
     MAX_NUMBER_OF_REQUESTS,
+    IPFS_TELEMETRY_PATH,
+    SECONDS_IN_DAY,
+    CONF_IPFS_GATEWAY_PORT,
+    IPFS_BACKUP_PATH,
+    IPFS_CONFIG_PATH,
+    CONF_PINATA_SECRET,
+    CONF_PINATA_PUB,
+    IPFS_MAX_FILE_NUMBER,
 )
 from .utils import decrypt_message, to_thread
-from .backup_control import restore_from_backup, unpack_backup
+from .backup_control import restore_from_backup, unpack_backup, get_hash
+
 
 def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
     if config:
-        filename = f"{data_path}/config_encrypted"
+        filename = f"{data_path}/config_encrypted-{time.time()}"
     else:
-        filename = f"{data_path}/data{time.time()}"
+        filename = f"{data_path}/data-{time.time()}"
     with open(filename, "w") as f:
         f.write(data)
     return filename
 
+def delete_ipfs_telemetry_files():
+    """
+    Delete old files 
+    """
+    with ipfshttpclient2.connect() as client:
+        files = client.files.ls(IPFS_TELEMETRY_PATH)["Entries"]
+        num_files_to_delete = len(files) - IPFS_MAX_FILE_NUMBER
+        if num_files_to_delete > 0:
+            for i in range(num_files_to_delete):
+                filename = files[i]["Name"]
+                client.files.rm(f"{IPFS_TELEMETRY_PATH}/{filename}")
+                _LOGGER.debug(f"Deleted old telemetry {filename}")
+
 @to_thread
-def add_to_ipfs(
+def create_folders():
+    with ipfshttpclient2.connect() as client:
+        try:
+            client.files.mkdir(IPFS_TELEMETRY_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_TELEMETRY_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception in creating ipfs folder {IPFS_TELEMETRY_PATH}")
+        try:
+            client.files.mkdir(IPFS_BACKUP_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_BACKUP_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception in creating ipfs folder {IPFS_BACKUP_PATH}")
+        try:
+            client.files.mkdir(IPFS_CONFIG_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception in creating ipfs folder {IPFS_CONFIG_PATH}")
+
+
+@to_thread
+def check_if_need_pin_telemetry(filename: str) -> bool:
+    try:
+        with ipfshttpclient2.connect() as client:
+            files = client.files.ls(IPFS_TELEMETRY_PATH)
+            if len(files["Entries"]) > IPFS_MAX_FILE_NUMBER:
+                delete_ipfs_telemetry_files()
+            if len(files["Entries"]) > 0:
+                last_file = files["Entries"][-2]["Name"]
+                last_file_time = datetime.fromtimestamp(float(last_file.split("-")[-1]))
+                current_file_time = datetime.fromtimestamp(
+                    float(filename.split("-")[-1])
+                )
+                delta = current_file_time - last_file_time
+                _LOGGER.debug(f"Time from the last pin: {delta}")
+                if delta > timedelta(seconds=SECONDS_IN_DAY):
+                    _LOGGER.debug(f"Telemetry must be pinned")
+                    return True
+                else:
+                    _LOGGER.debug(f"Telemetry must not be pinned")
+                    return False
+            else:
+                return True
+    except Exception as e:
+        _LOGGER.error(f"Exception in check_if_need_pin: {e}")
+        return True
+
+
+@to_thread
+def get_last_file_hash(path: str) -> (str, str):
+    try:
+        with ipfshttpclient2.connect() as client:
+            files = client.files.ls(path)
+            if len(files["Entries"]) > 0:
+                last_file = files["Entries"][-1]["Name"]
+                last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
+                _LOGGER.debug(f"Last telemetry file {last_file}, with hash {last_hash}")
+                return last_file, last_hash
+            else:
+                return None, None
+    except Exception as e:
+        _LOGGER.error(f"Exception in get_last_file_hash: {e}")
+        return None, None
+
+
+@to_thread
+def add_to_local_node(
+    filename: str,
+    pin: bool,
+    path: str,
+    last_file_name: tp.Optional[str] = None,
+) -> tp.Optional[str]:
+    try:
+        _LOGGER.debug(f"Start adding {filename} to local node, pin: {pin}")
+        with ipfshttpclient2.connect() as client:
+            ipfs_hash = client.add(filename, pin=False)["Hash"]
+            _LOGGER.debug(
+                f"File {filename} was added to local node with cid: {ipfs_hash}"
+            )
+            filename = filename.split("/")[-1]
+            client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{filename}")
+            if not pin:
+                if last_file_name is not None:
+                    client.files.rm(f"{path}/{last_file_name}")
+                    _LOGGER.debug(
+                        f"File {last_file_name} with was unpinned"
+                    )
+    except Exception as e:
+        _LOGGER.error(f"Exception in add to local node: {e}")
+        ipfs_hash = None
+    return ipfs_hash
+
+
+@to_thread
+def add_to_pinata(
     hass: HomeAssistant,
     filename: str,
-    pinata: PinataPy = None
-) -> str:
-    """
-    Create file with data and pin it to IPFS.
-    """
-    with open(filename) as f:
-        data = f.read()
-    if pinata is not None:
-        try:
-            _LOGGER.debug(f"Adding data to Pinata")
-            res = pinata.pin_file_to_ipfs(filename)
-            if 'IpfsHash' in res:
-                pinata_ipfs_hash = res['IpfsHash']
-            else:
-                pinata_ipfs_hash = None
-        except Exception as e:
-            _LOGGER.error(f"Exception in pinata: {e}")
-            pinata_ipfs_hash = None
-    else:
-        pinata_ipfs_hash = None
+    pinata: PinataPy,
+    pin: bool,
+    last_file_hash: tp.Optional[str] = None,
+) -> tp.Optional[str]:
+    _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
     try:
-        _LOGGER.debug(f"Adding data to local gateway")
-        ipfs_hash_local, size = ipfs_upload_content(data)
+        res = pinata.pin_file_to_ipfs(filename)
+        ipfs_hash = res["IpfsHash"]
+        _LOGGER.debug(f"File {filename} was added to Pinata with cid: {ipfs_hash}")
     except Exception as e:
-        _LOGGER.error(f"Exception in add data to ipfs with local node: {e}")
-        ipfs_hash_local = None
-
-    # Pin to custom gateway
-    if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
+        _LOGGER.error(f"Exception in pinata pin: {e}, pinata response: {res}")
+        return None
+    if not pin:
         try:
-            _LOGGER.debug(f"Adding data to {hass.data[DOMAIN][CONF_IPFS_GATEWAY]}")
-            if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:
-                auth = web_3_auth(hass.data[DOMAIN][CONF_ADMIN_SEED])
-                custom_gateway_res, size = ipfs_upload_content(data, gateway=hass.data[DOMAIN][CONF_IPFS_GATEWAY], auth=auth)
-            else:
-                custom_gateway_res, size = ipfs_upload_content(data, gateway=hass.data[DOMAIN][CONF_IPFS_GATEWAY])
+            pinata.remove_pin_from_ipfs(last_file_hash)
+            _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
+            hass.data[DOMAIN][PINATA] = PinataPy(
+                hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET]
+            )
         except Exception as e:
-            _LOGGER.error(f"Exception in add ipfs custom gateway: {e}")
-            custom_gateway_res = ['error']
+            _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
+    return ipfs_hash
+
+
+@to_thread
+def add_to_custom_gateway(
+    filename: str,
+    url: str,
+    port: int,
+    pin: bool,
+    seed: str = None,
+    last_file_hash: tp.Optional[str] = None,
+) -> tp.Optional[str]:
+    if "https://" in url:
+        url = url[8:]
+    if url[-1] == "/":
+        url = url[:-1]
+    _LOGGER.debug(f"Start adding {filename} to {url}, pin: {pin}, auth: {bool(seed)}")
+    try:
+        if seed is not None:
+            usr, pwd = web_3_auth(seed)
+            with ipfshttpclient2.connect(
+                addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
+            ) as client:
+                ipfs_hash = client.add(filename)["Hash"]
+                _LOGGER.debug(
+                    f"File {filename} was added to {url} with cid: {ipfs_hash}"
+                )
+        else:
+            with ipfshttpclient2.connect(
+                addr=f"/dns4/{url}/tcp/{port}/https"
+            ) as client:
+                ipfs_hash = client.add(filename)["Hash"]
+                _LOGGER.debug(
+                    f"File {filename} was added to {url} with cid: {ipfs_hash}"
+                )
+        if not pin:
+            if seed is not None:
+                usr, pwd = web_3_auth(seed)
+                with ipfshttpclient2.connect(
+                    addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
+                ) as client:
+                    client.pin.rm(last_file_hash)
+                    _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
+            else:
+                with ipfshttpclient2.connect(
+                    addr=f"/dns4/{url}/tcp/{port}/https"
+                ) as client:
+                    client.pin.rm(last_file_hash)
+                    _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
+    except Exception as e:
+        _LOGGER.error(f"Exception in pinning to custom gateway: {e}")
+        return None
+    return ipfs_hash
+
+
+async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    pin = await check_if_need_pin_telemetry(filename)
+    if not pin:
+        last_file_name, last_file_hash = await get_last_file_hash(IPFS_TELEMETRY_PATH)
     else:
-        custom_gateway_res = None
-    _LOGGER.debug(f"Data pinned to IPFS with hash: {ipfs_hash_local}, custom gateway hash: {custom_gateway_res}, pinata: {pinata_ipfs_hash}")
-    return ipfs_hash_local
+        last_file_hash = None
+        last_file_name = None
+    res = await add_to_ipfs(
+        hass, filename, IPFS_TELEMETRY_PATH, pin, last_file_hash, last_file_name
+    )
+    return res
+
+
+async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_CONFIG_PATH)
+    new_hash = await get_hash(filename)
+    if new_hash == last_file_hash:
+        _LOGGER.debug(f"Last config hash and the curret are the same: {last_file_hash}")
+        return last_file_hash
+    res = await add_to_ipfs(
+        hass, filename, IPFS_CONFIG_PATH, False, last_file_hash, last_file_name
+    )
+    return res
+
+
+async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_BACKUP_PATH)
+    new_hash = await get_hash(filename)
+    if new_hash == last_file_hash:
+        _LOGGER.debug(f"Last backup hash and the curret are the same: {last_file_hash}")
+        return last_file_hash
+    res = await add_to_ipfs(
+        hass, filename, IPFS_BACKUP_PATH, False, last_file_hash, last_file_name
+    )
+    return res
+
+
+async def add_to_ipfs(
+    hass: HomeAssistant,
+    filename: str,
+    path: str,
+    pin: bool,
+    last_file_hash: tp.Optional[str],
+    last_file_name: tp.Optional[str],
+) -> tp.Optional[str]:
+    if hass.data[DOMAIN][PINATA] is not None:
+        pinata_hash = await add_to_pinata(
+            hass, filename, hass.data[DOMAIN][PINATA], pin, last_file_hash
+        )
+    else:
+        pinata_hash = None
+    local_hash = await add_to_local_node(
+        filename, pin, path, last_file_name
+    )
+    if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
+        if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:
+            seed = hass.data[DOMAIN][CONF_ADMIN_SEED]
+        else:
+            seed = None
+        custom_hash = await add_to_custom_gateway(
+            filename,
+            hass.data[DOMAIN][CONF_IPFS_GATEWAY],
+            hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT],
+            pin,
+            seed,
+            last_file_hash,
+        )
+    else:
+        custom_hash = None
+
+    if local_hash is not None:
+        return local_hash
+    elif pinata_hash is not None:
+        return pinata_hash
+    elif custom_hash is not None:
+        return custom_hash
+    else:
+        return None
 
 
 def run_launch_command(
@@ -148,11 +380,18 @@ def run_launch_command(
 
 
 async def get_request(
-    hass: HomeAssistant, websession, url: str, sender_address: str, launch: bool, telemetry: bool
+    hass: HomeAssistant,
+    websession,
+    url: str,
+    sender_address: str,
+    launch: bool,
+    telemetry: bool,
 ) -> None:
     _LOGGER.debug(f"Request to {url}")
     resp = await websession.get(url)
-    _LOGGER.debug(f"Responce from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}")
+    _LOGGER.debug(
+        f"Responce from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}"
+    )
     if resp.status == 200:
         if hass.data[DOMAIN][HANDLE_LAUNCH]:
             hass.data[DOMAIN][HANDLE_LAUNCH] = False
@@ -165,7 +404,8 @@ async def get_request(
                 try:
                     _LOGGER.debug("Start getting info about telemetry")
                     sub_admin_kp = Keypair.create_from_mnemonic(
-                        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+                        hass.data[DOMAIN][CONF_ADMIN_SEED],
+                        crypto_type=KeypairType.ED25519,
                     )
                     decrypted = decrypt_message(
                         result, sub_admin_kp.public_key, sub_admin_kp
@@ -184,8 +424,8 @@ async def get_request(
                 with open(backup_path, "w") as f:
                     f.write(result)
                 sub_admin_kp = Keypair.create_from_mnemonic(
-                        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-                    )
+                    hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+                )
                 await unpack_backup(hass, Path(backup_path), sub_admin_kp)
                 await restore_from_backup(hass, Path(hass.config.path()))
                 return True
@@ -225,13 +465,23 @@ async def get_ipfs_data(
                 if custom_gateway[-5:] != "ipfs/":
                     custom_gateway += "ipfs/"
                 url = f"{custom_gateway}{ipfs_hash}"
-                tasks.append(asyncio.create_task(get_request(hass, websession, url, sender_address, launch, telemetry)))
+                tasks.append(
+                    asyncio.create_task(
+                        get_request(
+                            hass, websession, url, sender_address, launch, telemetry
+                        )
+                    )
+                )
         for gateway in gateways:
             if gateway[-1] != "/":
                 gateway += "/"
             url = f"{gateway}{ipfs_hash}"
             tasks.append(
-                asyncio.create_task(get_request(hass, websession, url, sender_address, launch, telemetry))
+                asyncio.create_task(
+                    get_request(
+                        hass, websession, url, sender_address, launch, telemetry
+                    )
+                )
             )
         for task in tasks:
             res = await task
@@ -240,13 +490,25 @@ async def get_ipfs_data(
         else:
             if hass.data[DOMAIN][HANDLE_LAUNCH]:
                 res = await get_ipfs_data(
-                    hass, ipfs_hash, sender_address, number_of_request + 1, launch=launch, telemetry=telemetry, gateways=gateways
+                    hass,
+                    ipfs_hash,
+                    sender_address,
+                    number_of_request + 1,
+                    launch=launch,
+                    telemetry=telemetry,
+                    gateways=gateways,
                 )
                 return res
     except Exception as e:
         _LOGGER.error(f"Exception in get ipfs: {e}")
         if hass.data[DOMAIN][HANDLE_LAUNCH]:
             res = await get_ipfs_data(
-                hass, ipfs_hash, sender_address, number_of_request + 1, launch=launch, telemetry=telemetry, gateways=gateways
+                hass,
+                ipfs_hash,
+                sender_address,
+                number_of_request + 1,
+                launch=launch,
+                telemetry=telemetry,
+                gateways=gateways,
             )
             return res

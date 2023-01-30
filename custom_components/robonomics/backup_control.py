@@ -9,32 +9,46 @@ import logging
 import shutil
 import os
 import typing as tp
-from robonomicsinterface.ipfs_utils import ipfs_upload_content
+import ipfshttpclient2
 
 from .utils import to_thread, encrypt_message, decrypt_message
-from .const import EXCLUDE_FROM_BACKUP, ROBONOMICS, DOMAIN, TWIN_ID, DATA_BACKUP_PATH, DATA_BACKUP_ENCRYPTED_PATH
+from .const import (
+    EXCLUDE_FROM_BACKUP,
+    ROBONOMICS,
+    DOMAIN,
+    TWIN_ID,
+    DATA_BACKUP_PATH,
+    DATA_BACKUP_ENCRYPTED_PATH,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
+
 @to_thread
-def get_hash(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
-    with open(filename) as f:
-        data = f.read()
+def get_hash(filename: str) -> tp.Optional[str]:
     try:
-        ipfs_hash_local, size = ipfs_upload_content(data)
+        with ipfshttpclient2.connect() as client:
+            ipfs_hash_local = client.add(filename, pin=False)["Hash"]
     except Exception as e:
-        _LOGGER.error(f"Exception in add data to ipfs with local node: {e}")
+        _LOGGER.error(f"Exception in get_hash with local node: {e}")
         ipfs_hash_local = None
     return ipfs_hash_local
+
 
 async def check_backup_change(hass: HomeAssistant) -> None:
     try:
         _LOGGER.debug(f"Start checking backup")
-        ipfs_hash_remote = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
+        ipfs_hash_remote = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(
+            hass.data[DOMAIN][TWIN_ID]
+        )
         _LOGGER.debug(f"Backup remote hash: {ipfs_hash_remote}")
         if os.path.isdir(f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"):
-            if os.path.isfile(f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"):
-                path_to_latest_backup = f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
+            if os.path.isfile(
+                f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
+            ):
+                path_to_latest_backup = (
+                    f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
+                )
                 _LOGGER.debug(f"Latest local backup is from robonomcis")
             else:
                 path_to_backups = f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"
@@ -43,12 +57,19 @@ async def check_backup_change(hass: HomeAssistant) -> None:
                 if "encrypted" not in path_to_latest_backup:
                     path_to_latest_backup += "_encrypted"
                 _LOGGER.debug(f"Latest local backup is {path_to_latest_backup}")
-            ipfs_hash_local = await get_hash(hass, path_to_latest_backup)
+            ipfs_hash_local = await get_hash(path_to_latest_backup)
             _LOGGER.debug(f"Backup local hash: {ipfs_hash_local}")
             if ipfs_hash_remote != ipfs_hash_local:
                 _LOGGER.debug("Backup was updated")
-                service_data = {"message": "Remote backup was updated in Robonomics", "title": "Update Backup"}
-                await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
+                service_data = {
+                    "message": "Remote backup was updated in Robonomics",
+                    "title": "Update Backup",
+                }
+                await hass.services.async_call(
+                    domain="notify",
+                    service="persistent_notification",
+                    service_data=service_data,
+                )
             else:
                 _LOGGER.debug("Backup wasn't updated")
         else:
@@ -56,8 +77,14 @@ async def check_backup_change(hass: HomeAssistant) -> None:
     except Exception as e:
         _LOGGER.error(f"Exception in check backup change: {e}")
 
+
 @to_thread
-def create_secure_backup(hass: HomeAssistant, config_path: Path, path_for_tar: Path, admin_keypair: Keypair=None) -> str:
+def create_secure_backup(
+    hass: HomeAssistant,
+    config_path: Path,
+    path_for_tar: Path,
+    admin_keypair: Keypair = None,
+) -> str:
     """ "Create secure .tar.gz archive and returns the path to it"""
     hass.states.async_set(f"{DOMAIN}.backup", "Creating")
     backup_name = str(datetime.now()).split()
@@ -69,13 +96,13 @@ def create_secure_backup(hass: HomeAssistant, config_path: Path, path_for_tar: P
     try:
         with tarfile.open(tar_path, "w:xz") as tar:
             for file_item in list_files:
-                for exclude in EXCLUDE_FROM_BACKUP:    
+                for exclude in EXCLUDE_FROM_BACKUP:
                     path = Path(file_item)
                     if path.match(exclude):
-                        #_LOGGER.debug(f"Exclude {path}")
+                        # _LOGGER.debug(f"Exclude {path}")
                         break
-                else:  
-                    #_LOGGER.debug(f"Addidng {config_path}/{file_item}")
+                else:
+                    # _LOGGER.debug(f"Addidng {config_path}/{file_item}")
                     tar.add(f"{config_path}/{file_item}")
         _LOGGER.debug(f"Backup {tar_path} was created")
         if admin_keypair is not None:
@@ -95,13 +122,14 @@ def create_secure_backup(hass: HomeAssistant, config_path: Path, path_for_tar: P
     except Exception as e:
         _LOGGER.error(f"Exception in creating backup: {e}")
 
+
 @to_thread
 def unpack_backup(
-        hass: HomeAssistant,
-        path_to_encrypted: Path,
-        admin_keypair: Keypair,
-        path_to_unpack: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
-    ) -> None:
+    hass: HomeAssistant,
+    path_to_encrypted: Path,
+    admin_keypair: Keypair,
+    path_to_unpack: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
+) -> None:
     """ "Unpack the archive with backup and change the configuration"""
     _LOGGER.debug(f"Start restore configuration from backup {path_to_encrypted}")
     hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
@@ -122,40 +150,20 @@ def unpack_backup(
 
 
 async def restore_from_backup(
-        hass: HomeAssistant,
-        path_to_old_config: Path,
-        path_to_new_config_dir: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
-    ) -> None:
+    hass: HomeAssistant,
+    path_to_old_config: Path,
+    path_to_new_config: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
+) -> None:
     try:
-        old_config_files = os.listdir(path_to_old_config)
-        for old_file in old_config_files:
-            try:
-                if os.path.isdir(f"{path_to_old_config}/{old_file}"):
-                    shutil.rmtree(f"{path_to_old_config}/{old_file}")
-                else:
-                    os.remove(f"{path_to_old_config}/{old_file}")
-            except Exception as e:
-                _LOGGER.debug(f"Exception in deleting files: {e}")
-        for dirname, dirnames, filenames in os.walk(path_to_new_config_dir):
-            if 'configuration.yaml' in filenames:
-                path_to_new_config = dirname
-                new_config_files = filenames
-                new_config_dirs = dirnames
-        for new_dir in new_config_dirs:
-            try:
-                shutil.copytree(f"{path_to_new_config}/{new_dir}", f"{path_to_old_config}/{new_dir}")
-            except Exception as e:
-                _LOGGER.debug(f"Exception in copy directories: {e}")
-        for new_file in new_config_files:
-            try:
-                shutil.copy(f"{path_to_new_config}/{new_file}", f"{path_to_old_config}/{new_file}")
-            except Exception as e:
-                _LOGGER.debug(f"Exception in copy files: {e}")
-        shutil.rmtree(path_to_new_config_dir)
+        shutil.rmtree(path_to_old_config)
+        os.replace(
+            f"{path_to_new_config}/home/homeassistant/.homeassistant",
+            path_to_old_config,
+        )
         _LOGGER.debug(f"Config was replaced")
         hass.states.async_set(f"{DOMAIN}.backup", "Restored")
         await hass.services.async_call("homeassistant", "restart")
     except Exception as e:
-        _LOGGER.debug(f"Exception in restore from backup: {e}")
+        _LOGGER.debug(f"Exception in restoer from backup: {e}")
     # service_data = {"message": "Configuration was restored from remote Robonomics backup. Restart Home Assistant.", "title": "Configuration Restored"}
     # hass.async_create_task(hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data))

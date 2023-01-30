@@ -1,8 +1,18 @@
 from substrateinterface import SubstrateInterface, Keypair, KeypairType
-from robonomicsinterface import Account, Subscriber, SubEvent, Datalog, RWS, Datalog, DigitalTwin
+from robonomicsinterface import (
+    Account,
+    Subscriber,
+    SubEvent,
+    Datalog,
+    RWS,
+    Datalog,
+    DigitalTwin,
+)
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from aenum import extend_enum
 from homeassistant.core import callback, HomeAssistant
+from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
+from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
 from threading import Thread
 import logging
 import typing as tp
@@ -19,15 +29,30 @@ _LOGGER = logging.getLogger(__name__)
 
 ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
 
+async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, str]) -> None:
+    await hass.services.async_call(
+        domain=NOTIFY_DOMAIN,
+        service=SERVICE_PERSISTENT_NOTIFICATION,
+        service_data=service_data,
+    )
+
 async def check_subscription_left_days(hass: HomeAssistant) -> None:
     await hass.data[DOMAIN][ROBONOMICS].get_rws_left_days()
-    hass.states.async_set(f"{DOMAIN}.subscription_left_days", hass.data[DOMAIN][ROBONOMICS].rws_days_left)
+    hass.states.async_set(
+        f"{DOMAIN}.subscription_left_days", hass.data[DOMAIN][ROBONOMICS].rws_days_left
+    )
     if hass.data[DOMAIN][ROBONOMICS].rws_days_left <= 0:
-        service_data = {"message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).", "title": "Robonomics Subscription Expires"}
-        await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
+        service_data = {
+            "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).",
+            "title": "Robonomics Subscription Expires"
+        }
+        await create_notification(hass, service_data)
     elif hass.data[DOMAIN][ROBONOMICS].rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
-        service_data = {"message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).", "title": "Robonomics Subscription Expires"}
-        await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
+        service_data = {
+            "message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).",
+            "title": "Robonomics Subscription Expires"
+        }
+        await create_notification(hass, service_data)
 
 
 @callback
@@ -46,21 +71,27 @@ async def handle_launch(hass: HomeAssistant, data: tp.List[str]) -> None:
         _LOGGER.error(f"Exception in get ipfs command: {e}")
         return
 
+
 @callback
 async def handle_backup_change(hass: HomeAssistant, data: tp.List[str]) -> None:
     """
     Handle change a backup hash in digital twin
     """
     _LOGGER.debug("Start handle backup change")
-    service_data = {"message": "Backup was updated in Robonomics", "title": "Update Backup"}
-    await hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data)
+    service_data = {
+        "message": "Backup was updated in Robonomics",
+        "title": "Update Backup"
+    }
+    await create_notification(hass, service_data)
+
 
 class Robonomics:
-    def __init__(self,
-                hass: HomeAssistant, 
-                sub_owner_address: str, 
-                sub_admin_seed: str,
-                ) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        sub_owner_address: str,
+        sub_admin_seed: str,
+    ) -> None:
         self.hass: HomeAssistant = hass
         self.sub_owner_address: str = sub_owner_address
         self.sub_admin_seed: str = sub_admin_seed
@@ -72,10 +103,10 @@ class Robonomics:
         self.rws_days_left = 30
         try:
             extend_enum(
-                    SubEvent,
-                    "MultiEvent",
-                    f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value, SubEvent.NewRecord.value, SubEvent.TopicChanged.value}",
-                )
+                SubEvent,
+                "MultiEvent",
+                f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value, SubEvent.NewRecord.value, SubEvent.TopicChanged.value}",
+            )
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
 
@@ -83,8 +114,8 @@ class Robonomics:
     def get_last_telemetry_hash(self) -> tp.Optional[str]:
         try:
             sub_admin = Account(
-                    seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
-                )
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
             datalog = Datalog(Account())
             last_hash = datalog.get_item(sub_admin.get_address())
             _LOGGER.debug(f"Got last hash from datalog: {last_hash}")
@@ -101,7 +132,7 @@ class Robonomics:
             _LOGGER.debug(f"Start getting RWS date info")
             rws = RWS(Account())
             res = rws.get_ledger(self.sub_owner_address)
-            start_timestamp = res['issue_time']/1000
+            start_timestamp = res["issue_time"] / 1000
             start_date = datetime.fromtimestamp(start_timestamp)
             now_date = datetime.now()
             delta = now_date - start_date
@@ -109,7 +140,6 @@ class Robonomics:
             _LOGGER.debug(f"RWS left {self.rws_days_left} days")
         except Exception as e:
             _LOGGER.debug(f"Exception in getting rws left days: {e}")
-
 
     @to_thread
     def create_digital_twin(self) -> int:
@@ -120,11 +150,13 @@ class Robonomics:
         """
         try:
             sub_admin = Account(
-                    seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
-                )
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
             dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
             dt_it, tr_hash = dt.create()
-            _LOGGER.debug(f"Digital twin number {dt_it} was created with transaction hash {tr_hash}")
+            _LOGGER.debug(
+                f"Digital twin number {dt_it} was created with transaction hash {tr_hash}"
+            )
             return dt_it
         except Exception as e:
             _LOGGER.error(f"Exception in creating digital twin: {e}")
@@ -169,6 +201,11 @@ class Robonomics:
                     if topic[0] == bytes_hash:
                         if topic[1] == self.sub_owner_address:
                             _LOGGER.debug(f"Topic with this backup exists")
+                            service_data = {
+                                "message": "Recently created backup is the same as backup saved in Robonomics blockchain",
+                                "title": "Backup wasn't updated"
+                            }
+                            self.hass.async_create_task(create_notification(self.hass, service_data))
                             return
                     if topic[1] == self.sub_owner_address:
                         dt.set_source(twin_number, topic[0], ZERO_ACC)
@@ -232,12 +269,12 @@ class Robonomics:
         try:
             data = json.loads(last_datalog)
             if "admin" in data:
-                    if data["subscription"] == self.sub_owner_address:
-                        return data["admin"]
+                if data["subscription"] == self.sub_owner_address:
+                    return data["admin"]
         except:
             pass
         indexes = datalog.get_index(address)
-        last_datalog_index = indexes['end'] - 2
+        last_datalog_index = indexes["end"] - 2
         _LOGGER.debug(f"Last index {last_datalog_index}")
         for i in range(5):
             try:
@@ -248,7 +285,7 @@ class Robonomics:
                     if data["subscription"] == self.sub_owner_address:
                         return data["admin"]
             except Exception as e:
-                #_LOGGER.error(f"Exception in find password {e}")
+                # _LOGGER.error(f"Exception in find password {e}")
                 continue
         else:
             return None
@@ -264,13 +301,17 @@ class Robonomics:
         """
         try:
             account = Account()
-            self.subscriber = Subscriber(account, SubEvent.MultiEvent, subscription_handler=self.callback_new_event)
+            self.subscriber = Subscriber(
+                account,
+                SubEvent.MultiEvent,
+                subscription_handler=self.callback_new_event,
+            )
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
 
             time.sleep(4)
             self.hass.data[DOMAIN][ROBONOMICS].subscribe()
-    
+
     @callback
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
         """
@@ -280,28 +321,37 @@ class Robonomics:
 
         """
         try:
-            #_LOGGER.debug(f"Data from subscription callback: {data}")
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-            if type(data[1]) == str and data[1] == sub_admin.get_address():    ## Launch
+            # _LOGGER.debug(f"Data from subscription callback: {data}")
+            sub_admin = Account(
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
+            if type(data[1]) == str and data[1] == sub_admin.get_address():  ## Launch
                 if data[0] in self.devices_list:
                     self.hass.async_create_task(handle_launch(self.hass, data))
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
             elif type(data[1]) == int and len(data) == 4:
                 if TWIN_ID in self.hass.data[DOMAIN]:
-                    if data[1] == self.hass.data[DOMAIN][TWIN_ID] and data[3] == self.sub_owner_address:  ## Change backup topic in Digital Twin
-                        self.hass.async_create_task(handle_backup_change(self.hass, data))
-            elif type(data[1]) == int and data[0] in self.devices_list:       ## Datalog to change password
+                    if (
+                        data[1] == self.hass.data[DOMAIN][TWIN_ID]
+                        and data[3] == self.sub_owner_address
+                    ):  ## Change backup topic in Digital Twin
+                        self.hass.async_create_task(
+                            handle_backup_change(self.hass, data)
+                        )
+            elif (
+                type(data[1]) == int and data[0] in self.devices_list
+            ):  ## Datalog to change password
                 self.hass.async_create_task(change_password(self.hass, data))
-            elif type(data[1]) == list and data[0] == self.sub_owner_address:     ## New Device in subscription
+            elif (
+                type(data[1]) == list and data[0] == self.sub_owner_address
+            ):  ## New Device in subscription
                 self.hass.async_create_task(manage_users(self.hass, data))
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
 
     @to_thread
-    def send_datalog(
-        self, data: str, seed: str, subscription: bool
-    ) -> str:
+    def send_datalog(self, data: str, seed: str, subscription: bool) -> str:
         """
         Record datalog
 
@@ -317,9 +367,7 @@ class Robonomics:
         if subscription:
             try:
                 _LOGGER.debug(f"Start creating rws datalog")
-                datalog = Datalog(
-                    account, rws_sub_owner=self.sub_owner_address
-                )
+                datalog = Datalog(account, rws_sub_owner=self.sub_owner_address)
             except Exception as e:
                 _LOGGER.error(f"Create datalog class exception: {e}")
         else:
@@ -328,7 +376,7 @@ class Robonomics:
                 datalog = Datalog(account)
             except Exception as e:
                 _LOGGER.error(f"Create datalog class exception: {e}")
-        try:    
+        try:
             receipt = datalog.record(data)
             _LOGGER.debug(f"Datalog created with hash: {receipt}")
             return receipt
@@ -345,8 +393,10 @@ class Robonomics:
         :return: Exstrinsic hash
 
         """
-        _LOGGER.debug(f"Send datalog states request, another datalog: {self.sending_states}")
-        if self.sending_states: 
+        _LOGGER.debug(
+            f"Send datalog states request, another datalog: {self.sending_states}"
+        )
+        if self.sending_states:
             _LOGGER.debug("Another datalog is sending. Wait...")
             self.on_queue += 1
             on_queue = self.on_queue

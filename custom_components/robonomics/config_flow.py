@@ -26,6 +26,7 @@ from .const import (
     CONF_IPFS_GATEWAY_AUTH,
     CONF_WARN_DATA_SENDING,
     CONF_WARN_ACCOUNT_MANAGMENT,
+    CONF_IPFS_GATEWAY_PORT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_SUB_OWNER_ADDRESS): str,
         vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
         vol.Optional(CONF_IPFS_GATEWAY): str,
+        vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
         vol.Optional(CONF_PINATA_PUB): str,
         vol.Optional(CONF_PINATA_SECRET): str,
@@ -56,6 +58,7 @@ def is_valid_sub_admin_seed(sub_admin_seed: str) -> Optional[ValueError]:
     except Exception as e:
         return e
 
+
 def is_valid_sub_owner_address(sub_owner_address: str) -> Optional[ValueError]:
     return is_valid_ss58_address(sub_owner_address, valid_ss58_format=32)
 
@@ -65,7 +68,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    if await hass.async_add_executor_job(is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]):
+    if await hass.async_add_executor_job(
+        is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]
+    ):
         raise InvalidSubAdminSeed
     if not is_valid_ss58_address(data[CONF_SUB_OWNER_ADDRESS], valid_ss58_format=32):
         raise InvalidSubOwnerAddress
@@ -104,7 +109,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     step_id="user", data_schema=STEP_WARN_DATA_SCHEMA, errors=errors
                 )
             return await self.async_step_conf()
-    
+
     async def async_step_conf(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -132,7 +137,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
         else:
             return self.async_create_entry(title=info["title"], data=user_input)
-        
+
         return self.async_show_form(
             step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
@@ -164,46 +169,72 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             pinata_secret = self.config_entry.data[CONF_PINATA_SECRET]
             if CONF_IPFS_GATEWAY in self.config_entry.data:
                 custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
-                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
+                custom_ipfs_port = self.config_entry.data[CONF_IPFS_GATEWAY_PORT]
+                custom_ipfs_gateway_auth = self.config_entry.data[
+                    CONF_IPFS_GATEWAY_AUTH
+                ]
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
-                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Required(
+                            CONF_SENDING_TIMEOUT,
+                            default=self.config_entry.data[CONF_SENDING_TIMEOUT],
+                        ): int,
                         vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
                         vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
                         vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
+                        vol.Required(CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port): int,
                         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
                     }
                 )
             else:
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
-                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Required(
+                            CONF_SENDING_TIMEOUT,
+                            default=self.config_entry.data[CONF_SENDING_TIMEOUT],
+                        ): int,
                         vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
                         vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
                         vol.Optional(CONF_IPFS_GATEWAY): str,
+                        vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
                         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
                     }
                 )
         else:
             if CONF_IPFS_GATEWAY in self.config_entry.data:
                 custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
-                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
+                custom_ipfs_port = self.config_entry.data[CONF_IPFS_GATEWAY_PORT]
+                custom_ipfs_gateway_auth = self.config_entry.data[
+                    CONF_IPFS_GATEWAY_AUTH
+                ]
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
-                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Required(
+                            CONF_SENDING_TIMEOUT,
+                            default=self.config_entry.data[CONF_SENDING_TIMEOUT],
+                        ): int,
                         vol.Optional(CONF_PINATA_PUB): str,
                         vol.Optional(CONF_PINATA_SECRET): str,
-                        vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
-                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
+                        vol.Optional(
+                            CONF_IPFS_GATEWAY, default=custom_ipfs_gateway
+                        ): str,
+                        vol.Required(CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port): int,
+                        vol.Required(
+                            CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth
+                        ): bool,
                     }
                 )
             else:
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
-                        vol.Required(CONF_SENDING_TIMEOUT, default=self.config_entry.data[CONF_SENDING_TIMEOUT]): int,
+                        vol.Required(
+                            CONF_SENDING_TIMEOUT,
+                            default=self.config_entry.data[CONF_SENDING_TIMEOUT],
+                        ): int,
                         vol.Optional(CONF_PINATA_PUB): str,
                         vol.Optional(CONF_PINATA_SECRET): str,
                         vol.Optional(CONF_IPFS_GATEWAY): str,
+                        vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
                         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
                     }
                 )
