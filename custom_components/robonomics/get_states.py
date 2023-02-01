@@ -120,7 +120,11 @@ async def get_dashboard_and_services(hass: HomeAssistant) -> None:
                     str(new_config), sender_kp, sender_kp.public_key
                 )
             else:
-                with open(f"{data_config_path}/config_encrypted") as f:
+                list_files = os.listdir(data_config_path)
+                for name_file in list_files:
+                    if "config_encrypted" in name_file:
+                        encrypted_config_filename = name_file
+                with open(f"{data_config_path}/{encrypted_config_filename}") as f:
                     encrypted_data = f.read()
             filename = write_data_to_file(encrypted_data, data_config_path, config=True)
             _LOGGER.debug(f"Filename: {filename}")
