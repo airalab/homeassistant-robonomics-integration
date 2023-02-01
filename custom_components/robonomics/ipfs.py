@@ -388,7 +388,11 @@ async def get_request(
     telemetry: bool,
 ) -> None:
     _LOGGER.debug(f"Request to {url}")
-    resp = await websession.get(url)
+    try:
+        resp = await websession.get(url)
+    except Exception as e:
+        _LOGGER.warning(f"Exception in request to {url}")
+        return False
     _LOGGER.debug(
         f"Responce from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}"
     )
