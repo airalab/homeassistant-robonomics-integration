@@ -261,6 +261,9 @@ class Robonomics:
         """
         _LOGGER.debug(f"Start look for password for {address}")
         datalog = Datalog(Account())
+        sub_admin = Account(
+                seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519
+            )
         try:
             last_datalog = datalog.get_item(address, 0)[1]
         except:
@@ -269,7 +272,7 @@ class Robonomics:
         try:
             data = json.loads(last_datalog)
             if "admin" in data:
-                if data["subscription"] == self.sub_owner_address:
+                if data["subscription"] == self.sub_owner_address and data["ha"] == sub_admin.get_address():
                     return data["admin"]
         except:
             pass
@@ -282,7 +285,7 @@ class Robonomics:
                 _LOGGER.debug(datalog_data)
                 data = json.loads(datalog_data)
                 if "admin" in data:
-                    if data["subscription"] == self.sub_owner_address:
+                    if data["subscription"] == self.sub_owner_address and data["ha"] == sub_admin.get_address():
                         return data["admin"]
             except Exception as e:
                 # _LOGGER.error(f"Exception in find password {e}")

@@ -79,9 +79,10 @@ async def change_password(hass: HomeAssistant, data):
     _LOGGER.debug(f"Start setting password for username {data[0]}")
     provider = await get_provider(hass)
     sender_kp = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
-    rec_kp = Keypair.create_from_mnemonic(
-        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-    )
+    sub_admin_acc = Account(
+            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+        )
+    rec_kp = sub_admin_acc.keypair
     try:
         message = json.loads(data[2])
     except Exception as e:
@@ -89,9 +90,7 @@ async def change_password(hass: HomeAssistant, data):
             f"Message in Datalog is in wrong format: {e}\nMessage: {data[2]}"
         )
         return
-    if ("admin" in message) and (
-        message["subscription"] == hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]
-    ):
+    if "admin" in message and message["subscription"] == hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS] and message["ha"] == sub_admin_acc.get_address():
         try:
             password = str(
                 decrypt_message(message["admin"], sender_kp.public_key, rec_kp)
@@ -118,6 +117,8 @@ async def change_password(hass: HomeAssistant, data):
         # while hass.data[DOMAIN][ROBONOMICS].subscriber._subscription.is_alive():
         #     await asyncio.sleep(0.5)
         await hass.services.async_call("homeassistant", "restart")
+    else:
+        _LOGGER.warning(f"Message for setting password for {data[0]} is in wrong format")
 
 
 async def manage_users(
@@ -176,15 +177,18 @@ async def manage_users(
                         ROBONOMICS
                     ].find_password(device)
                     if encrypted_password != None:
-                        password = str(
-                            decrypt_message(
-                                encrypted_password, sender_kp.public_key, rec_kp
+                        try:
+                            password = str(
+                                decrypt_message(
+                                    encrypted_password, sender_kp.public_key, rec_kp
+                                )
                             )
-                        )
-                        password = password[2:-1]
-                        await create_user(hass, provider, user, password)
-                        created_users += 1
-                        break
+                            password = password[2:-1]
+                            await create_user(hass, provider, user, password)
+                            created_users += 1
+                            break
+                        except Exception as e:
+                            _LOGGER.warning(f"Can't decrypt password for {device}")
                     else:
                         _LOGGER.debug(f"Password for user {user} wasn't found")
 
