@@ -1,14 +1,15 @@
-import nacl.bindings
+# import nacl.bindings
 import nacl.public
 from substrateinterface import Keypair, KeypairType
-import secrets
+# import secrets
 from typing import Union
-import base64
+# import base64
 import random, string
 import functools
 import typing as tp
 import asyncio
 import logging
+import ipfshttpclient2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,3 +71,22 @@ def to_thread(func: tp.Callable) -> tp.Coroutine:
         return await asyncio.to_thread(func, *args, **kwargs)
 
     return wrapper
+
+@to_thread
+def get_hash(filename: str) -> tp.Optional[str]:
+    """Gets file hash
+
+    :param filename: Path to the backup file
+    :return: Hash of the file or None
+    """
+
+    try:
+        with ipfshttpclient2.connect() as client:
+            ipfs_hash_local = client.add(filename, pin=False)["Hash"]
+    except Exception as e:
+        _LOGGER.error(f"Exception in get_hash with local node: {e}")
+        ipfs_hash_local = None
+    return ipfs_hash_local
+
+# TODO:
+# chage import get_hash in ipfs.py to import get_hash from utils
