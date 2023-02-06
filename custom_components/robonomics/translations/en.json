@@ -9,7 +9,9 @@
             "unknown": "Unexpected error",
             "invalid_sub_admin_seed": "Invalid controller seed",
             "invalid_sub_owner_address": "Invalid subscription owner address",
-            "warnings": "You should tick all points before using Robonomics Integration"
+            "warnings": "You should tick all points before using Robonomics Integration",
+            "has_no_subscription": "Subscription owner address has no subscription",
+            "is_not_in_devices": "Controller address is not in subscription devices"
         },
         "step": {
             "user": {
