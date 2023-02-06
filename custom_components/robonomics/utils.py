@@ -1,23 +1,40 @@
-import nacl.bindings
+# import nacl.bindings
 import nacl.public
 from substrateinterface import Keypair, KeypairType
-import secrets
+
+# import secrets
 from typing import Union
-import base64
+
+# import base64
 import random, string
 import functools
 import typing as tp
 import asyncio
 import logging
+import ipfshttpclient2
+from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
+from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
+from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def encrypt_message(
-    message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes
-) -> str:
+async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, str]) -> None:
+    """Create HomeAssistant notification.
+
+    :param hass: HomeAssistant instance
+    :param service_data: Message for notification
     """
-    Encrypt message with sender private key and recepient public key
+
+    await hass.services.async_call(
+        domain=NOTIFY_DOMAIN,
+        service=SERVICE_PERSISTENT_NOTIFICATION,
+        service_data=service_data,
+    )
+
+
+def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
+    """Encrypt message with sender private key and recepient public key
 
     :param message: Message to encrypt
     :param sender_keypair: Sender account Keypair
@@ -25,15 +42,13 @@ def encrypt_message(
 
     :return: encrypted message
     """
+
     encrypted = sender_keypair.encrypt_message(message, recipient_public_key)
     return f"0x{encrypted.hex()}"
 
 
-def decrypt_message(
-    encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair
-) -> str:
-    """
-    Decrypt message with recepient private key and sender puplic key
+def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+    """Decrypt message with recepient private key and sender puplic key
 
     :param encrypted_message: Message to decrypt
     :param sender_public_key: Sender public key
@@ -41,6 +56,7 @@ def decrypt_message(
 
     :return: Decrypted message
     """
+
     if encrypted_message[:2] == "0x":
         encrypted_message = encrypted_message[2:]
     bytes_encrypted = bytes.fromhex(encrypted_message)
@@ -53,13 +69,13 @@ def str2bool(v):
 
 
 def generate_pass(length: int) -> str:
-    """
-    Generate random low letter string with the given length
+    """Generate random low letter string with the given length
 
     :param lenght: Password length
 
     :return: Generated password
     """
+
     letters = string.ascii_lowercase
     return "".join(random.choice(letters) for i in range(length))
 
@@ -70,3 +86,25 @@ def to_thread(func: tp.Callable) -> tp.Coroutine:
         return await asyncio.to_thread(func, *args, **kwargs)
 
     return wrapper
+
+
+@to_thread
+def get_hash(filename: str) -> tp.Optional[str]:
+    """Getting file's IPFS hash
+
+    :param filename: Path to the backup file
+
+    :return: Hash of the file or None
+    """
+
+    try:
+        with ipfshttpclient2.connect() as client:
+            ipfs_hash_local = client.add(filename, pin=False)["Hash"]
+    except Exception as e:
+        _LOGGER.error(f"Exception in get_hash with local node: {e}")
+        ipfs_hash_local = None
+    return ipfs_hash_local
+
+
+# TODO:
+# chage import get_hash in ipfs.py to import get_hash from utils

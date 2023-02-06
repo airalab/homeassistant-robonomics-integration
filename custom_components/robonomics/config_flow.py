@@ -1,4 +1,7 @@
-"""Config flow for Robonomics Control integration."""
+"""Config flow for Robonomics Control integration. It is service module for HomeAssistant, 
+which sets in `manifest.json`. This module allows to setup the integration from the web interface.
+"""
+
 from __future__ import annotations
 from robonomicsinterface import Account
 from substrateinterface.utils.ss58 import is_valid_ss58_address
@@ -11,7 +14,6 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.exceptions import HomeAssistantError
 from .exceptions import InvalidSubAdminSeed, InvalidSubOwnerAddress
 import homeassistant.helpers.config_validation as cv
 
@@ -52,27 +54,38 @@ STEP_WARN_DATA_SCHEMA = vol.Schema(
 )
 
 
-def is_valid_sub_admin_seed(sub_admin_seed: str) -> Optional[ValueError]:
+def _is_valid_sub_admin_seed(sub_admin_seed: str) -> Optional[ValueError]:
+    """Check if provided controller seed is valid
+
+    :param sub_admin_seed: Controller's seed
+    """
+
     try:
         Account(sub_admin_seed)
     except Exception as e:
         return e
 
 
-def is_valid_sub_owner_address(sub_owner_address: str) -> Optional[ValueError]:
+def _is_valid_sub_owner_address(sub_owner_address: str) -> bool:
+    """Check if provided subscription owner address is valid
+
+    :param sub_owner_address: Subscription owner address
+    :return: True if address is valid, false otherwise
+    """
+
     return is_valid_ss58_address(sub_owner_address, valid_ss58_format=32)
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
+async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    :param hass: HomeAssistant instance
+    :param data: dict with the keys from STEP_USER_DATA_SCHEMA and values provided by the user
     """
-    if await hass.async_add_executor_job(
-        is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]
-    ):
+
+    if await hass.async_add_executor_job(_is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]):
         raise InvalidSubAdminSeed
-    if not is_valid_ss58_address(data[CONF_SUB_OWNER_ADDRESS], valid_ss58_format=32):
+    if not _is_valid_sub_owner_address(data[CONF_SUB_OWNER_ADDRESS]):
         raise InvalidSubOwnerAddress
 
     return {"title": "Robonomics"}
@@ -89,45 +102,42 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> OptionsFlowHandler:
         """Get the options flow for this handler."""
+
         return OptionsFlowHandler(config_entry)
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle the initial step of the configuration. Contains user's warnings.
+
+        :param user_input: Dict with the keys from STEP_WARN_DATA_SCHEMA and values provided by user
+
+        :return: Service functions from HomeAssistant
+        """
+
         errors = {}
         device_unique_id = "robonomics"
         await self.async_set_unique_id(device_unique_id)
         self._abort_if_unique_id_configured()
         if user_input is None:
-            return self.async_show_form(
-                step_id="user", data_schema=STEP_WARN_DATA_SCHEMA
-            )
+            return self.async_show_form(step_id="user", data_schema=STEP_WARN_DATA_SCHEMA)
         else:
             if [x for x in user_input if not user_input[x]]:
                 errors["base"] = "warnings"
-                return self.async_show_form(
-                    step_id="user", data_schema=STEP_WARN_DATA_SCHEMA, errors=errors
-                )
+                return self.async_show_form(step_id="user", data_schema=STEP_WARN_DATA_SCHEMA, errors=errors)
             return await self.async_step_conf()
 
-    async def async_step_conf(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the initial step."""
+    async def async_step_conf(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle the second step of the configuration. Contains fields to provide credentials.
+        :param: user_input: Dict with the keys from STEP_USER_DATA_SCHEMA and values provided by user
+
+        :return: Service functions from HomeAssistant
+        """
+
         self.updated_config = {}
         if user_input is None:
-            return self.async_show_form(
-                step_id="conf", data_schema=STEP_USER_DATA_SCHEMA
-            )
-
+            return self.async_show_form(step_id="conf", data_schema=STEP_USER_DATA_SCHEMA)
         errors = {}
-
         try:
-            info = await validate_input(self.hass, user_input)
-        except CannotConnect:
-            errors["base"] = "cannot_connect"
-        except InvalidAuth:
-            errors["base"] = "invalid_auth"
+            info = await _validate_input(self.hass, user_input)
         except InvalidSubAdminSeed:
             errors["base"] = "invalid_sub_admin_seed"
         except InvalidSubOwnerAddress:
@@ -138,30 +148,29 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             return self.async_create_entry(title=info["title"], data=user_input)
 
-        return self.async_show_form(
-            step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
-        )
+        return self.async_show_form(step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
+        """Initialise options flow. THis class contains methods to manage config after it was initialised."""
+
         self.config_entry = config_entry
         _LOGGER.debug(config_entry.data)
         self.updated_config = self.config_entry.data.copy()
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Manage Timeout and Pinata and Custom IPFS gateways.
+
+        :param user_input: Dict with the keys from OPTIONS_DATA_SCHEMA and values provided by user
+
+        :return: Service functions from HomeAssistant
         """
-        Manage the options.
-        """
+
         if user_input is not None:
             self.updated_config.update(user_input)
 
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, data=self.updated_config
-            )
+            self.hass.config_entries.async_update_entry(self.config_entry, data=self.updated_config)
             return self.async_create_entry(title="", data=user_input)
 
         if CONF_PINATA_PUB in self.config_entry.data:
@@ -170,9 +179,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_IPFS_GATEWAY in self.config_entry.data:
                 custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
                 custom_ipfs_port = self.config_entry.data[CONF_IPFS_GATEWAY_PORT]
-                custom_ipfs_gateway_auth = self.config_entry.data[
-                    CONF_IPFS_GATEWAY_AUTH
-                ]
+                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
                         vol.Required(
@@ -204,9 +211,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_IPFS_GATEWAY in self.config_entry.data:
                 custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
                 custom_ipfs_port = self.config_entry.data[CONF_IPFS_GATEWAY_PORT]
-                custom_ipfs_gateway_auth = self.config_entry.data[
-                    CONF_IPFS_GATEWAY_AUTH
-                ]
+                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
                         vol.Required(
@@ -215,13 +220,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         ): int,
                         vol.Optional(CONF_PINATA_PUB): str,
                         vol.Optional(CONF_PINATA_SECRET): str,
-                        vol.Optional(
-                            CONF_IPFS_GATEWAY, default=custom_ipfs_gateway
-                        ): str,
+                        vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
                         vol.Required(CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port): int,
-                        vol.Required(
-                            CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth
-                        ): bool,
+                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
                     }
                 )
             else:
@@ -244,11 +245,3 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=OPTIONS_DATA_SCHEMA,
             last_step=False,
         )
-
-
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""

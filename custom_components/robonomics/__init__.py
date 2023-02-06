@@ -261,30 +261,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     _LOGGER.debug(f"setup data: {config.get(DOMAIN)}")
     return True
 
-
-# async def async_unload_entry(
-#     hass: core.HomeAssistant, entry: config_entries.ConfigEntry
-# ) -> bool:
-#     """Unload a config entry."""
-#     unload_ok = all(
-#         await asyncio.gather(
-#             *[hass.config_entries.async_forward_entry_unload(entry, platform)]
-#         )
-#     )
-#     # Remove config entry from domain.
-#     if unload_ok:
-#         hass.data[DOMAIN].pop(entry.entry_id)
-
-#     return unload_ok
-
-
-# async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-#     """Unload a config entry."""
-#     print(f"hass.data: {hass.data}")
-#     print(f"entry id: {entry.entry_id}")
-#     print(f"hass domain data: {hass.data[DOMAIN][entry.entry_id]}")
-#     component: EntityComponent = hass.data[DOMAIN]
-#     return await component.async_unload_entry(entry)
-
-# async def async_remove_entry(hass, entry) -> None:
-#     """Handle removal of an entry."""
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    _LOGGER.debug(f"hass.data: {hass.data[DOMAIN]}")
+    _LOGGER.debug(f"entry id: {entry.entry_id}")
+    hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
+    hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
+    hass.data.pop(DOMAIN)
+    return True
