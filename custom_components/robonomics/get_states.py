@@ -12,14 +12,13 @@ from homeassistant.components.recorder import get_instance, history
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 from homeassistant.helpers.service import async_get_all_descriptions
 
-from substrateinterface import Keypair, KeypairType
+from substrateinterface import KeypairType
 import asyncio
 import logging
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from robonomicsinterface import Account
 import typing as tp
-import time
 import os
 from datetime import timedelta, datetime
 
@@ -29,16 +28,13 @@ from .const import (
     CONF_ADMIN_SEED,
     DOMAIN,
     ROBONOMICS,
-    PINATA,
-    CONF_ENERGY_SENSORS,
     DATA_CONFIG_PATH,
     DATA_PATH,
     IPFS_HASH_CONFIG,
     TWIN_ID,
 )
 from .utils import encrypt_message
-from .robonomics import Robonomics
-from .ipfs import get_ipfs_data, add_backup_to_ipfs, write_data_to_file, add_config_to_ipfs, add_telemetry_to_ipfs
+from .ipfs import write_data_to_file, add_config_to_ipfs, add_telemetry_to_ipfs
 import json
 
 
