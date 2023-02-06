@@ -36,12 +36,16 @@ async def check_subscription_left_days(hass: HomeAssistant) -> None:
     """
 
     rws = RWS(Account())
-    rws_days_left = rws.get_days_left(addr=hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
+    try:
+        rws_days_left = rws.get_days_left(addr=hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
+    except KeyError:
+        hass.states.async_set(f"{DOMAIN}.subscription_left_days", 100000)
+        return
     if rws_days_left:
         hass.states.async_set(f"{DOMAIN}.subscription_left_days", rws_days_left)
         if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
             service_data = {
-                "message": f"""Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, 
+                "message": f"""Your subscription is ending. You can use it for another {rws_days_left} days, 
                                 after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).""",
                 "title": "Robonomics Subscription Expires",
             }
