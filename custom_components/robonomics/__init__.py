@@ -263,9 +263,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.debug(f"hass.data: {hass.data[DOMAIN]}")
-    _LOGGER.debug(f"entry id: {entry.entry_id}")
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     hass.data.pop(DOMAIN)
+    _LOGGER.debug(f"Robonomics integration was unloaded")
     return True

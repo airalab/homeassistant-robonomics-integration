@@ -21,7 +21,7 @@ import json
 from .utils import to_thread, create_notification
 from .ipfs import get_ipfs_data
 from .manage_users import change_password, manage_users
-from .const import HANDLE_LAUNCH, DOMAIN, ROBONOMICS, TWIN_ID, RWS_DAYS_LEFT_NOTIFY
+from .const import HANDLE_LAUNCH, DOMAIN, ROBONOMICS, TWIN_ID, RWS_DAYS_LEFT_NOTIFY, CONF_SUB_OWNER_ADDRESS
 from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,17 +35,27 @@ async def check_subscription_left_days(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant instance
     """
 
-    await hass.data[DOMAIN][ROBONOMICS].get_rws_left_days()
-    hass.states.async_set(f"{DOMAIN}.subscription_left_days", hass.data[DOMAIN][ROBONOMICS].rws_days_left)
-    if hass.data[DOMAIN][ROBONOMICS].rws_days_left <= 0:
+    rws = RWS(Account())
+    try:
+        rws_days_left = rws.get_days_left(addr=hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
+        _LOGGER.debug(f"Left {rws_days_left} days of subscription")
+    except KeyError:
+        hass.states.async_set(f"{DOMAIN}.subscription_left_days", 100000)
+        _LOGGER.debug("Subscription is endless")
+        return
+    if rws_days_left:
+        hass.states.async_set(f"{DOMAIN}.subscription_left_days", rws_days_left)
+        if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
+            service_data = {
+                "message": f"""Your subscription is ending. You can use it for another {rws_days_left} days, 
+                                after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).""",
+                "title": "Robonomics Subscription Expires",
+            }
+            await create_notification(hass, service_data)
+    else:
+        hass.states.async_set(f"{DOMAIN}.subscription_left_days", 0)
         service_data = {
             "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).",
-            "title": "Robonomics Subscription Expires",
-        }
-        await create_notification(hass, service_data)
-    elif hass.data[DOMAIN][ROBONOMICS].rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
-        service_data = {
-            "message": f"Your subscription is ending. You can use it for another {hass.data[DOMAIN][ROBONOMICS].rws_days_left} days, after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).",
             "title": "Robonomics Subscription Expires",
         }
         await create_notification(hass, service_data)
@@ -100,7 +110,6 @@ class Robonomics:
         self.on_queue: int = 0
         self.devices_list: tp.List[str] = []
         self.subscriber: tp.Optional[Thread] = None
-        self.rws_days_left = 30
         try:
             extend_enum(
                 SubEvent,
@@ -130,21 +139,6 @@ class Robonomics:
                 return last_hash[1]
         except Exception as e:
             _LOGGER.debug(f"Exception in getting last telemetry hash: {e}")
-
-    @to_thread
-    def get_rws_left_days(self):
-        try:
-            _LOGGER.debug(f"Start getting RWS date info")
-            rws = RWS(Account())
-            res = rws.get_ledger(self.sub_owner_address)
-            start_timestamp = res["issue_time"] / 1000
-            start_date = datetime.fromtimestamp(start_timestamp)
-            now_date = datetime.now()
-            delta = now_date - start_date
-            self.rws_days_left = 30 - delta.days
-            _LOGGER.debug(f"RWS left {self.rws_days_left} days")
-        except Exception as e:
-            _LOGGER.debug(f"Exception in getting rws left days: {e}")
 
     @to_thread
     def create_digital_twin(self) -> int:
@@ -193,7 +187,7 @@ class Robonomics:
     @to_thread
     def set_backup_topic(self, ipfs_hash: str, twin_number: int) -> None:
         """Create new topic in Digital Twin for updated backup
-        
+
         :param ipfs_hash: Hash for current backup file
         :param twin_number: Twin number where hash for backup file stores
         """
@@ -229,7 +223,7 @@ class Robonomics:
     @to_thread
     def set_config_topic(self, ipfs_hash: str, twin_number: int) -> None:
         """Create new topic in Digital Twin for updated config
-        
+
         :param ipfs_hash: Hash for current config file
         :param twin_number: Twin number where hash for config file stores
         """
