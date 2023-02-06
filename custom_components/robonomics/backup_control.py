@@ -89,7 +89,7 @@ def create_secure_backup(
     :param config_path: Path to the configuration file
     :param path_to_tar: Path to create a backup archive
     :param admin_keypair: Keypair to encrypt backup
-    
+
     :return: Path to backup archive
     """
 

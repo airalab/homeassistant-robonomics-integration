@@ -1,4 +1,4 @@
-from substrateinterface import SubstrateInterface, Keypair, KeypairType
+from substrateinterface import KeypairType
 from robonomicsinterface import (
     Account,
     Subscriber,
@@ -12,8 +12,6 @@ from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_
 from aenum import extend_enum
 from homeassistant.core import callback, HomeAssistant
 
-# from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
-# from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
 from threading import Thread
 import logging
 import typing as tp
@@ -24,7 +22,7 @@ from .utils import to_thread, create_notification
 from .ipfs import get_ipfs_data
 from .manage_users import change_password, manage_users
 from .const import HANDLE_LAUNCH, DOMAIN, ROBONOMICS, TWIN_ID, RWS_DAYS_LEFT_NOTIFY
-from datetime import datetime, timedelta
+from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,6 +107,8 @@ class Robonomics:
                 "MultiEvent",
                 f"{SubEvent.NewDevices.value, SubEvent.NewLaunch.value, SubEvent.NewRecord.value, SubEvent.TopicChanged.value}",
             )
+        except TypeError:
+            pass
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
 
@@ -339,7 +339,7 @@ class Robonomics:
                     if (
                         data[1] == self.hass.data[DOMAIN][TWIN_ID] and data[3] == self.sub_owner_address
                     ):  ## Change backup topic in Digital Twin
-                        self.hass.async_create_task(_handle_backup_change(self.hass, data))
+                        self.hass.async_create_task(_handle_backup_change(self.hass))
             elif type(data[1]) == int and data[0] in self.devices_list:  ## Datalog to change password
                 self.hass.async_create_task(change_password(self.hass, data))
             elif type(data[1]) == list and data[0] == self.sub_owner_address:  ## New Device in subscription

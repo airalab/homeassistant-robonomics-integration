@@ -40,7 +40,7 @@ import json
 
 async def get_and_send_data(hass: HomeAssistant):
     """Collect data from all entities within 24hrs and send its hash to Robonomics Datalog.
-    
+
     :param hass: HomeAssistant instance
     """
 
@@ -73,7 +73,7 @@ def _state_changes_during_period(
     entity_id: str,
 ) -> list[State]:
     """Save states of the given entity within 24hrs.
-    
+
     :param hass: HomeAssistant instance
     :param start: Begin of the period
     :param end: End of the period
@@ -97,7 +97,7 @@ async def _get_state_history(hass: HomeAssistant, entity_id: str) -> tp.List[tp.
 
     :param hass: HomeAssistant instance
     :param entity_id: Id for entity from HomeAssistant
-    
+
     :return: List of states with date for the given entity in the last 24hrs
     """
 
@@ -119,9 +119,9 @@ async def _get_state_history(hass: HomeAssistant, entity_id: str) -> tp.List[tp.
 
 
 async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
-    """Getting dashboard's configuration and list of services. If it was changed, 
+    """Getting dashboard's configuration and list of services. If it was changed,
     set new topic in Digital Twin with IPFS hash of new dashboard's configuration.
-    
+
     :param hass: HomeAssistant instance
     """
 
