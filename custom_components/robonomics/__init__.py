@@ -1,25 +1,21 @@
 from __future__ import annotations
 from platform import platform
 
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.event import async_track_time_interval
 
-from substrateinterface import Keypair, KeypairType
+from substrateinterface import KeypairType
 import asyncio
 from pathlib import Path
 from homeassistant.config_entries import ConfigEntry
 import logging
 from robonomicsinterface import Account
-from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
-import typing as tp
 from pinatapy import PinataPy
 import os
-import time
 import json
 from datetime import timedelta
 import shutil
-import ipfshttpclient2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,27 +28,27 @@ from .const import (
     CONF_SENDING_TIMEOUT,
     ROBONOMICS,
     PINATA,
-    IPFS_API,
     HANDLE_TIME_CHANGE,
     TIME_CHANGE_UNSUB,
-    CONF_ENERGY_SENSORS,
     HANDLE_LAUNCH,
     DATA_CONFIG_PATH,
     DATA_PATH,
     TWIN_ID,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
-    RWS_DAYS_LEFT_NOTIFY,
     TIME_CHANGE_COUNT,
     DATA_BACKUP_PATH,
     MAX_NUMBER_OF_REQUESTS,
     CONF_IPFS_GATEWAY_PORT,
 )
-from .utils import decrypt_message, to_thread
 from .robonomics import Robonomics, check_subscription_left_days
-from .ipfs import get_ipfs_data, add_backup_to_ipfs, write_data_to_file, add_config_to_ipfs, add_telemetry_to_ipfs, create_folders
+from .ipfs import (
+    get_ipfs_data,
+    add_backup_to_ipfs,
+    create_folders
+)
 from .get_states import get_and_send_data
-from .manage_users import change_password, manage_users
+from .manage_users import manage_users
 from .backup_control import (
     restore_from_backup,
     create_secure_backup,
@@ -65,12 +61,11 @@ async def init_integration(
     hass: HomeAssistant,
     data_config_path: str,
 ) -> None:
-    sub_admin_acc = Account(
-        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-    )
+    sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
 
     # Checking rws devices to user list correlation
     try:
+        await asyncio.sleep(60)
         start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
@@ -78,7 +73,7 @@ async def init_integration(
         print(f"Exception in fist check devices {e}")
 
     await check_backup_change(hass)
-    await asyncio.sleep(60)
+    # await asyncio.sleep(60)
     await get_and_send_data(hass)
 
 
@@ -92,17 +87,11 @@ async def update_listener(hass, entry):
         _LOGGER.debug(f"entry options before: {entry.options}")
         if CONF_IPFS_GATEWAY in entry.options:
             hass.data[DOMAIN][CONF_IPFS_GATEWAY] = entry.options[CONF_IPFS_GATEWAY]
-        hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH] = entry.options[
-            CONF_IPFS_GATEWAY_AUTH
-        ]
+        hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH] = entry.options[CONF_IPFS_GATEWAY_AUTH]
         hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT] = entry.options[CONF_IPFS_GATEWAY_PORT]
-        hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(
-            minutes=entry.options[CONF_SENDING_TIMEOUT]
-        )
+        hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(minutes=entry.options[CONF_SENDING_TIMEOUT])
         if (CONF_PINATA_PUB in entry.options) and (CONF_PINATA_SECRET in entry.options):
-            hass.data[DOMAIN][PINATA] = PinataPy(
-                entry.options[CONF_PINATA_PUB], entry.options[CONF_PINATA_SECRET]
-            )
+            hass.data[DOMAIN][PINATA] = PinataPy(entry.options[CONF_PINATA_PUB], entry.options[CONF_PINATA_SECRET])
             _LOGGER.debug("Use Pinata to pin files")
         else:
             hass.data[DOMAIN][PINATA] = None
@@ -129,16 +118,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][CONF_IPFS_GATEWAY] = conf[CONF_IPFS_GATEWAY]
     hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH] = conf[CONF_IPFS_GATEWAY_AUTH]
     hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT] = conf[CONF_IPFS_GATEWAY_PORT]
-    hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(
-        minutes=conf[CONF_SENDING_TIMEOUT]
-    )
+    hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(minutes=conf[CONF_SENDING_TIMEOUT])
     _LOGGER.debug(f"Sending interval: {conf[CONF_SENDING_TIMEOUT]} minutes")
     hass.data[DOMAIN][CONF_ADMIN_SEED] = conf[CONF_ADMIN_SEED]
     hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS] = conf[CONF_SUB_OWNER_ADDRESS]
 
-    sub_admin_acc = Account(
-        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-    )
+    sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
     _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
     _LOGGER.debug(f"sub owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
     hass.data[DOMAIN][ROBONOMICS]: Robonomics = Robonomics(
@@ -149,9 +134,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if (CONF_PINATA_PUB in conf) and (CONF_PINATA_SECRET in conf):
         hass.data[DOMAIN][CONF_PINATA_PUB] = conf[CONF_PINATA_PUB]
         hass.data[DOMAIN][CONF_PINATA_SECRET] = conf[CONF_PINATA_SECRET]
-        hass.data[DOMAIN][PINATA] = PinataPy(
-            hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET]
-        )
+        hass.data[DOMAIN][PINATA] = PinataPy(hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET])
         _LOGGER.debug("Use Pinata to pin files")
     else:
         hass.data[DOMAIN][PINATA] = None
@@ -174,29 +157,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][HANDLE_LAUNCH] = False
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    async def handle_state_changed(event):
-        try:
-            if (
-                event.data["old_state"] != None
-                and event.data["old_state"].state != "unknown"
-                and event.data["old_state"].state != "unavailable"
-                and event.data["new_state"].state != "unknown"
-                and event.data["new_state"].state != "unavailable"
-                and event.data["entity_id"].split(".")[0] != "sensor"
-                and event.data["old_state"].state != event.data["new_state"].state
-            ):
-                _LOGGER.debug(f"State changed: {event.data}")
-                await get_and_send_data(hass)
-        except Exception as e:
-            _LOGGER.error(f"Exception in handle_state_changed: {e}")
-
     hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
 
     async def handle_time_changed(event):
         try:
-            time_change_count_in_day = (
-                24 * 60 / (hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds / 60)
-            )
+            time_change_count_in_day = 24 * 60 / (hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds / 60)
             hass.data[DOMAIN][TIME_CHANGE_COUNT] += 1
             if hass.data[DOMAIN][TIME_CHANGE_COUNT] >= time_change_count_in_day:
                 hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
@@ -222,9 +187,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         ipfs_hash = await add_backup_to_ipfs(hass, backup_path)
         _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
-        await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(
-            ipfs_hash, hass.data[DOMAIN][TWIN_ID]
-        )
+        await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(ipfs_hash, hass.data[DOMAIN][TWIN_ID])
 
     async def handle_restore_from_backup(call):
         try:
@@ -234,29 +197,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if backup_encrypted_path is None:
                 hass.data[DOMAIN][HANDLE_LAUNCH] = True
                 _LOGGER.debug("Start looking for backup ipfs hash")
-                ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(
-                    hass.data[DOMAIN][TWIN_ID]
-                )
-                await get_ipfs_data(
-                    hass, ipfs_backup_hash, sub_admin_acc.get_address(), 0, launch=False
-                )
+                ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
+                await get_ipfs_data(hass, ipfs_backup_hash, sub_admin_acc.get_address(), 0, launch=False)
             else:
-                backup_path = await unpack_backup(
-                    hass, backup_encrypted_path, sub_admin_acc.keypair
-                )
+                backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
                 await restore_from_backup(hass, config_path)
                 _LOGGER.debug(f"Config restored, restarting...")
         except Exception as e:
             _LOGGER.error(f"Exception in restore from backup service call: {e}")
 
-    hass.services.async_register(
-        DOMAIN, "save_backup_to_robonomics", handle_save_backup
-    )
-    hass.services.async_register(
-        DOMAIN, "restore_from_robonomics_backup", handle_restore_from_backup
-    )
+    hass.services.async_register(DOMAIN, "save_backup_to_robonomics", handle_save_backup)
+    hass.services.async_register(DOMAIN, "restore_from_robonomics_backup", handle_restore_from_backup)
 
-    # hass.bus.async_listen("state_changed", handle_state_changed)
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(
         hass,
         hass.data[DOMAIN][HANDLE_TIME_CHANGE],
@@ -272,9 +224,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
         except Exception as e:
             _LOGGER.debug(f"Can't load config: {e}")
-            last_telemetry_hash = await hass.data[DOMAIN][
-                ROBONOMICS
-            ].get_last_telemetry_hash()
+            last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
             if last_telemetry_hash is not None:
                 hass.data[DOMAIN][HANDLE_LAUNCH] = True
                 res = await get_ipfs_data(
@@ -290,20 +240,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 try:
                     if TWIN_ID not in hass.data[DOMAIN]:
                         _LOGGER.debug(f"Start creating new digital twin")
-                        hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][
-                            ROBONOMICS
-                        ].create_digital_twin()
+                        hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                         _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
                     else:
-                        _LOGGER.debug(
-                            f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}"
-                        )
+                        _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
                 except Exception as e:
                     _LOGGER.debug(f"Exception in configure digital twin: {e}")
             else:
-                hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][
-                    ROBONOMICS
-                ].create_digital_twin()
+                hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                 _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
     asyncio.ensure_future(init_integration(hass, data_config_path))
