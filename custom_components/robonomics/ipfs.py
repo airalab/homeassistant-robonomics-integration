@@ -53,6 +53,8 @@ from .const import (
     CONF_PINATA_PUB,
     IPFS_MAX_FILE_NUMBER,
 )
+from .utils import decrypt_message, to_thread, get_hash
+from .backup_control import restore_from_backup, unpack_backup
 
 _LOGGER = logging.getLogger(__name__)
 
