@@ -50,8 +50,8 @@ from .const import (
     CONF_PINATA_PUB,
     IPFS_MAX_FILE_NUMBER,
 )
-from .utils import decrypt_message, to_thread
-from .backup_control import restore_from_backup, unpack_backup, get_hash
+from .utils import decrypt_message, to_thread, get_hash
+from .backup_control import restore_from_backup, unpack_backup
 
 
 def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
