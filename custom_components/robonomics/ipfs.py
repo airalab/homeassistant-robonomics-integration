@@ -1,39 +1,42 @@
-from __future__ import annotations
-from platform import platform
+"""
+This module contains functions to work with IPFS. It allows to send and receive files from IPFS.
 
-from homeassistant.core import HomeAssistant
+To start work with this module check next functions - add_telemetry_to_ipfs(), add_config_to_ipfs(), add_backup_to_ipfs(),
+create_folders() and get_ipfs_data().
+
+write_data_to_file() function is used in "get_states.py" module
+"""
+
+from __future__ import annotations
 
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.core import HomeAssistant
 
 from substrateinterface import Keypair, KeypairType
-import asyncio
-import logging
-from robonomicsinterface import Account
-from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
 from robonomicsinterface.utils import web_3_auth
-import typing as tp
-from pinatapy import PinataPy
-from ast import literal_eval
-import time
-import os
-import json
-from pathlib import Path
-import ipfshttpclient2
-import io
-from datetime import datetime, timedelta
 from crustinterface import Mainnet
 
+from datetime import datetime, timedelta
+from pinatapy import PinataPy
+from ast import literal_eval
+from pathlib import Path
+import ipfshttpclient2
+import typing as tp
+import asyncio
+import logging
+import time
+import json
+import os
 
-_LOGGER = logging.getLogger(__name__)
+from .backup_control import restore_from_backup, unpack_backup, get_hash
+from .utils import decrypt_message, to_thread
 
 from .const import (
     MORALIS_GATEWAY,
     IPFS_GATEWAY,
     CONF_ADMIN_SEED,
     DOMAIN,
-    ROBONOMICS,
     PINATA,
-    IPFS_API,
     LOCAL_GATEWAY,
     HANDLE_LAUNCH,
     CONF_IPFS_GATEWAY,
@@ -50,11 +53,188 @@ from .const import (
     CONF_PINATA_PUB,
     IPFS_MAX_FILE_NUMBER,
 )
-from .utils import decrypt_message, to_thread
-from .backup_control import restore_from_backup, unpack_backup, get_hash
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    """
+    Send telemetry files to IPFS
+
+    :param hass: Home Assistant instance
+    :param filename: file with telemetry
+    :return: IPFS hash of file
+    """
+    pin = await check_if_need_pin_telemetry(filename)
+    if not pin:
+        last_file_name, last_file_hash = await get_last_file_hash(IPFS_TELEMETRY_PATH)
+    else:
+        last_file_hash = None
+        last_file_name = None
+    ipfs_hash, size = await add_to_ipfs(
+        hass, filename, IPFS_TELEMETRY_PATH, pin, last_file_hash, last_file_name
+    )
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
+
+
+async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    """
+    Send configuration file to IPFS
+
+    :param hass: Home Assistant instance
+    :param filename: file with configuration of Home Assistant dashboard and services
+    :return: IPFS hash of file
+    """
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_CONFIG_PATH)
+    new_hash = await get_hash(filename)
+    if new_hash == last_file_hash:
+        _LOGGER.debug(f"Last config hash and the current are the same: {last_file_hash}")
+        return last_file_hash
+    ipfs_hash, size = await add_to_ipfs(
+        hass, filename, IPFS_CONFIG_PATH, False, last_file_hash, last_file_name
+    )
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
+
+
+async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    """
+    Send backup file to IPFS
+
+    :param hass: Home Assistant instance
+    :param filename: file with full Home Assistant backup.
+    :return: IPFS hash of file
+    """
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_BACKUP_PATH)
+    new_hash = await get_hash(filename)
+    if new_hash == last_file_hash:
+        _LOGGER.debug(f"Last backup hash and the current are the same: {last_file_hash}")
+        return last_file_hash
+    ipfs_hash, size = await add_to_ipfs(
+        hass, filename, IPFS_BACKUP_PATH, False, last_file_hash, last_file_name
+    )
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
+
+
+@to_thread
+def create_folders() -> None:
+    """
+    Function creates IPFS folders to store Robonomics telemetry, configuration and backup files
+    """
+    with ipfshttpclient2.connect() as client:
+        try:
+            client.files.mkdir(IPFS_TELEMETRY_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_TELEMETRY_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_TELEMETRY_PATH}")
+        try:
+            client.files.mkdir(IPFS_BACKUP_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_BACKUP_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_BACKUP_PATH}")
+        try:
+            client.files.mkdir(IPFS_CONFIG_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_CONFIG_PATH}")
+
+
+async def get_ipfs_data(
+    hass: HomeAssistant,
+    ipfs_hash: str,
+    sender_address: str,
+    number_of_request: int,
+    launch: bool = True,
+    telemetry: bool = False,
+    gateways: tp.List[str] = [
+        LOCAL_GATEWAY,
+        IPFS_GATEWAY,
+        MORALIS_GATEWAY,
+    ],
+) -> bool:
+    """
+    Get data from IPFS
+    """
+    if number_of_request >= MAX_NUMBER_OF_REQUESTS:
+        return False
+    websession = async_create_clientsession(hass)
+    try:
+        tasks = []
+        _LOGGER.debug(f"Request to IPFS number {number_of_request}")
+        if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
+            custom_gateway = hass.data[DOMAIN][CONF_IPFS_GATEWAY]
+            if custom_gateway is not None:
+                if custom_gateway[-1] != "/":
+                    custom_gateway += "/"
+                if custom_gateway[-5:] != "ipfs/":
+                    custom_gateway += "ipfs/"
+                url = f"{custom_gateway}{ipfs_hash}"
+                tasks.append(
+                    asyncio.create_task(
+                        get_request(
+                            hass, websession, url, sender_address, launch, telemetry
+                        )
+                    )
+                )
+        for gateway in gateways:
+            if gateway[-1] != "/":
+                gateway += "/"
+            url = f"{gateway}{ipfs_hash}"
+            tasks.append(
+                asyncio.create_task(
+                    get_request(
+                        hass, websession, url, sender_address, launch, telemetry
+                    )
+                )
+            )
+        for task in tasks:
+            res = await task
+            if res:
+                return True
+        else:
+            if hass.data[DOMAIN][HANDLE_LAUNCH]:
+                res = await get_ipfs_data(
+                    hass,
+                    ipfs_hash,
+                    sender_address,
+                    number_of_request + 1,
+                    launch=launch,
+                    telemetry=telemetry,
+                    gateways=gateways,
+                )
+                return res
+    except Exception as e:
+        _LOGGER.error(f"Exception in get ipfs: {e}")
+        if hass.data[DOMAIN][HANDLE_LAUNCH]:
+            res = await get_ipfs_data(
+                hass,
+                ipfs_hash,
+                sender_address,
+                number_of_request + 1,
+                launch=launch,
+                telemetry=telemetry,
+                gateways=gateways,
+            )
+            return res
 
 
 def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
+    """
+    Create file and store data in it
+
+    :param data: data, which to be written to the file
+    :param data_path: path, where to store file
+    :param config:
+    :return:
+    """
     if config:
         filename = f"{data_path}/config_encrypted-{time.time()}"
     else:
@@ -66,7 +246,7 @@ def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
 
 def delete_ipfs_telemetry_files():
     """
-    Delete old files 
+    Delete old files from IPFS
     """
     with ipfshttpclient2.connect() as client:
         files = client.files.ls(IPFS_TELEMETRY_PATH)["Entries"]
@@ -76,29 +256,6 @@ def delete_ipfs_telemetry_files():
                 filename = files[i]["Name"]
                 client.files.rm(f"{IPFS_TELEMETRY_PATH}/{filename}")
                 _LOGGER.debug(f"Deleted old telemetry {filename}")
-
-
-@to_thread
-def create_folders():
-    with ipfshttpclient2.connect() as client:
-        try:
-            client.files.mkdir(IPFS_TELEMETRY_PATH)
-        except ipfshttpclient2.exceptions.ErrorResponse:
-            _LOGGER.debug(f"IPFS folder {IPFS_TELEMETRY_PATH} exists")
-        except Exception as e:
-            _LOGGER.error(f"Exception in creating ipfs folder {IPFS_TELEMETRY_PATH}")
-        try:
-            client.files.mkdir(IPFS_BACKUP_PATH)
-        except ipfshttpclient2.exceptions.ErrorResponse:
-            _LOGGER.debug(f"IPFS folder {IPFS_BACKUP_PATH} exists")
-        except Exception as e:
-            _LOGGER.error(f"Exception in creating ipfs folder {IPFS_BACKUP_PATH}")
-        try:
-            client.files.mkdir(IPFS_CONFIG_PATH)
-        except ipfshttpclient2.exceptions.ErrorResponse:
-            _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} exists")
-        except Exception as e:
-            _LOGGER.error(f"Exception in creating ipfs folder {IPFS_CONFIG_PATH}")
 
 
 @to_thread
@@ -152,13 +309,13 @@ def add_to_local_node(
     pin: bool,
     path: str,
     last_file_name: tp.Optional[str] = None,
-) -> tp.Tuple[tp.Optional[str], tp.Optional[str]]:
+) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
     try:
         _LOGGER.debug(f"Start adding {filename} to local node, pin: {pin}")
         with ipfshttpclient2.connect() as client:
             result = client.add(filename, pin=False)
-            ipfs_hash: str = result["Hash"]
-            ipfs_file_size: int = int(result["Size"])
+            ipfs_hash: tp.Optional[str] = result["Hash"]
+            ipfs_file_size: tp.Optional[int] = int(result["Size"])
             result = None
             _LOGGER.debug(
                 f"File {filename} was added to local node with cid: {ipfs_hash}"
@@ -185,16 +342,18 @@ def add_to_pinata(
     pinata: PinataPy,
     pin: bool,
     last_file_hash: tp.Optional[str] = None,
-) -> tp.Tuple[tp.Optional[str], tp.Optional[str]]:
+) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
     try:
         res = pinata.pin_file_to_ipfs(filename)
-        ipfs_hash = res["IpfsHash"]
-        ipfs_file_size: int = int(res["PinSize"])
+        ipfs_hash: tp.Optional[str] = res["IpfsHash"]
+        ipfs_file_size: tp.Optional[int] = int(res["PinSize"])
         _LOGGER.debug(f"File {filename} was added to Pinata with cid: {ipfs_hash}")
     except Exception as e:
         _LOGGER.error(f"Exception in pinata pin: {e}, pinata response: {res}")
-        return None, None
+        ipfs_hash = None
+        ipfs_file_size = None
+        return ipfs_hash, ipfs_file_size
     if not pin:
         try:
             pinata.remove_pin_from_ipfs(last_file_hash)
@@ -215,7 +374,7 @@ def add_to_custom_gateway(
     pin: bool,
     seed: str = None,
     last_file_hash: tp.Optional[str] = None,
-) -> tp.Tuple[tp.Optional[str], tp.Optional[str]]:
+) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
     if "https://" in url:
         url = url[8:]
     if url[-1] == "/":
@@ -228,8 +387,8 @@ def add_to_custom_gateway(
                 addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
             ) as client:
                 result = client.add(filename)
-                ipfs_hash: str = result["Hash"]
-                ipfs_file_size: int = int(result["Size"])
+                ipfs_hash: tp.Optional[str] = result["Hash"]
+                ipfs_file_size: tp.Optional[int] = int(result["Size"])
                 result = None
                 _LOGGER.debug(
                     f"File {filename} was added to {url} with cid: {ipfs_hash}"
@@ -239,8 +398,8 @@ def add_to_custom_gateway(
                 addr=f"/dns4/{url}/tcp/{port}/https"
             ) as client:
                 result = client.add(filename)
-                ipfs_hash: str = result["Hash"]
-                ipfs_file_size: int = int(result["Size"])
+                ipfs_hash: tp.Optional[str] = result["Hash"]
+                ipfs_file_size: tp.Optional[int] = int(result["Size"])
                 result = None
                 _LOGGER.debug(
                     f"File {filename} was added to {url} with cid: {ipfs_hash}"
@@ -261,7 +420,9 @@ def add_to_custom_gateway(
                     _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
     except Exception as e:
         _LOGGER.error(f"Exception in pinning to custom gateway: {e}")
-        return None, None
+        ipfs_hash = None
+        ipfs_file_size = None
+        return ipfs_hash, ipfs_file_size
     return ipfs_hash, ipfs_file_size
 
 
@@ -288,7 +449,7 @@ def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.
 
     except Exception as e:
         _LOGGER.debug(f"error while get account balance - {e}")
-        return e
+        return None
 
     if price >= balance:
         _LOGGER.error(f"Not enough account balance to store the file")
@@ -300,51 +461,8 @@ def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.
         _LOGGER.debug(file_stored)
     except Exception as e:
         _LOGGER.debug(f"error while uploading file to crust - {e}")
-        return e
+        return None
     return file_stored
-
-
-async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
-    pin = await check_if_need_pin_telemetry(filename)
-    if not pin:
-        last_file_name, last_file_hash = await get_last_file_hash(IPFS_TELEMETRY_PATH)
-    else:
-        last_file_hash = None
-        last_file_name = None
-    ipfs_hash, size = await add_to_ipfs(
-        hass, filename, IPFS_TELEMETRY_PATH, pin, last_file_hash, last_file_name
-    )
-    await _upload_to_crust(hass, ipfs_hash, size)
-
-    return ipfs_hash
-
-
-async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
-    last_file_name, last_file_hash = await get_last_file_hash(IPFS_CONFIG_PATH)
-    new_hash = await get_hash(filename)
-    if new_hash == last_file_hash:
-        _LOGGER.debug(f"Last config hash and the current are the same: {last_file_hash}")
-        return last_file_hash
-    ipfs_hash, size = await add_to_ipfs(
-        hass, filename, IPFS_CONFIG_PATH, False, last_file_hash, last_file_name
-    )
-    await _upload_to_crust(hass, ipfs_hash, size)
-
-    return ipfs_hash
-
-
-async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
-    last_file_name, last_file_hash = await get_last_file_hash(IPFS_BACKUP_PATH)
-    new_hash = await get_hash(filename)
-    if new_hash == last_file_hash:
-        _LOGGER.debug(f"Last backup hash and the current are the same: {last_file_hash}")
-        return last_file_hash
-    ipfs_hash, size = await add_to_ipfs(
-        hass, filename, IPFS_BACKUP_PATH, False, last_file_hash, last_file_name
-    )
-    await _upload_to_crust(hass, ipfs_hash, size)
-
-    return ipfs_hash
 
 
 async def add_to_ipfs(
@@ -354,7 +472,7 @@ async def add_to_ipfs(
     pin: bool,
     last_file_hash: tp.Optional[str],
     last_file_name: tp.Optional[str],
-) -> tp.Optional[str]:
+) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
     if hass.data[DOMAIN][PINATA] is not None:
         pinata_hash, pinata_ipfs_file_size = await add_to_pinata(
             hass, filename, hass.data[DOMAIN][PINATA], pin, last_file_hash
@@ -454,7 +572,7 @@ async def get_request(
         _LOGGER.warning(f"Exception in request to {url}")
         return False
     _LOGGER.debug(
-        f"Responce from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}"
+        f"Response from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}"
     )
     if resp.status == 200:
         if hass.data[DOMAIN][HANDLE_LAUNCH]:
@@ -497,82 +615,3 @@ async def get_request(
             return False
     else:
         return False
-
-
-async def get_ipfs_data(
-    hass: HomeAssistant,
-    ipfs_hash: str,
-    sender_address: str,
-    number_of_request: int,
-    launch: bool = True,
-    telemetry: bool = False,
-    gateways: tp.List[str] = [
-        LOCAL_GATEWAY,
-        IPFS_GATEWAY,
-        MORALIS_GATEWAY,
-    ],
-) -> bool:
-    """
-    Get data from IPFS
-    """
-    if number_of_request >= MAX_NUMBER_OF_REQUESTS:
-        return False
-    websession = async_create_clientsession(hass)
-    try:
-        tasks = []
-        _LOGGER.debug(f"Request to IPFS number {number_of_request}")
-        if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
-            custom_gateway = hass.data[DOMAIN][CONF_IPFS_GATEWAY]
-            if custom_gateway is not None:
-                if custom_gateway[-1] != "/":
-                    custom_gateway += "/"
-                if custom_gateway[-5:] != "ipfs/":
-                    custom_gateway += "ipfs/"
-                url = f"{custom_gateway}{ipfs_hash}"
-                tasks.append(
-                    asyncio.create_task(
-                        get_request(
-                            hass, websession, url, sender_address, launch, telemetry
-                        )
-                    )
-                )
-        for gateway in gateways:
-            if gateway[-1] != "/":
-                gateway += "/"
-            url = f"{gateway}{ipfs_hash}"
-            tasks.append(
-                asyncio.create_task(
-                    get_request(
-                        hass, websession, url, sender_address, launch, telemetry
-                    )
-                )
-            )
-        for task in tasks:
-            res = await task
-            if res:
-                return True
-        else:
-            if hass.data[DOMAIN][HANDLE_LAUNCH]:
-                res = await get_ipfs_data(
-                    hass,
-                    ipfs_hash,
-                    sender_address,
-                    number_of_request + 1,
-                    launch=launch,
-                    telemetry=telemetry,
-                    gateways=gateways,
-                )
-                return res
-    except Exception as e:
-        _LOGGER.error(f"Exception in get ipfs: {e}")
-        if hass.data[DOMAIN][HANDLE_LAUNCH]:
-            res = await get_ipfs_data(
-                hass,
-                ipfs_hash,
-                sender_address,
-                number_of_request + 1,
-                launch=launch,
-                telemetry=telemetry,
-                gateways=gateways,
-            )
-            return res
