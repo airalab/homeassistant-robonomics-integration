@@ -454,13 +454,13 @@ def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.
         return None
 
     if price >= balance:
-        _LOGGER.error(f"Not enough account balance to store the file")
+        _LOGGER.warning(f"Not enough account balance to store the file")
         return None
 
     try:
         _LOGGER.debug(f"Start adding {ipfs_hash} to crust with size {file_size}")
         file_stored = mainnet.store_file(ipfs_hash, file_size)
-        _LOGGER.debug(file_stored)
+        _LOGGER.debug(f"file stored in Crust. Extrinsic data is  {file_stored}")
     except Exception as e:
         _LOGGER.debug(f"error while uploading file to crust - {e}")
         return None
