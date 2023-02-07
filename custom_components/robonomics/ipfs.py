@@ -1,12 +1,3 @@
-"""
-This module contains functions to work with IPFS. It allows to send and receive files from IPFS.
-
-To start work with this module check next functions - add_telemetry_to_ipfs(), add_config_to_ipfs(), add_backup_to_ipfs(),
-create_folders() and get_ipfs_data().
-
-write_data_to_file() function is used in "get_states.py" module
-"""
-
 from __future__ import annotations
 
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -28,8 +19,8 @@ import time
 import json
 import os
 
-from .backup_control import restore_from_backup, unpack_backup, get_hash
-from .utils import decrypt_message, to_thread
+from .backup_control import restore_from_backup, unpack_backup
+from .utils import decrypt_message, to_thread, get_hash
 
 from .const import (
     MORALIS_GATEWAY,
@@ -53,7 +44,6 @@ from .const import (
     CONF_PINATA_PUB,
     IPFS_MAX_FILE_NUMBER,
 )
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -132,7 +122,7 @@ def create_folders() -> None:
         except ipfshttpclient2.exceptions.ErrorResponse:
             _LOGGER.debug(f"IPFS folder {IPFS_TELEMETRY_PATH} exists")
         except Exception as e:
-            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_TELEMETRY_PATH}")
+            _LOGGER.error(f"Exception in creating ipfs folder {IPFS_TELEMETRY_PATH}")
         try:
             client.files.mkdir(IPFS_BACKUP_PATH)
         except ipfshttpclient2.exceptions.ErrorResponse:
@@ -452,13 +442,13 @@ def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.
         return None
 
     if price >= balance:
-        _LOGGER.error(f"Not enough account balance to store the file")
+        _LOGGER.warning(f"Not enough account balance to store the file")
         return None
 
     try:
         _LOGGER.debug(f"Start adding {ipfs_hash} to crust with size {file_size}")
         file_stored = mainnet.store_file(ipfs_hash, file_size)
-        _LOGGER.debug(file_stored)
+        _LOGGER.debug(f"file stored in Crust. Extrinsic data is  {file_stored}")
     except Exception as e:
         _LOGGER.debug(f"error while uploading file to crust - {e}")
         return None
