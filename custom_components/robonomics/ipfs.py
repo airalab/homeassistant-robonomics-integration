@@ -21,6 +21,8 @@ from pathlib import Path
 import ipfshttpclient2
 import io
 from datetime import datetime, timedelta
+from crustinterface import Mainnet
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,6 +63,7 @@ def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
         f.write(data)
     return filename
 
+
 def delete_ipfs_telemetry_files():
     """
     Delete old files 
@@ -73,6 +76,7 @@ def delete_ipfs_telemetry_files():
                 filename = files[i]["Name"]
                 client.files.rm(f"{IPFS_TELEMETRY_PATH}/{filename}")
                 _LOGGER.debug(f"Deleted old telemetry {filename}")
+
 
 @to_thread
 def create_folders():
@@ -148,11 +152,14 @@ def add_to_local_node(
     pin: bool,
     path: str,
     last_file_name: tp.Optional[str] = None,
-) -> tp.Optional[str]:
+) -> tp.Tuple[tp.Optional[str], tp.Optional[str]]:
     try:
         _LOGGER.debug(f"Start adding {filename} to local node, pin: {pin}")
         with ipfshttpclient2.connect() as client:
-            ipfs_hash = client.add(filename, pin=False)["Hash"]
+            result = client.add(filename, pin=False)
+            ipfs_hash: str = result["Hash"]
+            ipfs_file_size: int = int(result["Size"])
+            result = None
             _LOGGER.debug(
                 f"File {filename} was added to local node with cid: {ipfs_hash}"
             )
@@ -167,7 +174,8 @@ def add_to_local_node(
     except Exception as e:
         _LOGGER.error(f"Exception in add to local node: {e}")
         ipfs_hash = None
-    return ipfs_hash
+        ipfs_file_size = None
+    return ipfs_hash, ipfs_file_size
 
 
 @to_thread
@@ -177,15 +185,16 @@ def add_to_pinata(
     pinata: PinataPy,
     pin: bool,
     last_file_hash: tp.Optional[str] = None,
-) -> tp.Optional[str]:
+) -> tp.Tuple[tp.Optional[str], tp.Optional[str]]:
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
     try:
         res = pinata.pin_file_to_ipfs(filename)
         ipfs_hash = res["IpfsHash"]
+        ipfs_file_size: int = int(res["PinSize"])
         _LOGGER.debug(f"File {filename} was added to Pinata with cid: {ipfs_hash}")
     except Exception as e:
         _LOGGER.error(f"Exception in pinata pin: {e}, pinata response: {res}")
-        return None
+        return None, None
     if not pin:
         try:
             pinata.remove_pin_from_ipfs(last_file_hash)
@@ -195,7 +204,7 @@ def add_to_pinata(
             )
         except Exception as e:
             _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
-    return ipfs_hash
+    return ipfs_hash, ipfs_file_size
 
 
 @to_thread
@@ -206,7 +215,7 @@ def add_to_custom_gateway(
     pin: bool,
     seed: str = None,
     last_file_hash: tp.Optional[str] = None,
-) -> tp.Optional[str]:
+) -> tp.Tuple[tp.Optional[str], tp.Optional[str]]:
     if "https://" in url:
         url = url[8:]
     if url[-1] == "/":
@@ -218,7 +227,10 @@ def add_to_custom_gateway(
             with ipfshttpclient2.connect(
                 addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
             ) as client:
-                ipfs_hash = client.add(filename)["Hash"]
+                result = client.add(filename)
+                ipfs_hash: str = result["Hash"]
+                ipfs_file_size: int = int(result["Size"])
+                result = None
                 _LOGGER.debug(
                     f"File {filename} was added to {url} with cid: {ipfs_hash}"
                 )
@@ -226,7 +238,10 @@ def add_to_custom_gateway(
             with ipfshttpclient2.connect(
                 addr=f"/dns4/{url}/tcp/{port}/https"
             ) as client:
-                ipfs_hash = client.add(filename)["Hash"]
+                result = client.add(filename)
+                ipfs_hash: str = result["Hash"]
+                ipfs_file_size: int = int(result["Size"])
+                result = None
                 _LOGGER.debug(
                     f"File {filename} was added to {url} with cid: {ipfs_hash}"
                 )
@@ -246,8 +261,47 @@ def add_to_custom_gateway(
                     _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
     except Exception as e:
         _LOGGER.error(f"Exception in pinning to custom gateway: {e}")
+        return None, None
+    return ipfs_hash, ipfs_file_size
+
+
+@to_thread
+def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.Optional[tp.Tuple[str, str]]:
+    """
+    Call extrinsic "Place an order" in Crust network
+
+    @param hass: home Assistant instance
+    @param ipfs_hash: IPFS hash of file, which you want to store
+    @param file_size: size of file in IPFS in bytes
+    @return: result of extrinsic
+    """
+    seed: str = hass.data[DOMAIN][CONF_ADMIN_SEED]
+    mainnet = Mainnet(seed=seed, crypto_type=KeypairType.ED25519)
+    try:
+        # Check balance
+        balance = mainnet.get_balance()
+        _LOGGER.debug(f"Actual balance in crust network - {balance}")
+
+        # Check price in Main net. Price in pCRUs
+        price = mainnet.get_appx_store_price(file_size)
+        _LOGGER.debug(f"approximate cost to store the file - {price}")
+
+    except Exception as e:
+        _LOGGER.debug(f"error while get account balance - {e}")
+        return e
+
+    if price >= balance:
+        _LOGGER.error(f"Not enough account balance to store the file")
         return None
-    return ipfs_hash
+
+    try:
+        _LOGGER.debug(f"Start adding {ipfs_hash} to crust with size {file_size}")
+        file_stored = mainnet.store_file(ipfs_hash, file_size)
+        _LOGGER.debug(file_stored)
+    except Exception as e:
+        _LOGGER.debug(f"error while uploading file to crust - {e}")
+        return e
+    return file_stored
 
 
 async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
@@ -257,34 +311,40 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
     else:
         last_file_hash = None
         last_file_name = None
-    res = await add_to_ipfs(
+    ipfs_hash, size = await add_to_ipfs(
         hass, filename, IPFS_TELEMETRY_PATH, pin, last_file_hash, last_file_name
     )
-    return res
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
 
 
 async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
     last_file_name, last_file_hash = await get_last_file_hash(IPFS_CONFIG_PATH)
     new_hash = await get_hash(filename)
     if new_hash == last_file_hash:
-        _LOGGER.debug(f"Last config hash and the curret are the same: {last_file_hash}")
+        _LOGGER.debug(f"Last config hash and the current are the same: {last_file_hash}")
         return last_file_hash
-    res = await add_to_ipfs(
+    ipfs_hash, size = await add_to_ipfs(
         hass, filename, IPFS_CONFIG_PATH, False, last_file_hash, last_file_name
     )
-    return res
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
 
 
 async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
     last_file_name, last_file_hash = await get_last_file_hash(IPFS_BACKUP_PATH)
     new_hash = await get_hash(filename)
     if new_hash == last_file_hash:
-        _LOGGER.debug(f"Last backup hash and the curret are the same: {last_file_hash}")
+        _LOGGER.debug(f"Last backup hash and the current are the same: {last_file_hash}")
         return last_file_hash
-    res = await add_to_ipfs(
+    ipfs_hash, size = await add_to_ipfs(
         hass, filename, IPFS_BACKUP_PATH, False, last_file_hash, last_file_name
     )
-    return res
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
 
 
 async def add_to_ipfs(
@@ -296,12 +356,12 @@ async def add_to_ipfs(
     last_file_name: tp.Optional[str],
 ) -> tp.Optional[str]:
     if hass.data[DOMAIN][PINATA] is not None:
-        pinata_hash = await add_to_pinata(
+        pinata_hash, pinata_ipfs_file_size = await add_to_pinata(
             hass, filename, hass.data[DOMAIN][PINATA], pin, last_file_hash
         )
     else:
         pinata_hash = None
-    local_hash = await add_to_local_node(
+    local_hash, local_ipfs_file_size = await add_to_local_node(
         filename, pin, path, last_file_name
     )
     if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
@@ -309,7 +369,7 @@ async def add_to_ipfs(
             seed = hass.data[DOMAIN][CONF_ADMIN_SEED]
         else:
             seed = None
-        custom_hash = await add_to_custom_gateway(
+        custom_hash, custom_ipfs_file_size = await add_to_custom_gateway(
             filename,
             hass.data[DOMAIN][CONF_IPFS_GATEWAY],
             hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT],
@@ -321,13 +381,13 @@ async def add_to_ipfs(
         custom_hash = None
 
     if local_hash is not None:
-        return local_hash
+        return local_hash, local_ipfs_file_size
     elif pinata_hash is not None:
-        return pinata_hash
+        return pinata_hash, pinata_ipfs_file_size
     elif custom_hash is not None:
-        return custom_hash
+        return custom_hash, custom_ipfs_file_size
     else:
-        return None
+        return None, None
 
 
 def run_launch_command(
