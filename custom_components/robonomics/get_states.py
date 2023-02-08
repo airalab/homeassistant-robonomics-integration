@@ -33,8 +33,8 @@ from .const import (
     IPFS_HASH_CONFIG,
     TWIN_ID,
 )
-from .utils import encrypt_message
-from .ipfs import write_data_to_file, add_config_to_ipfs, add_telemetry_to_ipfs
+from .utils import encrypt_message, write_data_to_file
+from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs
 import json
 
 

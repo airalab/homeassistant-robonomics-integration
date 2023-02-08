@@ -1,3 +1,6 @@
+"""
+Entry point for integration.
+"""
 from __future__ import annotations
 from platform import platform
 
@@ -42,11 +45,7 @@ from .const import (
     CONF_IPFS_GATEWAY_PORT,
 )
 from .robonomics import Robonomics, check_subscription_left_days
-from .ipfs import (
-    get_ipfs_data,
-    add_backup_to_ipfs,
-    create_folders
-)
+from .ipfs import get_ipfs_data, add_backup_to_ipfs, create_folders
 from .get_states import get_and_send_data
 from .manage_users import manage_users
 from .backup_control import (
@@ -57,13 +56,12 @@ from .backup_control import (
 )
 
 
-async def init_integration(
-    hass: HomeAssistant,
-    data_config_path: str,
-) -> None:
-    sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+async def init_integration(hass: HomeAssistant) -> None:
+    """Compare rws devices with users from Home Assistant
 
-    # Checking rws devices to user list correlation
+    :param hass: HomeAssistant instance
+    """
+
     try:
         await asyncio.sleep(60)
         start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
@@ -77,9 +75,11 @@ async def init_integration(
     await get_and_send_data(hass)
 
 
-async def update_listener(hass, entry):
-    """
-    Handle options update.
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
+    """Handle options update. It's called when config updates.
+
+    :param hass: HomeAssistant instance
+    :param entry: Data from config
     """
     try:
         _LOGGER.debug("Reconfigure Robonomics Integration")
@@ -108,9 +108,17 @@ async def update_listener(hass, entry):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Robonomics Integration from a config entry.
+    It calls every time integration uploading and after config flow during initial
+    setup.
+
+    :param hass: HomeAssistant instance
+    :param entry: Data from config
+
+    :return: True after succesfull setting up
+
     """
-    Set up Robonomics Control from a config entry.
-    """
+
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
@@ -160,6 +168,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
 
     async def handle_time_changed(event):
+        """Callback for time' changing subscription.
+        It calls every timeout from config to get and send telemtry.
+        
+        :param event: Current date & time
+        """
+
         try:
             time_change_count_in_day = 24 * 60 / (hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds / 60)
             hass.data[DOMAIN][TIME_CHANGE_COUNT] += 1
@@ -174,6 +188,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
 
     async def handle_save_backup(call):
+        """Callback for save_backup_to_robonomics service.
+        It creates secure backup, adds to IPFS and updates
+        the Digital Twin topic.
+        """
+
         if os.path.isdir(data_backup_path):
             shutil.rmtree(data_backup_path)
             os.mkdir(data_backup_path)
@@ -190,6 +209,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(ipfs_hash, hass.data[DOMAIN][TWIN_ID])
 
     async def handle_restore_from_backup(call):
+        """Callback for restore_from_robonomics_backup service.
+        It restores configuration file from backup.
+        """
+
         try:
             config_path = Path(hass.config.path())
             backup_encrypted_path = call.data.get("backup_path")
@@ -250,7 +273,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                 _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
-    asyncio.ensure_future(init_integration(hass, data_config_path))
+    asyncio.ensure_future(init_integration(hass))
 
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
@@ -261,8 +284,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     _LOGGER.debug(f"setup data: {config.get(DOMAIN)}")
     return True
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry.
+    It calls during integration's removing.
+
+    :param hass: HomeAssistant instance
+    :param entry: Data from config
+
+    :return: True when integration is unloaded
+    """
+
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     hass.data.pop(DOMAIN)

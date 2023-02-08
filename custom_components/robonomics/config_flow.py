@@ -163,6 +163,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_conf(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the second step of the configuration. Contains fields to provide credentials.
+        
         :param: user_input: Dict with the keys from STEP_USER_DATA_SCHEMA and values provided by user
 
         :return: Service functions from HomeAssistant

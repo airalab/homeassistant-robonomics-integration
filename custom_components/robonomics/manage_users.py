@@ -1,124 +1,48 @@
-from __future__ import annotations
-from platform import platform
+"""
+This module contain functions to work with Home Assistant users.
 
-from homeassistant.core import HomeAssistant
+It allows to create or delete Home Assistant user from Robonomics device list.
+External functions here are manage_users() and change_password().
+"""
+
+from __future__ import annotations
+
 from homeassistant.auth import auth_manager_from_config, models
+from homeassistant.auth.providers import AuthProvider
 from homeassistant.auth.const import GROUP_ID_USER
-from homeassistant.const import RESTART_EXIT_CODE
+from homeassistant.core import HomeAssistant
 
 from substrateinterface import Keypair, KeypairType
 from robonomicsinterface import Account
-import logging
+
 import typing as tp
-import asyncio
+import logging
+import json
 
-_LOGGER = logging.getLogger(__name__)
-
+from .utils import decrypt_message
 from .const import (
     CONF_SUB_OWNER_ADDRESS,
     CONF_ADMIN_SEED,
     DOMAIN,
     ROBONOMICS,
 )
-from .utils import decrypt_message
-import json
+
+_LOGGER = logging.getLogger(__name__)
 
 manage_users_queue = 0
 
 
-async def _get_provider(hass: HomeAssistant):
-    """
-    Returns Home Assistant auth provider
-    """
-    hass.auth = await auth_manager_from_config(hass, [{"type": "homeassistant"}], [])
-    provider = hass.auth.auth_providers[0]
-    await provider.async_initialize()
-    return provider
+async def manage_users(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
+    """Compare users and data from transaction
 
+    Compare current users of Home Assistant and Robonomics subscription device list. Decide what users must be
+    created or deleted.
 
-async def _create_user(hass: HomeAssistant, provider, username: str, password: str) -> None:
-    """
-    Create user in Home Assistant
-    """
-    try:
-        _LOGGER.debug(f"Start creating user: {username}")
-        created_user = await hass.auth.async_create_user(username, group_ids=[GROUP_ID_USER])
-        provider.data.add_auth(username, password)
-        credentials = await provider.async_get_or_create_credentials({"username": username})
-        await provider.data.async_save()
-        await hass.auth.async_link_user(created_user, credentials)
-        _LOGGER.debug(f"User was created: {username}, password: {password}")
-    except Exception as e:
-        _LOGGER.error(f"Exception in create user: {e}")
+    :param hass: Home Assistant instance
+    :param data: tuple of addresses in robonomics subscription
 
-
-async def _delete_user(hass: HomeAssistant, provider, username: str) -> None:
     """
-    Delete user from Home Assistant
-    """
-    try:
-        _LOGGER.debug(f"Start deleting user {username}")
-        provider.data.async_remove_auth(username)
-        users = await hass.auth.async_get_users()
-        for user in users:
-            if user.name == username:
-                await hass.auth.async_remove_user(user)
-        _LOGGER.debug(f"User was deleted: {username}")
-    except Exception as e:
-        _LOGGER.error(f"Exception in delete user: {e}")
 
-
-async def change_password(hass: HomeAssistant, data):
-    """
-    Chage password for existing user or create new user
-    """
-    _LOGGER.debug(f"Start setting password for username {data[0]}")
-    provider = await _get_provider(hass)
-    sender_kp = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
-    sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
-    rec_kp = sub_admin_acc.keypair
-    try:
-        message = json.loads(data[2])
-    except Exception as e:
-        _LOGGER.warning(f"Message in Datalog is in wrong format: {e}\nMessage: {data[2]}")
-        return
-    if (
-        "admin" in message
-        and message["subscription"] == hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]
-        and message["ha"] == sub_admin_acc.get_address()
-    ):
-        try:
-            password = str(decrypt_message(message["admin"], sender_kp.public_key, rec_kp))
-            password = password[2:-1]
-            _LOGGER.debug(f"Decrypted password: {password}")
-        except Exception as e:
-            _LOGGER.error(f"Exception in change password decrypt: {e}")
-            return
-        try:
-            username = data[0].lower()
-            users = await hass.auth.async_get_users()
-            for user in users:
-                if user.name == username:
-                    await _delete_user(hass, provider, username)
-            await _create_user(hass, provider, username, password)
-
-        except Exception as e:
-            _LOGGER.error(f"Exception in change password: {e}")
-            return
-        _LOGGER.debug("Restarting...")
-        await provider.data.async_save()
-        # hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
-        # while hass.data[DOMAIN][ROBONOMICS].subscriber._subscription.is_alive():
-        #     await asyncio.sleep(0.5)
-        await hass.services.async_call("homeassistant", "restart")
-    else:
-        _LOGGER.warning(f"Message for setting password for {data[0]} is in wrong format")
-
-
-async def manage_users(hass: HomeAssistant, data: tp.Tuple(str)) -> None:
-    """
-    Compare users and data from transaction decide what users must be created or deleted
-    """
     global manage_users_queue
     manage_users_queue += 1
     my_queue = manage_users_queue
@@ -176,3 +100,109 @@ async def manage_users(hass: HomeAssistant, data: tp.Tuple(str)) -> None:
         # await hass.async_stop(RESTART_EXIT_CODE)
         # _LOGGER.debug(f"After restart")
         await hass.services.async_call("homeassistant", "restart")
+
+
+async def change_password(hass: HomeAssistant, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
+    """Change password for existing user or create new user
+
+    :param hass: Home assistant instance
+    :param data: data from datalog to change password
+
+    """
+
+    _LOGGER.debug(f"Start setting password for username {data[0]}")
+    provider = await _get_provider(hass)
+    sender_kp = Keypair(ss58_address=data[0], crypto_type=KeypairType.ED25519)
+    sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+    rec_kp = sub_admin_acc.keypair
+    try:
+        message = json.loads(data[2])
+    except Exception as e:
+        _LOGGER.warning(f"Message in Datalog is in wrong format: {e}\nMessage: {data[2]}")
+        return
+    if (
+        "admin" in message
+        and message["subscription"] == hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]
+        and message["ha"] == sub_admin_acc.get_address()
+    ):
+        try:
+            password = str(decrypt_message(message["admin"], sender_kp.public_key, rec_kp))
+            password = password[2:-1]
+            _LOGGER.debug(f"Decrypted password: {password}")
+        except Exception as e:
+            _LOGGER.error(f"Exception in change password decrypt: {e}")
+            return
+        try:
+            username = data[0].lower()
+            users = await hass.auth.async_get_users()
+            for user in users:
+                if user.name == username:
+                    await _delete_user(hass, provider, username)
+            await _create_user(hass, provider, username, password)
+
+        except Exception as e:
+            _LOGGER.error(f"Exception in change password: {e}")
+            return
+        _LOGGER.debug("Restarting...")
+        await provider.data.async_save()
+        # hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
+        # while hass.data[DOMAIN][ROBONOMICS].subscriber._subscription.is_alive():
+        #     await asyncio.sleep(0.5)
+        await hass.services.async_call("homeassistant", "restart")
+    else:
+        _LOGGER.warning(f"Message for setting password for {data[0]} is in wrong format")
+
+
+async def _get_provider(hass: HomeAssistant) -> AuthProvider:
+    """Returns Home Assistant auth provider
+
+    :param hass: Home Assistant instance
+
+    :return: Home Assistant auth provider
+    """
+
+    hass.auth = await auth_manager_from_config(hass, [{"type": "homeassistant"}], [])
+    provider = hass.auth.auth_providers[0]
+    await provider.async_initialize()
+    return provider
+
+
+async def _create_user(hass: HomeAssistant, provider, username: str, password: str) -> None:
+    """Create user in Home Assistant
+
+    :param hass: Home Assistant instance
+    :param provider: Provider of user authentication
+    :param username: New user username
+    :param password: New user password
+    """
+
+    try:
+        _LOGGER.debug(f"Start creating user: {username}")
+        created_user = await hass.auth.async_create_user(username, group_ids=[GROUP_ID_USER])
+        provider.data.add_auth(username, password)
+        credentials = await provider.async_get_or_create_credentials({"username": username})
+        await provider.data.async_save()
+        await hass.auth.async_link_user(created_user, credentials)
+        _LOGGER.debug(f"User was created: {username}, password: {password}")
+    except Exception as e:
+        _LOGGER.error(f"Exception in create user: {e}")
+
+
+async def _delete_user(hass: HomeAssistant, provider, username: str) -> None:
+    """Delete user from Home Assistant
+
+    :param hass: Home Assistant instance
+    :param provider: Provider of user authentication
+    :param username: Username to delete
+    """
+
+    try:
+        _LOGGER.debug(f"Start deleting user {username}")
+        provider.data.async_remove_auth(username)
+        users = await hass.auth.async_get_users()
+        for user in users:
+            if user.name == username:
+                await hass.auth.async_remove_user(user)
+        _LOGGER.debug(f"User was deleted: {username}")
+    except Exception as e:
+        _LOGGER.error(f"Exception in delete user: {e}")
