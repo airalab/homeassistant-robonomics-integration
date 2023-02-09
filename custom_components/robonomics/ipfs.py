@@ -55,13 +55,14 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
-    """
-    Send telemetry files to IPFS
+    """Send telemetry files to IPFS
 
     :param hass: Home Assistant instance
     :param filename: file with telemetry
+
     :return: IPFS hash of file
     """
+
     pin = await _check_save_previous_pin(filename)
     if not pin:
         last_file_name, last_file_hash = await _get_last_file_hash(IPFS_TELEMETRY_PATH)
@@ -75,13 +76,14 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
 
 
 async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
-    """
-    Send configuration file to IPFS
+    """Send configuration file to IPFS
 
     :param hass: Home Assistant instance
     :param filename: file with configuration of Home Assistant dashboard and services
+
     :return: IPFS hash of file
     """
+
     last_file_name, last_file_hash = await _get_last_file_hash(IPFS_CONFIG_PATH)
     new_hash = await get_hash(filename)
     if new_hash == last_file_hash:
@@ -94,13 +96,14 @@ async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[
 
 
 async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
-    """
-    Send backup file to IPFS
+    """Send backup file to IPFS
 
     :param hass: Home Assistant instance
     :param filename: file with full Home Assistant backup.
+
     :return: IPFS hash of file
     """
+
     last_file_name, last_file_hash = await _get_last_file_hash(IPFS_BACKUP_PATH)
     new_hash = await get_hash(filename)
     if new_hash == last_file_hash:
@@ -114,9 +117,8 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[
 
 @to_thread
 def create_folders() -> None:
-    """
-    Function creates IPFS folders to store Robonomics telemetry, configuration and backup files
-    """
+    """Function creates IPFS folders to store Robonomics telemetry, configuration and backup files"""
+
     with ipfshttpclient2.connect() as client:
         try:
             client.files.mkdir(IPFS_TELEMETRY_PATH)
@@ -151,8 +153,9 @@ async def get_ipfs_data(
         MORALIS_GATEWAY,
     ],
 ) -> bool:
-    """
-    recursive function to Get data from IPFS. Call when need to download telemetry, launch or backup files.
+    """Recursive function to Get data from IPFS.
+
+    Call when need to download telemetry, launch or backup files.
     call different functions depend on which file need to download.
     if download telemetry - it will restore "digital twin" from telemetry
     if download launch - call _run_launch_command() function to start device
@@ -165,8 +168,10 @@ async def get_ipfs_data(
     :param launch: bool value, that will get launch file
     :param telemetry: bool value, that will get telemetry file
     :param gateways: list of IPFS gateways, where function will search a file
+
     :return: bool as result of operation
     """
+
     if number_of_request >= MAX_NUMBER_OF_REQUESTS:
         return False
     websession = async_create_clientsession(hass)
@@ -221,9 +226,8 @@ async def get_ipfs_data(
 
 
 def _delete_ipfs_telemetry_files():
-    """
-    Delete old files from IPFS from local telemetry storage
-    """
+    """Delete old files from IPFS from local telemetry storage"""
+
     with ipfshttpclient2.connect() as client:
         files = client.files.ls(IPFS_TELEMETRY_PATH)["Entries"]
         num_files_to_delete = len(files) - IPFS_MAX_FILE_NUMBER
@@ -236,12 +240,13 @@ def _delete_ipfs_telemetry_files():
 
 @to_thread
 def _check_save_previous_pin(filename: str) -> bool:
-    """
-    Function checks previous telemetry pins and decide should unpin previous pin or not
+    """ Function checks previous telemetry pins and decide should unpin previous pin or not
 
     :param filename: file object, with which comparing time from last pin
+
     :return: True - need to save previous file; False - need to unpin previous file
     """
+
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(IPFS_TELEMETRY_PATH)
@@ -268,11 +273,13 @@ def _check_save_previous_pin(filename: str) -> bool:
 
 @to_thread
 def _get_last_file_hash(path: str) -> (str, str):
-    """
-    function return name and hash of the last telemetry, configuration and backup
+    """function return name and hash of the last telemetry, configuration and backup
+
     :param path: path to directory with files
+
     :return: name of last file, and file hash
     """
+
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(path)
@@ -295,15 +302,16 @@ def _add_to_local_node(
     path: str,
     last_file_name: tp.Optional[str] = None,
 ) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
-    """
-    function add file to local IPFS client
+    """function add file to local IPFS client
 
     :param filename: file with data
     :param pin: should unpin previous pin or not
     :param path: path to folder where to store file
     :param last_file_name: name of file, which should be unpin(if needed)
+
     :return: IPFS hash of file and file size in IPFS
     """
+
     try:
         _LOGGER.debug(f"Start adding {filename} to local node, pin: {pin}")
         with ipfshttpclient2.connect() as client:
@@ -332,15 +340,17 @@ def _add_to_pinata(
     pin: bool,
     last_file_hash: tp.Optional[str] = None,
 ) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
-    """
+    """Add file to Pinata service
 
     :param hass:  Home Assistant instance
     :param filename: file with data
     :param pinata: pinata client object
     :param pin: should unpin previous pin or not
-    :param last_file_hash: hash of file, which should be unpin(if needed)
+    :param last_file_hash: hash of file, which should be unpinned(if needed)
+
     :return: IPFS hash of file and file size in IPFS
     """
+
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
     try:
         res = pinata.pin_file_to_ipfs(filename)
@@ -373,8 +383,7 @@ def _add_to_custom_gateway(
     seed: str = None,
     last_file_hash: tp.Optional[str] = None,
 ) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
-    """
-    function sent file to provided custom IPFS gateway
+    """function sent file to provided custom IPFS gateway
 
     :param filename: file with data
     :param url: URL of IPFS public gateway
@@ -382,8 +391,10 @@ def _add_to_custom_gateway(
     :param pin: should unpin previous pin or not
     :param seed: seed of web3 account. Required if the gateway have web3 authorization
     :param last_file_hash: hash of file, which should be unpin(if needed)
+
     :return: IPFS hash of file and file size in IPFS
     """
+
     if "https://" in url:
         url = url[8:]
     if url[-1] == "/":
@@ -423,14 +434,15 @@ def _add_to_custom_gateway(
 
 @to_thread
 def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.Optional[tp.Tuple[str, str]]:
-    """
-    Call extrinsic "Place an order" in Crust network
+    """Call extrinsic "Place an order" in Crust network
 
     :param hass: home Assistant instance
     :param ipfs_hash: IPFS hash of file, which you want to store
     :param file_size: size of file in IPFS in bytes
+
     :return: result of extrinsic
     """
+
     seed: str = hass.data[DOMAIN][CONF_ADMIN_SEED]
     mainnet = Mainnet(seed=seed, crypto_type=KeypairType.ED25519)
     try:
@@ -468,8 +480,7 @@ async def _add_to_ipfs(
     last_file_hash: tp.Optional[str],
     last_file_name: tp.Optional[str],
 ) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
-    """
-    function uploads file to different IPFS gateways
+    """Function uploads file to different IPFS gateways
 
     :param hass: Home Assistant instance
     :param filename: file with data
@@ -477,8 +488,10 @@ async def _add_to_ipfs(
     :param pin: should unpin previous pin or not
     :param last_file_hash: hash of file, which should be unpinned(if needed)
     :param last_file_name: name of file, which should be unpinned(if needed)
+
     :return: IPFS hash of file and file size in IPFS
     """
+
     pinata_ipfs_file_size, local_ipfs_file_size, custom_ipfs_file_size = 0, 0, 0
 
     if hass.data[DOMAIN][PINATA] is not None:
@@ -515,13 +528,13 @@ async def _add_to_ipfs(
 
 
 def _run_launch_command(hass: HomeAssistant, encrypted_command: str, sender_address: str) -> None:
-    """
-    function to unwrap launch command and call Home Assistant service for device
+    """Function to unwrap launch command and call Home Assistant service for device
 
     :param hass: Home Assistant instance
     :param encrypted_command: command from IPFS
     :param sender_address: launch's user address
     """
+
     try:
         if encrypted_command is None:
             _LOGGER.error(f"Can't get command")
@@ -571,8 +584,9 @@ async def _get_request(
     launch: bool,
     telemetry: bool,
 ) -> bool:
-    """
-    provide get request to IPFS gateways. This function wraps to asyncio in get_ipfs_data() function.
+    """provide get request to IPFS gateways.
+
+    This function wraps to asyncio in get_ipfs_data() function.
 
     :param hass: Home Assistant instance
     :param websession: aiohttp Client Session
@@ -580,8 +594,10 @@ async def _get_request(
     :param sender_address: sender's address, who sends launch command
     :param launch: bool value, that will get launch file
     :param telemetry: bool value, that will get telemetry file
+
     :return: True, if launch success
     """
+
     _LOGGER.debug(f"Request to {url}")
     try:
         resp = await websession.get(url)
