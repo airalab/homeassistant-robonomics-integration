@@ -15,6 +15,7 @@ import ipfshttpclient2
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
 from homeassistant.core import HomeAssistant
+import time
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,6 +106,23 @@ def get_hash(filename: str) -> tp.Optional[str]:
         ipfs_hash_local = None
     return ipfs_hash_local
 
+
+def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
+    """
+    Create file and store data in it
+
+    :param data: data, which to be written to the file
+    :param data_path: path, where to store file
+    :param config:
+    :return:
+    """
+    if config:
+        filename = f"{data_path}/config_encrypted-{time.time()}"
+    else:
+        filename = f"{data_path}/data-{time.time()}"
+    with open(filename, "w") as f:
+        f.write(data)
+    return filename
 
 # TODO:
 # chage import get_hash in ipfs.py to import get_hash from utils
