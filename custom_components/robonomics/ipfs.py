@@ -116,6 +116,7 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[
     return ipfs_hash
 
 
+
 @to_thread
 def create_folders() -> None:
     """Function creates IPFS folders to store Robonomics telemetry, configuration and backup files"""
@@ -526,7 +527,6 @@ async def _add_to_ipfs(
         return custom_hash, custom_ipfs_file_size
     else:
         return None, None
-
 
 def _run_launch_command(hass: HomeAssistant, encrypted_command: str, sender_address: str) -> None:
     """Function to unwrap launch command and call Home Assistant service for device
