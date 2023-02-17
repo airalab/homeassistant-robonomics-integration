@@ -1,28 +1,29 @@
-from substrateinterface import KeypairType
-from robonomicsinterface import (
-    Account,
-    Subscriber,
-    SubEvent,
-    Datalog,
-    RWS,
-    Datalog,
-    DigitalTwin,
-)
-from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
-from aenum import extend_enum
-from homeassistant.core import callback, HomeAssistant
-
-from threading import Thread
-import logging
-import typing as tp
 import asyncio
-import time
 import json
-from .utils import to_thread, create_notification
+import logging
+import time
+import typing as tp
+from ast import literal_eval
+from threading import Thread
+
+from aenum import extend_enum
+from homeassistant.core import HomeAssistant, callback
+from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber
+from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
+from substrateinterface import Keypair, KeypairType
+
+from .const import (
+    CONF_ADMIN_SEED,
+    CONF_SUB_OWNER_ADDRESS,
+    DOMAIN,
+    HANDLE_IPFS_REQUEST,
+    ROBONOMICS,
+    RWS_DAYS_LEFT_NOTIFY,
+    TWIN_ID,
+)
 from .ipfs import get_ipfs_data
 from .manage_users import change_password, manage_users
-from .const import HANDLE_LAUNCH, DOMAIN, ROBONOMICS, TWIN_ID, RWS_DAYS_LEFT_NOTIFY, CONF_SUB_OWNER_ADDRESS
-from datetime import datetime
+from .utils import create_notification, decrypt_message, to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,6 +62,55 @@ async def check_subscription_left_days(hass: HomeAssistant) -> None:
         await create_notification(hass, service_data)
 
 
+def _run_launch_command(hass: HomeAssistant, encrypted_command: str, sender_address: str) -> None:
+    """Function to unwrap launch command and call Home Assistant service for device
+
+    :param hass: Home Assistant instance
+    :param encrypted_command: command from IPFS
+    :param sender_address: launch's user address
+    """
+
+    try:
+        if encrypted_command is None:
+            _LOGGER.error(f"Can't get command")
+            return
+    except Exception as e:
+        _LOGGER.error(f"Exception in get ipfs command: {e}")
+        return None
+    _LOGGER.debug(f"Got from launch: {encrypted_command}")
+    if "platform" in encrypted_command:
+        message = literal_eval(encrypted_command)
+    else:
+        kp_sender = Keypair(ss58_address=sender_address, crypto_type=KeypairType.ED25519)
+        sub_admin_kp = Keypair.create_from_mnemonic(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+        try:
+            decrypted = decrypt_message(encrypted_command, kp_sender.public_key, sub_admin_kp)
+        except Exception as e:
+            _LOGGER.error(f"Exception in decrypt command: {e}")
+            return None
+        decrypted = str(decrypted)[2:-1]
+        _LOGGER.debug(f"Decrypted command: {decrypted}")
+        message = literal_eval(decrypted)
+    try:
+        # domain="light", service="turn_on", service_data={"rgb_color": [30, 30, 230]}
+        # target={"entity_id": "light.shapes_9275"}
+        message_entity_id = message["params"]["entity_id"]
+        params = message["params"].copy()
+        del params["entity_id"]
+        if params == {}:
+            params = None
+        hass.async_create_task(
+            hass.services.async_call(
+                domain=message["platform"],
+                service=message["name"],
+                service_data=params,
+                target={"entity_id": message_entity_id},
+            )
+        )
+    except Exception as e:
+        _LOGGER.error(f"Exception in sending command: {e}")
+
+
 @callback
 async def _handle_launch(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
     """Handle a command from launch transaction
@@ -70,14 +120,16 @@ async def _handle_launch(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
     """
 
     _LOGGER.debug("Start handle launch")
-    hass.data[DOMAIN][HANDLE_LAUNCH] = True
+    hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
     try:
         ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
-        response_text = await get_ipfs_data(
-            hass, ipfs_hash, data[0], 0
+        result = await get_ipfs_data(
+            hass, ipfs_hash, 0
         )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
+        _LOGGER.debug(f"Result: {result}")
+        _run_launch_command(hass, result, data[0])
     except Exception as e:
-        _LOGGER.error(f"Exception in get ipfs command: {e}")
+        _LOGGER.error(f"Exception in launch handler command: {e}")
         return
 
 
@@ -293,12 +345,7 @@ class Robonomics:
             return None
 
     def subscribe(self) -> None:
-        """Subscribe to NewDevices and NewLaunch events
-
-        :param handle_launch: Call this function if NewLaunch event
-        :param manage_users: Call this function if NewDevices event
-        :param change_password: Call this function if NewRecord event from one of devices
-        """
+        """Subscribe to NewDevices and NewLaunch events"""
 
         try:
             account = Account()

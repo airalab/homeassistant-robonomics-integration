@@ -7,25 +7,19 @@ External functions here are manage_users() and change_password().
 
 from __future__ import annotations
 
-from homeassistant.auth import auth_manager_from_config, models
-from homeassistant.auth.providers import AuthProvider
-from homeassistant.auth.const import GROUP_ID_USER
-from homeassistant.core import HomeAssistant
-
-from substrateinterface import Keypair, KeypairType
-from robonomicsinterface import Account
-
-import typing as tp
-import logging
 import json
+import logging
+import typing as tp
 
+from homeassistant.auth import auth_manager_from_config, models
+from homeassistant.auth.const import GROUP_ID_USER
+from homeassistant.auth.providers import AuthProvider
+from homeassistant.core import HomeAssistant
+from robonomicsinterface import Account
+from substrateinterface import Keypair, KeypairType
+
+from .const import CONF_ADMIN_SEED, CONF_SUB_OWNER_ADDRESS, DOMAIN, ROBONOMICS
 from .utils import decrypt_message
-from .const import (
-    CONF_SUB_OWNER_ADDRESS,
-    CONF_ADMIN_SEED,
-    DOMAIN,
-    ROBONOMICS,
-)
 
 _LOGGER = logging.getLogger(__name__)
 

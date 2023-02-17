@@ -26,7 +26,7 @@ PINATA = "pinata"
 IPFS_API = "ipfs_api"
 HANDLE_TIME_CHANGE = "hadle_time_change"
 TIME_CHANGE_UNSUB = "time_change_unsub"
-HANDLE_LAUNCH = "handle_launch"
+HANDLE_IPFS_REQUEST = "handle_ipfs_request"
 
 DATA_PATH = ".ha_robonomics_data"
 DATA_CONFIG_PATH = ".ha_robonomics_data/dashboard_services"
