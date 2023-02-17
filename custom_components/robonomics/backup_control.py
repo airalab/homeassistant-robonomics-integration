@@ -13,14 +13,12 @@ import logging
 import os
 import shutil
 import tarfile
-import typing as tp
 from datetime import datetime
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 
-# from securetar import SecureTarFile, atomic_contents_add, secure_path
-from substrateinterface import Keypair, KeypairType
+from substrateinterface import Keypair
 
 from .const import DATA_BACKUP_ENCRYPTED_PATH, DATA_BACKUP_PATH, DOMAIN, EXCLUDE_FROM_BACKUP, ROBONOMICS, TWIN_ID
 from .utils import decrypt_message, encrypt_message, get_hash, to_thread
@@ -197,5 +195,3 @@ async def restore_from_backup(
         await hass.services.async_call("homeassistant", "restart")
     except Exception as e:
         _LOGGER.debug(f"Exception in restore from backup: {e}")
-    # service_data = {"message": "Configuration was restored from remote Robonomics backup. Restart Home Assistant.", "title": "Configuration Restored"}
-    # hass.async_create_task(hass.services.async_call(domain="notify", service="persistent_notification", service_data=service_data))

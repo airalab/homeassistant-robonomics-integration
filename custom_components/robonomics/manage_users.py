@@ -11,7 +11,7 @@ import json
 import logging
 import typing as tp
 
-from homeassistant.auth import auth_manager_from_config, models
+from homeassistant.auth import auth_manager_from_config
 from homeassistant.auth.const import GROUP_ID_USER
 from homeassistant.auth.providers import AuthProvider
 from homeassistant.core import HomeAssistant

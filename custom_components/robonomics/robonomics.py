@@ -21,6 +21,7 @@ from .const import (
     RWS_DAYS_LEFT_NOTIFY,
     TWIN_ID,
 )
+from .get_states import get_and_send_data
 from .ipfs import get_ipfs_data
 from .manage_users import change_password, manage_users
 from .utils import create_notification, decrypt_message, to_thread
@@ -128,6 +129,7 @@ async def _handle_launch(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
         )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
         _LOGGER.debug(f"Result: {result}")
         _run_launch_command(hass, result, data[0])
+        await get_and_send_data(hass)
     except Exception as e:
         _LOGGER.error(f"Exception in launch handler command: {e}")
         return
