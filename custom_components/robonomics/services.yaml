@@ -1,0 +1,16 @@
+save_backup_to_robonomics:
+  name: Save Backup to Robonomics
+  description: Create new backup, save it to IPFS and send a transaction to Robonomics blockchain with IPFS hash
+
+restore_from_robonomics_backup:
+  name: Restore from the Backup in Robonomics
+  description: Get the latest backup from Robonomics Network and restore from it
+  fields:
+    backup_path:
+      description: Path to the backup enrypted file (if doesn't set get backup from Robonomics blockchain)
+      name: Path to the backup (Optional)
+      required: false
+      advanced: true
+      example: "/home/homeassistant/.homeassistant/backups/example.tar.xz"
+      selector:
+        text:

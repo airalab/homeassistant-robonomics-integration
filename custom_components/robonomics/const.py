@@ -9,13 +9,15 @@ CONF_SUB_OWNER_ADDRESS = "sub_owner_address"
 CONF_PINATA_PUB = "pinata_pub"
 CONF_PINATA_SECRET = "pinata_secret"
 CONF_SENDING_TIMEOUT = "sending_timeout"
-CONF_CARBON_SERVICE = "carbon_service"
 CONF_ENERGY_SENSORS = "energy_sensors"
+CONF_IPFS_GATEWAY = "user_ipfs_gateway"
+CONF_IPFS_GATEWAY_AUTH = "user_ipfs_gateway_auth"
+CONF_IPFS_GATEWAY_PORT = "user_ipfs_gateway_port"
+CONF_WARN_DATA_SENDING = "warn_data_sending"
+CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
 
-INFURA_API = "https://ipfs.infura.io:5001/api/v0/add"
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
-CRUST_GATEWAY = "https://crustwebsites.net/ipfs/"
 LOCAL_GATEWAY = "http://localhost:8080/ipfs/"
 
 SENDING_TIMEOUT = "sending_timeout"
@@ -28,5 +30,36 @@ HANDLE_LAUNCH = "handle_launch"
 
 DATA_PATH = ".ha_robonomics_data"
 DATA_CONFIG_PATH = ".ha_robonomics_data/dashboard_services"
+DATA_BACKUP_ENCRYPTED_PATH = ".ha_robonomics_data/backups/backup_remote_encrypted"
+DATA_BACKUP_PATH = ".ha_robonomics_data/backups"
 IPFS_HASH_CONFIG = "ipfs_hash_config"
+IPFS_TELEMETRY_PATH = "/ha_robonomics_telemetry"
+IPFS_BACKUP_PATH = "/ha_robonomics_backup"
+IPFS_CONFIG_PATH = "/ha_robonomics_config"
 TWIN_ID = "twin_id"
+
+RWS_DAYS_LEFT_NOTIFY = 5
+TIME_CHANGE_COUNT = "time_change_count"
+MAX_NUMBER_OF_REQUESTS = 4
+SECONDS_IN_DAY = 24 * 60 * 60
+IPFS_MAX_FILE_NUMBER = 700
+
+EXCLUDE_FROM_BACKUP = [
+    "__pycache__/*",
+    ".DS_Store",
+    "*.db",
+    "*.db-*",
+    "*.log.*",
+    "*.log",
+    "backups/*",
+    "OZW_Log.txt",
+]
+
+DELETE_ATTRIBUTES = [
+    "unit_of_measurement",
+    "min_mireds",
+    "max_mireds",
+    "linkquality",
+    "transition",
+    "supported_features",
+]

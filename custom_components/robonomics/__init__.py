@@ -1,92 +1,126 @@
+"""
+Entry point for integration.
+"""
 from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import shutil
+from datetime import timedelta
+from pathlib import Path
 from platform import platform
 
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.event import async_track_time_interval
-
-from substrateinterface import Keypair, KeypairType
-import asyncio
 from homeassistant.config_entries import ConfigEntry
-import logging
-from robonomicsinterface import Account
-from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash
-import typing as tp
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
-import os
-import ipfsApi
-import time
-from datetime import timedelta
+from robonomicsinterface import Account
+from substrateinterface import KeypairType
 
 _LOGGER = logging.getLogger(__name__)
 
+from .backup_control import check_backup_change, create_secure_backup, restore_from_backup, unpack_backup
 from .const import (
+    CONF_ADMIN_SEED,
+    CONF_IPFS_GATEWAY,
+    CONF_IPFS_GATEWAY_AUTH,
+    CONF_IPFS_GATEWAY_PORT,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
-    CONF_SUB_OWNER_ADDRESS,
-    CONF_ADMIN_SEED,
-    DOMAIN,
     CONF_SENDING_TIMEOUT,
-    ROBONOMICS,
-    PINATA,
-    IPFS_API,
-    HANDLE_TIME_CHANGE,
-    TIME_CHANGE_UNSUB,
-    CONF_CARBON_SERVICE,
-    CONF_ENERGY_SENSORS,
-    HANDLE_LAUNCH,
+    CONF_SUB_OWNER_ADDRESS,
+    DATA_BACKUP_PATH,
     DATA_CONFIG_PATH,
     DATA_PATH,
-    TWIN_ID
+    DOMAIN,
+    HANDLE_LAUNCH,
+    HANDLE_TIME_CHANGE,
+    MAX_NUMBER_OF_REQUESTS,
+    PINATA,
+    ROBONOMICS,
+    TIME_CHANGE_COUNT,
+    TIME_CHANGE_UNSUB,
+    TWIN_ID,
 )
-from .utils import decrypt_message, to_thread, encrypt_for_devices
-from .robonomics import Robonomics
-from .ipfs import get_ipfs_data, add_to_ipfs, write_data_to_file
 from .get_states import get_and_send_data
-from .manage_users import change_password, manage_users
-import json
+from .ipfs import add_backup_to_ipfs, create_folders, get_ipfs_data
+from .manage_users import manage_users
+from .robonomics import Robonomics, check_subscription_left_days
 
-async def update_listener(hass, entry):
+
+async def init_integration(hass: HomeAssistant) -> None:
+    """Compare rws devices with users from Home Assistant
+
+    :param hass: HomeAssistant instance
     """
-    Handle options update.
+
+    try:
+        await asyncio.sleep(60)
+        start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
+        _LOGGER.debug(f"Start devices list is {start_devices_list}")
+        hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
+    except Exception as e:
+        print(f"Exception in fist check devices {e}")
+
+    await check_backup_change(hass)
+    # await asyncio.sleep(60)
+    await get_and_send_data(hass)
+
+
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
+    """Handle options update. It's called when config updates.
+
+    :param hass: HomeAssistant instance
+    :param entry: Data from config
     """
     try:
         _LOGGER.debug("Reconfigure Robonomics Integration")
         _LOGGER.debug(f"HASS.data before: {hass.data[DOMAIN]}")
         _LOGGER.debug(f"entry options before: {entry.options}")
-        hass.data[DOMAIN][CONF_CARBON_SERVICE] = entry.options[CONF_CARBON_SERVICE]
-        if entry.options[CONF_CARBON_SERVICE]:
-            hass.data[DOMAIN][CONF_ENERGY_SENSORS] = entry.options[CONF_ENERGY_SENSORS]
-        else:
-            hass.data[DOMAIN][CONF_ENERGY_SENSORS] = []
+        if CONF_IPFS_GATEWAY in entry.options:
+            hass.data[DOMAIN][CONF_IPFS_GATEWAY] = entry.options[CONF_IPFS_GATEWAY]
+        hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH] = entry.options[CONF_IPFS_GATEWAY_AUTH]
+        hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT] = entry.options[CONF_IPFS_GATEWAY_PORT]
         hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(minutes=entry.options[CONF_SENDING_TIMEOUT])
         if (CONF_PINATA_PUB in entry.options) and (CONF_PINATA_SECRET in entry.options):
             hass.data[DOMAIN][PINATA] = PinataPy(entry.options[CONF_PINATA_PUB], entry.options[CONF_PINATA_SECRET])
             _LOGGER.debug("Use Pinata to pin files")
-        else: 
+        else:
             hass.data[DOMAIN][PINATA] = None
             _LOGGER.debug("Use local node to pin files")
         hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
-        hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(hass, hass.data[DOMAIN][HANDLE_TIME_CHANGE], hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
+        hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(
+            hass,
+            hass.data[DOMAIN][HANDLE_TIME_CHANGE],
+            hass.data[DOMAIN][CONF_SENDING_TIMEOUT],
+        )
         _LOGGER.debug(f"HASS.data after: {hass.data[DOMAIN]}")
     except Exception as e:
         _LOGGER.error(f"Exception in update_listener: {e}")
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """
-    Set up Robonomics Control from a config entry.
-    """
 
-    # await asyncio.sleep(60)
-    # _LOGGER.debug(f"Backups: {await hass.data['backup'].generate_backup()}")
-    _LOGGER.debug(f"Config path: {hass.config.path()}")
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Robonomics Integration from a config entry.
+    It calls every time integration uploading and after config flow during initial
+    setup.
+
+    :param hass: HomeAssistant instance
+    :param entry: Data from config
+
+    :return: True after succesfull setting up
+
+    """
 
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
-    hass.data[DOMAIN][CONF_CARBON_SERVICE] = conf[CONF_CARBON_SERVICE]
-    if hass.data[DOMAIN][CONF_CARBON_SERVICE]:
-        hass.data[DOMAIN][CONF_ENERGY_SENSORS] = conf[CONF_ENERGY_SENSORS]
+    if CONF_IPFS_GATEWAY in conf:
+        hass.data[DOMAIN][CONF_IPFS_GATEWAY] = conf[CONF_IPFS_GATEWAY]
+    hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH] = conf[CONF_IPFS_GATEWAY_AUTH]
+    hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT] = conf[CONF_IPFS_GATEWAY_PORT]
     hass.data[DOMAIN][CONF_SENDING_TIMEOUT] = timedelta(minutes=conf[CONF_SENDING_TIMEOUT])
     _LOGGER.debug(f"Sending interval: {conf[CONF_SENDING_TIMEOUT]} minutes")
     hass.data[DOMAIN][CONF_ADMIN_SEED] = conf[CONF_ADMIN_SEED]
@@ -96,14 +130,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
     _LOGGER.debug(f"sub owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
     hass.data[DOMAIN][ROBONOMICS]: Robonomics = Robonomics(
-                            hass,
-                            hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
-                            hass.data[DOMAIN][CONF_ADMIN_SEED]
-                            )
+        hass,
+        hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
+        hass.data[DOMAIN][CONF_ADMIN_SEED],
+    )
     if (CONF_PINATA_PUB in conf) and (CONF_PINATA_SECRET in conf):
-        hass.data[DOMAIN][PINATA] = PinataPy(conf[CONF_PINATA_PUB], conf[CONF_PINATA_SECRET])
+        hass.data[DOMAIN][CONF_PINATA_PUB] = conf[CONF_PINATA_PUB]
+        hass.data[DOMAIN][CONF_PINATA_SECRET] = conf[CONF_PINATA_SECRET]
+        hass.data[DOMAIN][PINATA] = PinataPy(hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET])
         _LOGGER.debug("Use Pinata to pin files")
-    else: 
+    else:
         hass.data[DOMAIN][PINATA] = None
         _LOGGER.debug("Use local node to pin files")
     data_path = f"{os.path.expanduser('~')}/{DATA_PATH}"
@@ -115,65 +151,89 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not os.path.exists(f"{data_config_path}/config"):
         with open(f"{data_config_path}/config", "w"):
             pass
+    data_backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"
+    if not os.path.isdir(data_backup_path):
+        os.mkdir(data_backup_path)
 
-    hass.data[DOMAIN][IPFS_API] = ipfsApi.Client('127.0.0.1', 5001)
+    await create_folders()
+
     hass.data[DOMAIN][HANDLE_LAUNCH] = False
-
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    @callback
-    async def handle_launch(data: tp.List[str]) -> None:
-        """
-        Handle a command from launch transaction
-        """
-        _LOGGER.debug("Start handle launch")
-        hass.data[DOMAIN][HANDLE_LAUNCH] = True
-        try:
-            ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
-            response_text = await get_ipfs_data(hass, ipfs_hash, data[0], 0)  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
-        except Exception as e:
-            _LOGGER.error(f"Exception in get ipfs command: {e}")
-            return
-
-    # async def handle_datalog(call):
-    #     """Handle the service call."""
-    #     entity_id = call.data.get(ATTR_ENTITY, DEFAULT_ENTITY)
-    #     state = hass.states.get(entity_id)
-    #     _LOGGER.debug(f"Datalog service state: {state.state}")
-    #     await send_datalog(state.state)
-
-    # hass.services.async_register(DOMAIN, "datalog_send", handle_datalog)
-
-    async def handle_state_changed(event):
-        try:
-            if (
-                    event.data["old_state"] != None
-                    and event.data["old_state"].state != "unknown"
-                    and event.data["old_state"].state != "unavailable"
-                    and event.data["new_state"].state != "unknown"
-                    and event.data["new_state"].state != "unavailable"
-                    and event.data["entity_id"].split(".")[0] != "sensor"
-                    and event.data["old_state"].state != event.data["new_state"].state
-                ):
-                _LOGGER.debug(f"State changed: {event.data}")
-                await get_and_send_data(hass)
-        except Exception as e:
-            _LOGGER.error(f"Exception in handle_state_changed: {e}")
-
+    hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
 
     async def handle_time_changed(event):
+        """Callback for time' changing subscription.
+        It calls every timeout from config to get and send telemtry.
+
+        :param event: Current date & time
+        """
+
         try:
+            time_change_count_in_day = 24 * 60 / (hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds / 60)
+            hass.data[DOMAIN][TIME_CHANGE_COUNT] += 1
+            if hass.data[DOMAIN][TIME_CHANGE_COUNT] >= time_change_count_in_day:
+                hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
+                await check_subscription_left_days(hass)
             _LOGGER.debug(f"Time changed: {event}")
             await get_and_send_data(hass)
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
-    
+
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
 
-    #hass.bus.async_listen("state_changed", handle_state_changed)
-    hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(hass, hass.data[DOMAIN][HANDLE_TIME_CHANGE], hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
-    asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].subscribe(handle_launch, manage_users, change_password))
+    async def handle_save_backup(call):
+        """Callback for save_backup_to_robonomics service.
+        It creates secure backup, adds to IPFS and updates
+        the Digital Twin topic.
+        """
 
+        if os.path.isdir(data_backup_path):
+            shutil.rmtree(data_backup_path)
+            os.mkdir(data_backup_path)
+        else:
+            os.mkdir(data_backup_path)
+        backup_path = await create_secure_backup(
+            hass,
+            Path(hass.config.path()),
+            Path(data_backup_path),
+            admin_keypair=sub_admin_acc.keypair,
+        )
+        ipfs_hash = await add_backup_to_ipfs(hass, backup_path)
+        _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
+        await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(ipfs_hash, hass.data[DOMAIN][TWIN_ID])
+
+    async def handle_restore_from_backup(call):
+        """Callback for restore_from_robonomics_backup service.
+        It restores configuration file from backup.
+        """
+
+        try:
+            config_path = Path(hass.config.path())
+            backup_encrypted_path = call.data.get("backup_path")
+            hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
+            if backup_encrypted_path is None:
+                hass.data[DOMAIN][HANDLE_LAUNCH] = True
+                _LOGGER.debug("Start looking for backup ipfs hash")
+                ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
+                await get_ipfs_data(hass, ipfs_backup_hash, sub_admin_acc.get_address(), 0, launch=False)
+            else:
+                backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
+                await restore_from_backup(hass, config_path)
+                _LOGGER.debug(f"Config restored, restarting...")
+        except Exception as e:
+            _LOGGER.error(f"Exception in restore from backup service call: {e}")
+
+    hass.services.async_register(DOMAIN, "save_backup_to_robonomics", handle_save_backup)
+    hass.services.async_register(DOMAIN, "restore_from_robonomics_backup", handle_restore_from_backup)
+
+    hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(
+        hass,
+        hass.data[DOMAIN][HANDLE_TIME_CHANGE],
+        hass.data[DOMAIN][CONF_SENDING_TIMEOUT],
+    )
+    hass.data[DOMAIN][ROBONOMICS].subscribe()
+    await check_subscription_left_days(hass)
     if TWIN_ID not in hass.data[DOMAIN]:
         try:
             with open(f"{data_config_path}/config", "r") as f:
@@ -182,22 +242,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
         except Exception as e:
             _LOGGER.debug(f"Can't load config: {e}")
-            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
- 
-    hass.states.async_set(f"{DOMAIN}.state", "Online")
+            last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
+            if last_telemetry_hash is not None:
+                hass.data[DOMAIN][HANDLE_LAUNCH] = True
+                res = await get_ipfs_data(
+                    hass,
+                    last_telemetry_hash,
+                    sub_admin_acc.get_address(),
+                    MAX_NUMBER_OF_REQUESTS - 1,
+                    launch=False,
+                    telemetry=True,
+                )
+                _LOGGER.debug(f"IPFS res: {res}")
+                await asyncio.sleep(0.5)
+                try:
+                    if TWIN_ID not in hass.data[DOMAIN]:
+                        _LOGGER.debug(f"Start creating new digital twin")
+                        hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                        _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                    else:
+                        _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
+                except Exception as e:
+                    _LOGGER.debug(f"Exception in configure digital twin: {e}")
+            else:
+                hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+    # await asyncio.sleep(30)
 
-    #Checking rws devices to user list correlation
-    try:
-        start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
-        _LOGGER.debug(f"Start devices list is {start_devices_list}")
-        hass.async_create_task(manage_users(hass, ('0', start_devices_list)))
-    except Exception as e:
-        print(f"error while getting rws devices list {e}")
-    
-    await asyncio.sleep(60)
-    await get_and_send_data(hass)
-    
+    # from homeassistant.helpers import entity_registry as er
+    # entity_registry = er.async_get(hass)
+    # entity_state = hass.states.get("light.22_light_color_big_room")
+    # entity_data = entity_registry.async_get("light.22_light_color_big_room")
+    # _LOGGER.debug(f"State: {entity_state}")
+    # _LOGGER.debug(f"Data: {entity_data}")
+    # _LOGGER.debug(f"Attributes: {entity_state.attributes}")
+    asyncio.ensure_future(init_integration(hass))
+
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True
@@ -208,29 +288,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-# async def async_unload_entry(
-#     hass: core.HomeAssistant, entry: config_entries.ConfigEntry
-# ) -> bool:
-#     """Unload a config entry."""
-#     unload_ok = all(
-#         await asyncio.gather(
-#             *[hass.config_entries.async_forward_entry_unload(entry, platform)]
-#         )
-#     )
-#     # Remove config entry from domain.
-#     if unload_ok:
-#         hass.data[DOMAIN].pop(entry.entry_id)
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry.
+    It calls during integration's removing.
 
-#     return unload_ok
+    :param hass: HomeAssistant instance
+    :param entry: Data from config
 
+    :return: True when integration is unloaded
+    """
 
-# async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-#     """Unload a config entry."""
-#     print(f"hass.data: {hass.data}")
-#     print(f"entry id: {entry.entry_id}")
-#     print(f"hass domain data: {hass.data[DOMAIN][entry.entry_id]}")
-#     component: EntityComponent = hass.data[DOMAIN]
-#     return await component.async_unload_entry(entry)
-
-# async def async_remove_entry(hass, entry) -> None:
-#     """Handle removal of an entry."""
+    hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
+    hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
+    hass.data.pop(DOMAIN)
+    _LOGGER.debug(f"Robonomics integration was unloaded")
+    return True

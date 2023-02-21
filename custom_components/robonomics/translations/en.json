@@ -8,25 +8,31 @@
             "invalid_auth": "Invalid authentication",
             "unknown": "Unexpected error",
             "invalid_sub_admin_seed": "Invalid controller seed",
-            "invalid_sub_owner_address": "Invalid subscription owner address"
+            "invalid_sub_owner_address": "Invalid subscription owner address",
+            "warnings": "You should tick all points before using Robonomics Integration",
+            "has_no_subscription": "Subscription owner address has no subscription",
+            "is_not_in_devices": "Controller address is not in subscription devices"
         },
         "step": {
             "user": {
                 "data": {
-                    "pinata_pub": "Pinata public key",
-                    "pinata_secret": "Pinata secret",
+                    "warn_data_sending": "Integration will store your encrypted data in IPFS local node and save the CID in Robonomics blockchain.",
+                    "warn_account_managment": "Integration will be able to create or delete Home Assistant users based on the list of your Robonomics subscription devices."
+                },
+                "description": "To use Robonomics Integration you shoul know the following:"
+            },
+            "conf": {
+                "data": {
+                    "pinata_pub": "Pinata public key (optional)",
+                    "pinata_secret": "Pinata secret (optional)",
                     "admin_seed_secret": "Robonomics controller account seed",
                     "sub_owner_address": "Robonomics subscription owner address",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
-                    "carbon_service": "Connect to carbon footprint service"
+                    "user_ipfs_gateway": "Custom IPFS gateway (optional)",
+                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)",
+                    "user_ipfs_gateway_port": "Port for the custom IPFS gateway (optional)"
                 },
-                "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account, without it data files will be pinned to IPFS only from your local node."
-            },
-            "energy": {
-                "data": {
-                    "energy_sensor": "Entities with kWh"
-                },
-                "description": "Choose sensors that track energy"
+                "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account or custom IPFS gateway, without it data files will be pinned to IPFS only from your local node."
             }
         }
     },
@@ -34,18 +40,14 @@
         "step": {
             "init": {
                 "data": {
-                    "pinata_pub": "Pinata public key",
-                    "pinata_secret": "Pinata secret",
+                    "pinata_pub": "Pinata public key (optional)",
+                    "pinata_secret": "Pinata secret (optional)",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
-                    "carbon_service": "Connect to carbon footprint service"
+                    "user_ipfs_gateway": "Custom IPFS gateway (optional)",
+                    "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)",
+                    "user_ipfs_gateway_port": "Port for the custom IPFS gateway (optional)"
                 },
                 "description": "Configure sending timeout and Pinata credentials."
-            },
-            "energy": {
-                "data": {
-                    "energy_sensor": "Entities with kWh"
-                },
-                "description": "Choose sensors that track energy"
             }
         }
     }
