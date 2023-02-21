@@ -38,10 +38,9 @@ async def check_subscription_left_days(hass: HomeAssistant) -> None:
     """
 
     rws = RWS(Account())
-    try:
-        rws_days_left = rws.get_days_left(addr=hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
-        _LOGGER.debug(f"Left {rws_days_left} days of subscription")
-    except KeyError:
+    rws_days_left = rws.get_days_left(addr=hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
+    _LOGGER.debug(f"Left {rws_days_left} days of subscription")
+    if rws_days_left == -1:
         hass.states.async_set(f"{DOMAIN}.subscription_left_days", 100000)
         _LOGGER.debug("Subscription is endless")
         return
