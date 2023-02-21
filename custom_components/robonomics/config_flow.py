@@ -8,6 +8,7 @@ import logging
 from typing import Any, Optional
 
 import homeassistant.helpers.config_validation as cv
+import ipfshttpclient2
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
@@ -29,7 +30,14 @@ from .const import (
     CONF_WARN_DATA_SENDING,
     DOMAIN,
 )
-from .exceptions import ControllerNotInDevices, InvalidSubAdminSeed, InvalidSubOwnerAddress, NoSubscription
+from .exceptions import (
+    CantConnectToIPFS,
+    ControllerNotInDevices,
+    InvalidSubAdminSeed,
+    InvalidSubOwnerAddress,
+    NoSubscription,
+)
+from .utils import to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +60,20 @@ STEP_WARN_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_WARN_ACCOUNT_MANAGMENT): bool,
     }
 )
+
+
+@to_thread
+def _is_ipfs_local_connected() -> bool:
+    """Check if IPFS local node is running and integration can connect
+
+    :return: True if integration can connect to the node, false otherwise
+    """
+
+    try:
+        ipfshttpclient2.connect()
+        return True
+    except ipfshttpclient2.exceptions.ConnectionError:
+        return False
 
 
 def _has_sub_owner_subscription(sub_owner_address: str) -> bool:
@@ -122,6 +144,8 @@ async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str
         raise NoSubscription
     if not _is_sub_admin_in_subscription(data[CONF_ADMIN_SEED], data[CONF_SUB_OWNER_ADDRESS]):
         raise ControllerNotInDevices
+    if not await _is_ipfs_local_connected():
+        raise CantConnectToIPFS
 
     return {"title": "Robonomics"}
 
@@ -182,6 +206,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "has_no_subscription"
         except ControllerNotInDevices:
             errors["base"] = "is_not_in_devices"
+        except CantConnectToIPFS:
+            errors["base"] = "can_connect_to_ipfs"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"

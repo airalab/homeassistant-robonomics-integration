@@ -131,10 +131,14 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             platform = entity_data.entity_id.split(".")[0]
             if platform not in services_list and platform in descriptions:
                 services_list[platform] = descriptions[platform]
+    except Exception as e:
+        _LOGGER.error(f"Exception in get services list: {e}")
+    try:
         dashboard = hass.data[LOVELACE_DOMAIN]["dashboards"].get(None)
         config_dashboard = await dashboard.async_load(False)
     except Exception as e:
-        _LOGGER.error(f"Exception in get services and dashboard: {e}")
+        _LOGGER.warning(f"Exception in get dashboard: {e}")
+        config_dashboard = None
     data_config_path = f"{os.path.expanduser('~')}/{DATA_CONFIG_PATH}"
     try:
         with open(f"{data_config_path}/config", "r") as f:
@@ -170,6 +174,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             _LOGGER.debug(f"Filename: {filename}")
             hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(hass, filename)
             _LOGGER.debug(f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}")
+            os.remove(filename)
             await hass.data[DOMAIN][ROBONOMICS].set_config_topic(
                 hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID]
             )

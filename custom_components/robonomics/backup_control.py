@@ -17,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant
-
 from substrateinterface import Keypair
 
 from .const import DATA_BACKUP_ENCRYPTED_PATH, DATA_BACKUP_PATH, DOMAIN, EXCLUDE_FROM_BACKUP, ROBONOMICS, TWIN_ID

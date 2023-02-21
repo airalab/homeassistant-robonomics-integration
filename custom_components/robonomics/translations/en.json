@@ -11,7 +11,8 @@
             "invalid_sub_owner_address": "Invalid subscription owner address",
             "warnings": "You should tick all points before using Robonomics Integration",
             "has_no_subscription": "Subscription owner address has no subscription",
-            "is_not_in_devices": "Controller address is not in subscription devices"
+            "is_not_in_devices": "Controller address is not in subscription devices",
+            "can_connect_to_ipfs": "Integration can't connect to IPFS local node"
         },
         "step": {
             "user": {
