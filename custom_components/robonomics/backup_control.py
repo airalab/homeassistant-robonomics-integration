@@ -9,21 +9,27 @@ This file is imported as a module to `__init__.py` to create two services.
     * restore_from_backup - rrestores configuration from unpacked backup
 """
 
-import logging
-import os
-import shutil
-import tarfile
-import typing as tp
-from datetime import datetime
 from pathlib import Path
-
 from homeassistant.core import HomeAssistant
 
 # from securetar import SecureTarFile, atomic_contents_add, secure_path
 from substrateinterface import Keypair, KeypairType
+import tarfile
+from datetime import datetime
+import logging
+import shutil
+import os
+import typing as tp
 
-from .const import DATA_BACKUP_ENCRYPTED_PATH, DATA_BACKUP_PATH, DOMAIN, EXCLUDE_FROM_BACKUP, ROBONOMICS, TWIN_ID
-from .utils import decrypt_message, encrypt_message, get_hash, to_thread
+from .utils import to_thread, encrypt_message, decrypt_message, get_hash
+from .const import (
+    EXCLUDE_FROM_BACKUP,
+    ROBONOMICS,
+    DOMAIN,
+    TWIN_ID,
+    DATA_BACKUP_PATH,
+    DATA_BACKUP_ENCRYPTED_PATH,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

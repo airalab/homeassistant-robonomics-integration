@@ -2,53 +2,58 @@
 Entry point for integration.
 """
 from __future__ import annotations
-
-import asyncio
-import json
-import logging
-import os
-import shutil
-from datetime import timedelta
-from pathlib import Path
 from platform import platform
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
-from pinatapy import PinataPy
-from robonomicsinterface import Account
+from homeassistant.helpers.event import async_track_time_interval
+
 from substrateinterface import KeypairType
+import asyncio
+from pathlib import Path
+from homeassistant.config_entries import ConfigEntry
+import logging
+from robonomicsinterface import Account
+from pinatapy import PinataPy
+import os
+import json
+from datetime import timedelta
+import shutil
 
 _LOGGER = logging.getLogger(__name__)
 
-from .backup_control import check_backup_change, create_secure_backup, restore_from_backup, unpack_backup
 from .const import (
-    CONF_ADMIN_SEED,
-    CONF_IPFS_GATEWAY,
-    CONF_IPFS_GATEWAY_AUTH,
-    CONF_IPFS_GATEWAY_PORT,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
-    CONF_SENDING_TIMEOUT,
     CONF_SUB_OWNER_ADDRESS,
-    DATA_BACKUP_PATH,
+    CONF_ADMIN_SEED,
+    DOMAIN,
+    CONF_SENDING_TIMEOUT,
+    ROBONOMICS,
+    PINATA,
+    HANDLE_TIME_CHANGE,
+    TIME_CHANGE_UNSUB,
+    HANDLE_LAUNCH,
     DATA_CONFIG_PATH,
     DATA_PATH,
-    DOMAIN,
-    HANDLE_LAUNCH,
-    HANDLE_TIME_CHANGE,
-    MAX_NUMBER_OF_REQUESTS,
-    PINATA,
-    ROBONOMICS,
-    TIME_CHANGE_COUNT,
-    TIME_CHANGE_UNSUB,
     TWIN_ID,
+    CONF_IPFS_GATEWAY,
+    CONF_IPFS_GATEWAY_AUTH,
+    TIME_CHANGE_COUNT,
+    DATA_BACKUP_PATH,
+    MAX_NUMBER_OF_REQUESTS,
+    CONF_IPFS_GATEWAY_PORT,
 )
-from .get_states import get_and_send_data
-from .ipfs import add_backup_to_ipfs, create_folders, get_ipfs_data
-from .manage_users import manage_users
 from .robonomics import Robonomics, check_subscription_left_days
+from .ipfs import get_ipfs_data, add_backup_to_ipfs, create_folders
+from .get_states import get_and_send_data
+from .manage_users import manage_users
+from .backup_control import (
+    restore_from_backup,
+    create_secure_backup,
+    unpack_backup,
+    check_backup_change,
+)
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -267,15 +272,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             else:
                 hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                 _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
-    # await asyncio.sleep(30)
-
-    # from homeassistant.helpers import entity_registry as er
-    # entity_registry = er.async_get(hass)
-    # entity_state = hass.states.get("light.22_light_color_big_room")
-    # entity_data = entity_registry.async_get("light.22_light_color_big_room")
-    # _LOGGER.debug(f"State: {entity_state}")
-    # _LOGGER.debug(f"Data: {entity_data}")
-    # _LOGGER.debug(f"Attributes: {entity_state.attributes}")
     asyncio.ensure_future(init_integration(hass))
 
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)

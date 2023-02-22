@@ -36,6 +36,7 @@ IPFS_HASH_CONFIG = "ipfs_hash_config"
 IPFS_TELEMETRY_PATH = "/ha_robonomics_telemetry"
 IPFS_BACKUP_PATH = "/ha_robonomics_backup"
 IPFS_CONFIG_PATH = "/ha_robonomics_config"
+IPFS_MEDIA_PATH = "/ha_robonomics_media"
 TWIN_ID = "twin_id"
 
 RWS_DAYS_LEFT_NOTIFY = 5

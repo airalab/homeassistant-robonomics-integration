@@ -7,48 +7,51 @@ add_backup_to_ipfs(), create_folders() and get_ipfs_data().
 
 from __future__ import annotations
 
-import asyncio
-import json
-import logging
-import os
-import typing as tp
-from ast import literal_eval
-from datetime import datetime, timedelta
-from pathlib import Path
-
-import ipfshttpclient2
-from aiohttp import ClientSession
-from crustinterface import Mainnet
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from pinatapy import PinataPy
-from robonomicsinterface.utils import web_3_auth
-from substrateinterface import Keypair, KeypairType
+from homeassistant.core import HomeAssistant
 
-from .backup_control import get_hash, restore_from_backup, unpack_backup
+from substrateinterface import Keypair, KeypairType
+from robonomicsinterface.utils import web_3_auth
+from crustinterface import Mainnet
+
+from datetime import datetime, timedelta
+from aiohttp import ClientSession
+from pinatapy import PinataPy
+from ast import literal_eval
+from pathlib import Path
+import ipfshttpclient2
+import typing as tp
+import asyncio
+import logging
+import json
+import os
+
+from .backup_control import restore_from_backup, unpack_backup, get_hash
+from .utils import decrypt_message, to_thread
+
 from .const import (
+    MORALIS_GATEWAY,
+    IPFS_GATEWAY,
     CONF_ADMIN_SEED,
+    DOMAIN,
+    PINATA,
+    LOCAL_GATEWAY,
+    HANDLE_LAUNCH,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
-    CONF_IPFS_GATEWAY_PORT,
-    CONF_PINATA_PUB,
-    CONF_PINATA_SECRET,
     DATA_BACKUP_ENCRYPTED_PATH,
-    DOMAIN,
-    HANDLE_LAUNCH,
+    TWIN_ID,
+    MAX_NUMBER_OF_REQUESTS,
+    IPFS_TELEMETRY_PATH,
+    SECONDS_IN_DAY,
+    CONF_IPFS_GATEWAY_PORT,
     IPFS_BACKUP_PATH,
     IPFS_CONFIG_PATH,
-    IPFS_GATEWAY,
+    CONF_PINATA_SECRET,
+    CONF_PINATA_PUB,
     IPFS_MAX_FILE_NUMBER,
-    IPFS_TELEMETRY_PATH,
-    LOCAL_GATEWAY,
-    MAX_NUMBER_OF_REQUESTS,
-    MORALIS_GATEWAY,
-    PINATA,
-    SECONDS_IN_DAY,
-    TWIN_ID,
+    IPFS_MEDIA_PATH,
 )
-from .utils import decrypt_message, to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -114,6 +117,21 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[
     return ipfs_hash
 
 
+async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    """Send media file to IPFS
+
+    :param hass: Home Assistant instance
+    :param filename: file with media.
+
+    :return: IPFS hash of file
+    """
+
+    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_BACKUP_PATH, True, None, None)
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
+
+
 @to_thread
 def create_folders() -> None:
     """Function creates IPFS folders to store Robonomics telemetry, configuration and backup files"""
@@ -137,6 +155,33 @@ def create_folders() -> None:
             _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} exists")
         except Exception as e:
             _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_CONFIG_PATH}")
+        try:
+            client.files.mkdir(IPFS_MEDIA_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_MEDIA_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_MEDIA_PATH}")
+
+
+@to_thread
+def check_if_hash_in_folder(ipfs_hash: str, folder: str) -> bool:
+    """Check if file with given ipfs hash is in the folder
+
+    :param ipfs_hash: IPFS hash of the file to check
+    "param folder: the name of the folder
+
+    :return: True if file is in the folder, False othervise
+    """
+    with ipfshttpclient2.connect() as client:
+        list_files = client.files.ls(folder)
+        if list_files["Entries"] is None:
+            return False
+        for fileinfo in list_files["Entries"]:
+            stat = client.files.stat(f"{folder}/{fileinfo['Name']}")
+            if ipfs_hash == stat["Hash"]:
+                return True
+        else:
+            return False
 
 
 async def get_ipfs_data(
@@ -304,7 +349,7 @@ def _add_to_local_node(
     """function add file to local IPFS client
 
     :param filename: file with data
-    :param pin: should unpin previous pin or not
+    :param pin: if False, unpin previous file
     :param path: path to folder where to store file
     :param last_file_name: name of file, which should be unpin(if needed)
 
@@ -344,7 +389,7 @@ def _add_to_pinata(
     :param hass:  Home Assistant instance
     :param filename: file with data
     :param pinata: pinata client object
-    :param pin: should unpin previous pin or not
+    :param pin: if False, unpin previous file
     :param last_file_hash: hash of file, which should be unpinned(if needed)
 
     :return: IPFS hash of file and file size in IPFS
@@ -387,7 +432,7 @@ def _add_to_custom_gateway(
     :param filename: file with data
     :param url: URL of IPFS public gateway
     :param port: port number of gateway
-    :param pin: should unpin previous pin or not
+    :param pin: if False, unpin previous file
     :param seed: seed of web3 account. Required if the gateway have web3 authorization
     :param last_file_hash: hash of file, which should be unpin(if needed)
 
@@ -484,7 +529,7 @@ async def _add_to_ipfs(
     :param hass: Home Assistant instance
     :param filename: file with data
     :param path: local directory where to store file
-    :param pin: should unpin previous pin or not
+    :param pin: if False, unpin previous file
     :param last_file_hash: hash of file, which should be unpinned(if needed)
     :param last_file_name: name of file, which should be unpinned(if needed)
 

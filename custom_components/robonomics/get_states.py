@@ -5,39 +5,40 @@ timeout and send it to Robonomics Network.
 """
 
 from __future__ import annotations
-
-import asyncio
-import logging
-import os
-import typing as tp
-from datetime import datetime, timedelta
 from platform import platform
 
-from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
-from homeassistant.components.recorder import get_instance, history
 from homeassistant.core import HomeAssistant
+from homeassistant.components.recorder import get_instance, history
+from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
+from homeassistant.helpers.service import async_get_all_descriptions
+
+from substrateinterface import KeypairType
+import asyncio
+import logging
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.service import async_get_all_descriptions
 from robonomicsinterface import Account
-from substrateinterface import KeypairType
+import typing as tp
+import os
+from datetime import timedelta, datetime
+import ipfshttpclient2
 
 _LOGGER = logging.getLogger(__name__)
 
-import json
-
 from .const import (
     CONF_ADMIN_SEED,
+    DOMAIN,
+    ROBONOMICS,
     DATA_CONFIG_PATH,
     DATA_PATH,
-    DELETE_ATTRIBUTES,
-    DOMAIN,
     IPFS_HASH_CONFIG,
-    ROBONOMICS,
     TWIN_ID,
+    DELETE_ATTRIBUTES,
+    IPFS_MEDIA_PATH,
 )
-from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs
-from .utils import encrypt_for_devices, write_data_to_file
+from .utils import encrypt_for_devices, write_data_to_file, get_hash
+from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs, add_media_to_ipfs, check_if_hash_in_folder
+import json
 
 
 async def get_and_send_data(hass: HomeAssistant):
@@ -150,6 +151,18 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
     except Exception as e:
         _LOGGER.warning(f"Exception in get dashboard: {e}")
         config_dashboard = None
+    if config_dashboard is not None:
+        for view in config_dashboard["views"]:
+            for card in view["cards"]:
+                if "image" in card:
+                    image_path = card["image"]
+                    if image_path[:6] == "/local":
+                        image_path = image_path.split("/")
+                        filename = f"{hass.config.path()}/www/{image_path[2]}"
+                        ipfs_hash_media = await get_hash(filename)
+                        card["image"] = ipfs_hash_media
+                        if not await check_if_hash_in_folder(ipfs_hash_media, IPFS_MEDIA_PATH):
+                            await add_media_to_ipfs(hass, filename)
     data_config_path = f"{os.path.expanduser('~')}/{DATA_CONFIG_PATH}"
     try:
         with open(f"{data_config_path}/config", "r") as f:
@@ -174,7 +187,11 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 devices_list_with_admin.append(sender_acc.get_address())
                 encrypted_data = encrypt_for_devices(str(new_config), sender_kp, devices_list_with_admin)
             else:
-                with open(f"{data_config_path}/config_encrypted") as f:
+                list_files = os.listdir(data_config_path)
+                for name_file in list_files:
+                    if "config_encrypted" in name_file:
+                        encrypted_config_filename = name_file
+                with open(f"{data_config_path}/{encrypted_config_filename}") as f:
                     encrypted_data = f.read()
             filename = write_data_to_file(encrypted_data, data_config_path, config=True)
             _LOGGER.debug(f"Filename: {filename}")
