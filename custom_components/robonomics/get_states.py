@@ -12,6 +12,8 @@ import os
 import typing as tp
 from datetime import datetime, timedelta
 from platform import platform
+import tempfile
+import time
 
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 from homeassistant.components.recorder import get_instance, history
@@ -26,9 +28,18 @@ _LOGGER = logging.getLogger(__name__)
 
 import json
 
-from .const import CONF_ADMIN_SEED, DATA_CONFIG_PATH, DATA_PATH, DOMAIN, IPFS_HASH_CONFIG, ROBONOMICS, TWIN_ID
-from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs
-from .utils import encrypt_message, write_data_to_file
+from .const import (
+    CONF_ADMIN_SEED,
+    DOMAIN,
+    IPFS_HASH_CONFIG,
+    ROBONOMICS,
+    TWIN_ID,
+    CONFIG_PREFIX,
+    IPFS_CONFIG_PATH,
+    CONFIG_ENCRYPTED_PREFIX,
+)
+from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs, get_last_file_hash, read_ipfs_local_file
+from .utils import encrypt_message, write_data_to_temp_file, delete_temp_file
 
 
 async def get_and_send_data(hass: HomeAssistant):
@@ -38,13 +49,11 @@ async def get_and_send_data(hass: HomeAssistant):
     """
 
     try:
-        _clear_files()
         sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
         sender_kp = sender_acc.keypair
     except Exception as e:
         _LOGGER.error(f"Exception in create keypair during get and senf data: {e}")
     try:
-        data_path = f"{os.path.expanduser('~')}/{DATA_PATH}"
         data = await _get_states(hass)
         data = json.dumps(data)
         # with open('/home/homeassistant/ha_test_data', 'w') as f:
@@ -52,8 +61,9 @@ async def get_and_send_data(hass: HomeAssistant):
         _LOGGER.debug(f"Got states to send datalog")
         encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
         await asyncio.sleep(2)
-        filename = write_data_to_file(encrypted_data, data_path)
+        filename = write_data_to_temp_file(encrypted_data)
         ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
+        delete_temp_file(filename)
         await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
     except Exception as e:
         _LOGGER.error(f"Exception in get_and_send_data: {e}")
@@ -139,12 +149,10 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
     except Exception as e:
         _LOGGER.warning(f"Exception in get dashboard: {e}")
         config_dashboard = None
-    data_config_path = f"{os.path.expanduser('~')}/{DATA_CONFIG_PATH}"
-    try:
-        with open(f"{data_config_path}/config", "r") as f:
-            current_config = json.load(f)
-    except Exception as e:
-        _LOGGER.error(f"Exception in json load config: {e}")
+
+    last_config, _ = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
+    current_config = await read_ipfs_local_file(last_config, IPFS_CONFIG_PATH)
+    if current_config is None:
         current_config = {}
     try:
         new_config = {
@@ -155,7 +163,9 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
             if current_config != new_config:
                 _LOGGER.debug("Config was changed")
-                with open(f"{data_config_path}/config", "w") as f:
+                dirname = tempfile.gettempdir()
+                config_filename = f"{dirname}/config-{time.time()}"
+                with open(config_filename, "w") as f:
                     json.dump(new_config, f)
                 sender_acc = Account(
                     seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
@@ -163,18 +173,16 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 )
                 sender_kp = sender_acc.keypair
                 encrypted_data = encrypt_message(str(new_config), sender_kp, sender_kp.public_key)
+                filename = write_data_to_temp_file(encrypted_data, config=True)
+                _LOGGER.debug(f"Filename: {filename}")
+                hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(hass, config_filename, filename)
+                delete_temp_file(config_filename)
+                delete_temp_file(filename)
             else:
-                list_files = os.listdir(data_config_path)
-                for name_file in list_files:
-                    if "config_encrypted" in name_file:
-                        encrypted_config_filename = name_file
-                with open(f"{data_config_path}/{encrypted_config_filename}") as f:
-                    encrypted_data = f.read()
-            filename = write_data_to_file(encrypted_data, data_config_path, config=True)
-            _LOGGER.debug(f"Filename: {filename}")
-            hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(hass, filename)
+                _LOGGER.debug("Config wasn't changed")
+                _, last_config_hash = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
+                hass.data[DOMAIN][IPFS_HASH_CONFIG] = last_config_hash
             _LOGGER.debug(f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}")
-            os.remove(filename)
             await hass.data[DOMAIN][ROBONOMICS].set_config_topic(
                 hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID]
             )
@@ -224,13 +232,3 @@ async def _get_states(
                     devices_data[entity_data.device_id]["entities"][entity_data.entity_id] = entity_info
     devices_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
     return devices_data
-
-
-def _clear_files():
-    """Remove files with telemetry."""
-
-    data_path = f"{os.path.expanduser('~')}/{DATA_PATH}"
-    files = os.listdir(data_path)
-    for datafile in files:
-        if datafile[:4] == "data":
-            os.remove(f"{data_path}/{datafile}")

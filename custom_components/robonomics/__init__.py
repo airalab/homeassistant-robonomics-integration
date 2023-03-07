@@ -11,6 +11,7 @@ import shutil
 from datetime import timedelta
 from pathlib import Path
 from platform import platform
+import tempfile
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -32,9 +33,7 @@ from .const import (
     CONF_PINATA_SECRET,
     CONF_SENDING_TIMEOUT,
     CONF_SUB_OWNER_ADDRESS,
-    DATA_BACKUP_ENCRYPTED_PATH,
-    DATA_BACKUP_PATH,
-    DATA_CONFIG_PATH,
+    DATA_BACKUP_ENCRYPTED_NAME,
     DATA_PATH,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
@@ -45,12 +44,14 @@ from .const import (
     TIME_CHANGE_COUNT,
     TIME_CHANGE_UNSUB,
     TWIN_ID,
+    IPFS_CONFIG_PATH,
+    CONFIG_PREFIX,
 )
 from .get_states import get_and_send_data
-from .ipfs import add_backup_to_ipfs, create_folders, get_ipfs_data
+from .ipfs import add_backup_to_ipfs, create_folders, get_ipfs_data, get_last_file_hash, read_ipfs_local_file
 from .manage_users import manage_users
 from .robonomics import Robonomics, check_subscription_left_days
-from .utils import decrypt_message
+from .utils import decrypt_message, delete_temp_file
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -145,17 +146,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][PINATA] = None
         _LOGGER.debug("Use local node to pin files")
     data_path = f"{os.path.expanduser('~')}/{DATA_PATH}"
-    if not os.path.isdir(data_path):
-        os.mkdir(data_path)
-    data_config_path = f"{os.path.expanduser('~')}/{DATA_CONFIG_PATH}"
-    if not os.path.isdir(data_config_path):
-        os.mkdir(data_config_path)
-    if not os.path.exists(f"{data_config_path}/config"):
-        with open(f"{data_config_path}/config", "w"):
-            pass
-    data_backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"
-    if not os.path.isdir(data_backup_path):
-        os.mkdir(data_backup_path)
+    if os.path.isdir(data_path):
+        shutil.rmtree(data_path)
 
     await create_folders()
 
@@ -190,19 +182,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         the Digital Twin topic.
         """
 
-        if os.path.isdir(data_backup_path):
-            shutil.rmtree(data_backup_path)
-            os.mkdir(data_backup_path)
-        else:
-            os.mkdir(data_backup_path)
-        backup_path = await create_secure_backup(
+        encrypted_backup_path, backup_path = await create_secure_backup(
             hass,
             Path(hass.config.path()),
-            Path(data_backup_path),
             admin_keypair=sub_admin_acc.keypair,
         )
-        ipfs_hash = await add_backup_to_ipfs(hass, backup_path)
+        ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
         _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
+        delete_temp_file(encrypted_backup_path)
+        delete_temp_file(backup_path)
         await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(ipfs_hash, hass.data[DOMAIN][TWIN_ID])
 
     async def handle_restore_from_backup(call):
@@ -219,7 +207,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.debug("Start looking for backup ipfs hash")
                 ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
                 result = await get_ipfs_data(hass, ipfs_backup_hash, 0)
-                backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
+                backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
                 with open(backup_path, "w") as f:
                     f.write(result)
                 sub_admin_kp = Keypair.create_from_mnemonic(
@@ -246,10 +234,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await check_subscription_left_days(hass)
     if TWIN_ID not in hass.data[DOMAIN]:
         try:
-            with open(f"{data_config_path}/config", "r") as f:
-                current_config = json.load(f)
-                _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
-                hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
+            config_name, _ = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
+            current_config = await read_ipfs_local_file(config_name, IPFS_CONFIG_PATH)
+            _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
+            hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
         except Exception as e:
             _LOGGER.debug(f"Can't load config: {e}")
             last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()

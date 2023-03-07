@@ -29,13 +29,15 @@ TIME_CHANGE_UNSUB = "time_change_unsub"
 HANDLE_IPFS_REQUEST = "handle_ipfs_request"
 
 DATA_PATH = ".ha_robonomics_data"
-DATA_CONFIG_PATH = ".ha_robonomics_data/dashboard_services"
-DATA_BACKUP_ENCRYPTED_PATH = ".ha_robonomics_data/backups/backup_remote_encrypted"
-DATA_BACKUP_PATH = ".ha_robonomics_data/backups"
+DATA_BACKUP_ENCRYPTED_NAME = "backup_remote_encrypted"
 IPFS_HASH_CONFIG = "ipfs_hash_config"
 IPFS_TELEMETRY_PATH = "/ha_robonomics_telemetry"
 IPFS_BACKUP_PATH = "/ha_robonomics_backup"
 IPFS_CONFIG_PATH = "/ha_robonomics_config"
+CONFIG_PREFIX = "config-"
+CONFIG_ENCRYPTED_PREFIX = "config_encrypted"
+BACKUP_PREFIX = "backup-"
+BACKUP_ENCRYPTED_PREFIX = "backup_encrypted"
 TWIN_ID = "twin_id"
 
 RWS_DAYS_LEFT_NOTIFY = 5

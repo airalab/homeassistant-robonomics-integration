@@ -20,6 +20,7 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from pinatapy import PinataPy
 from robonomicsinterface.utils import web_3_auth
 from substrateinterface import KeypairType
+import json
 
 from .backup_control import get_hash
 from .const import (
@@ -41,6 +42,10 @@ from .const import (
     MORALIS_GATEWAY,
     PINATA,
     SECONDS_IN_DAY,
+    CONFIG_PREFIX,
+    CONFIG_ENCRYPTED_PREFIX,
+    BACKUP_PREFIX,
+    BACKUP_ENCRYPTED_PREFIX,
 )
 from .utils import to_thread
 
@@ -58,7 +63,7 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
 
     pin = await _check_save_previous_pin(filename)
     if not pin:
-        last_file_name, last_file_hash = await _get_last_file_hash(IPFS_TELEMETRY_PATH)
+        last_file_name, last_file_hash = await get_last_file_hash(IPFS_TELEMETRY_PATH)
     else:
         last_file_hash = None
         last_file_name = None
@@ -68,41 +73,57 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
     return ipfs_hash
 
 
-async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encrypted: str) -> tp.Optional[str]:
     """Send configuration file to IPFS
 
     :param hass: Home Assistant instance
     :param filename: file with configuration of Home Assistant dashboard and services
+    :param filename_encrypted: file with encrypted configuration of Home Assistant dashboard and services
 
     :return: IPFS hash of file
     """
 
-    last_file_name, last_file_hash = await _get_last_file_hash(IPFS_CONFIG_PATH)
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_CONFIG_PATH, prefix=CONFIG_PREFIX)
+    last_file_encrypted_name, last_file_encrypted_hash = await get_last_file_hash(
+        IPFS_CONFIG_PATH, prefix=CONFIG_ENCRYPTED_PREFIX
+    )
     new_hash = await get_hash(filename)
+    new_hash_encrypted = await get_hash(filename_encrypted)
     if new_hash == last_file_hash:
         _LOGGER.debug(f"Last config hash and the current are the same: {last_file_hash}")
-        return last_file_hash
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_CONFIG_PATH, False, last_file_hash, last_file_name)
+        return last_file_encrypted_hash
+    await _add_to_local_node(filename, False, IPFS_CONFIG_PATH, last_file_name)
+    ipfs_hash, size = await _add_to_ipfs(
+        hass, filename_encrypted, IPFS_CONFIG_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+    )
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash
 
 
-async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encrypted: str) -> tp.Optional[str]:
     """Send backup file to IPFS
 
     :param hass: Home Assistant instance
-    :param filename: file with full Home Assistant backup.
+    :param filename: file with full Home Assistant backup
+    :param filename_encrypted: encrypted file with full Home Assistant backup
 
     :return: IPFS hash of file
     """
 
-    last_file_name, last_file_hash = await _get_last_file_hash(IPFS_BACKUP_PATH)
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_BACKUP_PATH, prefix=BACKUP_PREFIX)
+    last_file_encrypted_name, last_file_encrypted_hash = await get_last_file_hash(
+        IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX
+    )
     new_hash = await get_hash(filename)
+    new_hash_encrypted = await get_hash(filename_encrypted)
     if new_hash == last_file_hash:
         _LOGGER.debug(f"Last backup hash and the current are the same: {last_file_hash}")
-        return last_file_hash
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_BACKUP_PATH, False, last_file_hash, last_file_name)
+        return last_file_encrypted_hash
+    await _add_to_local_node(filename, False, IPFS_BACKUP_PATH, last_file_name)
+    ipfs_hash, size = await _add_to_ipfs(
+        hass, filename_encrypted, IPFS_BACKUP_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+    )
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash
@@ -131,6 +152,65 @@ def create_folders() -> None:
             _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} exists")
         except Exception as e:
             _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_CONFIG_PATH}")
+
+
+@to_thread
+def get_last_file_hash(path: str, prefix: str = None) -> (str, str):
+    """function return name and hash of the last telemetry, configuration and backup
+
+    :param path: path to directory with files
+    :param prefix: if not None, look for the last file with this prefix
+
+    :return: name of last file, and file hash
+    """
+    _LOGGER.debug(f"Getting last file hash from {path} with prefix {prefix}")
+    try:
+        with ipfshttpclient2.connect() as client:
+            files = client.files.ls(path)
+            if len(files["Entries"]) > 0:
+                if prefix is not None:
+                    last_file = None
+                    last_hash = None
+                    for fileinfo in files["Entries"]:
+                        if fileinfo["Name"][: len(prefix)] == prefix:
+                            last_file = fileinfo["Name"]
+                            last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
+                else:
+                    last_file = files["Entries"][-1]["Name"]
+                    last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
+                _LOGGER.debug(f"Last {path} file {last_file}, with hash {last_hash}")
+                return last_file, last_hash
+            else:
+                return None, None
+    except Exception as e:
+        _LOGGER.error(f"Exception in get_last_file_hash: {e}")
+        return None, None
+
+
+@to_thread
+def read_ipfs_local_file(filename: str, path: str) -> tp.Union[str, dict]:
+    """Read data from file pinned in local node
+
+    :param filename: name of the file
+    :param path: path to the file in MFS
+
+    :return: dict with the data in json, string data otherwise
+    """
+
+    with ipfshttpclient2.connect() as client:
+        try:
+            _LOGGER.debug(f"Read data from local file: {path}/{filename}")
+            data = client.files.read(f"{path}/{filename}")
+        except Exception as e:
+            _LOGGER.warning(f"Exception in reading ipfs local file: {e}")
+            return None
+        try:
+            data_json = json.loads(data)
+            return data_json
+        except Exception as e:
+            _LOGGER.debug(f"Data is not json: {e}")
+        data = data.decode("utf-8")
+        return data
 
 
 async def get_ipfs_data(
@@ -247,30 +327,6 @@ def _check_save_previous_pin(filename: str) -> bool:
 
 
 @to_thread
-def _get_last_file_hash(path: str) -> (str, str):
-    """function return name and hash of the last telemetry, configuration and backup
-
-    :param path: path to directory with files
-
-    :return: name of last file, and file hash
-    """
-
-    try:
-        with ipfshttpclient2.connect() as client:
-            files = client.files.ls(path)
-            if len(files["Entries"]) > 0:
-                last_file = files["Entries"][-1]["Name"]
-                last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
-                _LOGGER.debug(f"Last telemetry file {last_file}, with hash {last_hash}")
-                return last_file, last_hash
-            else:
-                return None, None
-    except Exception as e:
-        _LOGGER.error(f"Exception in get_last_file_hash: {e}")
-        return None, None
-
-
-@to_thread
 def _add_to_local_node(
     filename: str,
     pin: bool,
@@ -280,7 +336,7 @@ def _add_to_local_node(
     """function add file to local IPFS client
 
     :param filename: file with data
-    :param pin: should unpin previous pin or not
+    :param pin: should save previous pin or not
     :param path: path to folder where to store file
     :param last_file_name: name of file, which should be unpin(if needed)
 
@@ -320,7 +376,7 @@ def _add_to_pinata(
     :param hass:  Home Assistant instance
     :param filename: file with data
     :param pinata: pinata client object
-    :param pin: should unpin previous pin or not
+    :param pin: should save previous pin or not
     :param last_file_hash: hash of file, which should be unpinned(if needed)
 
     :return: IPFS hash of file and file size in IPFS
@@ -363,7 +419,7 @@ def _add_to_custom_gateway(
     :param filename: file with data
     :param url: URL of IPFS public gateway
     :param port: port number of gateway
-    :param pin: should unpin previous pin or not
+    :param pin: should save previous pin or not
     :param seed: seed of web3 account. Required if the gateway have web3 authorization
     :param last_file_hash: hash of file, which should be unpin(if needed)
 
@@ -460,7 +516,7 @@ async def _add_to_ipfs(
     :param hass: Home Assistant instance
     :param filename: file with data
     :param path: local directory where to store file
-    :param pin: should unpin previous pin or not
+    :param pin: should save previous pin or not
     :param last_file_hash: hash of file, which should be unpinned(if needed)
     :param last_file_name: name of file, which should be unpinned(if needed)
 

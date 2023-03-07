@@ -15,12 +15,22 @@ import shutil
 import tarfile
 from datetime import datetime
 from pathlib import Path
+import tempfile
 
 from homeassistant.core import HomeAssistant
 from substrateinterface import Keypair
 
-from .const import DATA_BACKUP_ENCRYPTED_PATH, DATA_BACKUP_PATH, DOMAIN, EXCLUDE_FROM_BACKUP, ROBONOMICS, TWIN_ID
-from .utils import decrypt_message, encrypt_message, get_hash, to_thread
+from .const import (
+    DOMAIN,
+    EXCLUDE_FROM_BACKUP,
+    ROBONOMICS,
+    TWIN_ID,
+    BACKUP_ENCRYPTED_PREFIX,
+    IPFS_BACKUP_PATH,
+    BACKUP_PREFIX,
+)
+from .utils import decrypt_message, encrypt_message, to_thread
+from .ipfs import get_last_file_hash
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,34 +45,21 @@ async def check_backup_change(hass: HomeAssistant) -> None:
         _LOGGER.debug(f"Start checking backup")
         ipfs_hash_remote = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
         _LOGGER.debug(f"Backup remote hash: {ipfs_hash_remote}")
-        if os.path.isdir(f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"):
-            if os.path.isfile(f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"):
-                path_to_latest_backup = f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
-                _LOGGER.debug(f"Latest local backup is from robonomcis")
-            else:
-                path_to_backups = f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}"
-                list_files = os.listdir(path_to_backups)
-                path_to_latest_backup = f"{path_to_backups}/{list_files[0]}"
-                if "encrypted" not in path_to_latest_backup:
-                    path_to_latest_backup += "_encrypted"
-                _LOGGER.debug(f"Latest local backup is {path_to_latest_backup}")
-            ipfs_hash_local = await get_hash(path_to_latest_backup)
-            _LOGGER.debug(f"Backup local hash: {ipfs_hash_local}")
-            if ipfs_hash_remote != ipfs_hash_local:
-                _LOGGER.debug("Backup was updated")
-                service_data = {
-                    "message": "Remote backup was updated in Robonomics",
-                    "title": "Update Backup",
-                }
-                await hass.services.async_call(
-                    domain="notify",
-                    service="persistent_notification",
-                    service_data=service_data,
-                )
-            else:
-                _LOGGER.debug("Backup wasn't updated")
+        _, ipfs_hash_local = await get_last_file_hash(IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX)
+        _LOGGER.debug(f"Backup local hash: {ipfs_hash_local}")
+        if ipfs_hash_remote != ipfs_hash_local:
+            _LOGGER.debug("Backup was updated")
+            service_data = {
+                "message": "Remote backup was updated in Robonomics",
+                "title": "Update Backup",
+            }
+            await hass.services.async_call(
+                domain="notify",
+                service="persistent_notification",
+                service_data=service_data,
+            )
         else:
-            _LOGGER.debug("No backups exist")
+            _LOGGER.debug("Backup wasn't updated")
     except Exception as e:
         _LOGGER.warning(f"Exception in check backup change: {e}")
 
@@ -71,23 +68,22 @@ async def check_backup_change(hass: HomeAssistant) -> None:
 def create_secure_backup(
     hass: HomeAssistant,
     config_path: Path,
-    path_to_tar: Path,
-    admin_keypair: Keypair = None,
-) -> str:
+    admin_keypair: Keypair,
+) -> (str, str):
     """Create secure .tar.xz archive and returns the path to it
 
     :param hass: HomeAssistant instance
     :param config_path: Path to the configuration file
-    :param path_to_tar: Path to create a backup archive
     :param admin_keypair: Keypair to encrypt backup
 
-    :return: Path to backup archive
+    :return: Path to encrypted backup archive and for not encrypted backup
     """
 
     hass.states.async_set(f"{DOMAIN}.backup", "Creating")
-    backup_name = str(datetime.now()).split()
-    backup_name[1] = backup_name[1].split(".")[0]
-    backup_name = f"{backup_name[0]}_{backup_name[1]}.tar.xz"
+    backup_name_time = str(datetime.now()).split()
+    backup_name_time[1] = backup_name_time[1].split(".")[0]
+    backup_name = f"{BACKUP_PREFIX}{backup_name_time[0]}_{backup_name_time[1]}.tar.xz"
+    path_to_tar = Path(tempfile.gettempdir())
     tar_path = path_to_tar.joinpath(f"{backup_name}")
     _LOGGER.debug(f"Start creating backup: {tar_path}")
     list_files = os.listdir(config_path)
@@ -103,18 +99,18 @@ def create_secure_backup(
                     # _LOGGER.debug(f"Addidng {config_path}/{file_item}")
                     tar.add(f"{config_path}/{file_item}")
         _LOGGER.debug(f"Backup {tar_path} was created")
-        if admin_keypair is not None:
-            _LOGGER.debug(f"Start encrypt backup {tar_path}")
-            with open(tar_path, "rb") as f:
-                tar_data = f.read()
-            encrypted_data = encrypt_message(tar_data, admin_keypair, admin_keypair.public_key)
-            with open(f"{tar_path}_encrypted", "w") as f:
-                f.write(encrypted_data)
-            _LOGGER.debug(f"Backup was encrypted")
-            hass.states.async_set(f"{DOMAIN}.backup", "Saved")
-            return f"{tar_path}_encrypted"
-        else:
-            return tar_path
+        _LOGGER.debug(f"Start encrypt backup {tar_path}")
+        with open(tar_path, "rb") as f:
+            tar_data = f.read()
+        encrypted_data = encrypt_message(tar_data, admin_keypair, admin_keypair.public_key)
+        encrypted_tar_path = path_to_tar.joinpath(
+            f"{BACKUP_ENCRYPTED_PREFIX}_{backup_name_time[0]}_{backup_name_time[1]}"
+        )
+        with open(encrypted_tar_path, "w") as f:
+            f.write(encrypted_data)
+        _LOGGER.debug(f"Backup was encrypted")
+        hass.states.async_set(f"{DOMAIN}.backup", "Saved")
+        return encrypted_tar_path, tar_path
     except Exception as e:
         _LOGGER.error(f"Exception in creating backup: {e}")
 
@@ -140,7 +136,7 @@ def unpack_backup(
         with open(path_to_encrypted) as f:
             encrypted = f.read()
         decrypted = decrypt_message(encrypted, admin_keypair.public_key, admin_keypair)
-        path_to_tar = f"{os.path.expanduser('~')}/{DATA_BACKUP_PATH}/backup_remote_decrypted.tar.xz"
+        path_to_tar = f"{tempfile.gettempdir()}/backup_remote_decrypted.tar.xz"
         with open(path_to_tar, "wb") as f:
             f.write(decrypted)
         with tarfile.open(path_to_tar, "r:xz") as tar:
