@@ -22,7 +22,6 @@ from robonomicsinterface.utils import web_3_auth
 from substrateinterface import KeypairType
 import json
 
-from .backup_control import get_hash
 from .const import (
     CONF_ADMIN_SEED,
     CONF_IPFS_GATEWAY,
@@ -47,7 +46,7 @@ from .const import (
     BACKUP_PREFIX,
     BACKUP_ENCRYPTED_PREFIX,
 )
-from .utils import to_thread
+from .utils import to_thread, get_hash
 
 _LOGGER = logging.getLogger(__name__)
 
