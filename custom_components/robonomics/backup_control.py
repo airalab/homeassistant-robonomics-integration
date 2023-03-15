@@ -13,24 +13,25 @@ import logging
 import os
 import shutil
 import tarfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
-import tempfile
 
 from homeassistant.core import HomeAssistant
 from substrateinterface import Keypair
 
 from .const import (
+    BACKUP_ENCRYPTED_PREFIX,
+    BACKUP_PREFIX,
     DOMAIN,
     EXCLUDE_FROM_BACKUP,
+    IPFS_BACKUP_PATH,
     ROBONOMICS,
     TWIN_ID,
-    BACKUP_ENCRYPTED_PREFIX,
-    IPFS_BACKUP_PATH,
-    BACKUP_PREFIX,
+    Z2M_CONFIG_NAME,
 )
-from .utils import decrypt_message, encrypt_message, to_thread
 from .ipfs import get_last_file_hash
+from .utils import decrypt_message, encrypt_message, to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,17 +69,20 @@ async def check_backup_change(hass: HomeAssistant) -> None:
 def create_secure_backup(
     hass: HomeAssistant,
     config_path: Path,
+    zigbee2mqtt_path: str,
     admin_keypair: Keypair,
 ) -> (str, str):
     """Create secure .tar.xz archive and returns the path to it
 
     :param hass: HomeAssistant instance
     :param config_path: Path to the configuration file
+    :param zigbee2mqtt_path: Path to zigbee2mqtt config
     :param admin_keypair: Keypair to encrypt backup
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
-
+    if zigbee2mqtt_path[-1] != "/":
+        zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
     hass.states.async_set(f"{DOMAIN}.backup", "Creating")
     backup_name_time = str(datetime.now()).split()
     backup_name_time[1] = backup_name_time[1].split(".")[0]
@@ -98,6 +102,9 @@ def create_secure_backup(
                 else:
                     # _LOGGER.debug(f"Addidng {config_path}/{file_item}")
                     tar.add(f"{config_path}/{file_item}")
+            if os.path.isdir(zigbee2mqtt_path) and os.path.isfile(f"{zigbee2mqtt_path}data/configuration.yaml"):
+                _LOGGER.debug("Zigbee2MQTT configuration exists and will be added to backup")
+                tar.add(f"{zigbee2mqtt_path}data/configuration.yaml", arcname=Z2M_CONFIG_NAME)
         _LOGGER.debug(f"Backup {tar_path} was created")
         _LOGGER.debug(f"Start encrypt backup {tar_path}")
         with open(tar_path, "rb") as f:
@@ -150,6 +157,7 @@ def unpack_backup(
 
 async def restore_from_backup(
     hass: HomeAssistant,
+    zigbee2mqtt_path: str,
     path_to_old_config: Path,
     path_to_new_config_dir: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
 ) -> None:
@@ -157,8 +165,21 @@ async def restore_from_backup(
     :param hass: HomeAssistant instance
     :param path_to_old_config: Path to the hass configuration directory
     :param path_to_new_config_dir: Path to the unpacked backup
+    :param zigbee2mqtt_path: Path to unpack zigbee2mqtt config
     """
 
+    if zigbee2mqtt_path[-1] != "/":
+        zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
+    try:
+        if os.path.exists(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}"):
+            if os.path.isdir(zigbee2mqtt_path) and os.path.isdir(f"{zigbee2mqtt_path}data"):
+                os.remove(f"{zigbee2mqtt_path}data/configuration.yaml")
+            else:
+                os.mkdir(zigbee2mqtt_path)
+                os.mkdir(f"{zigbee2mqtt_path}data")
+            shutil.copy(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", f"{zigbee2mqtt_path}data/configuration.yaml")
+    except Exception as e:
+        _LOGGER.error(f"Exception in restoring z2m: {e}")
     try:
         old_config_files = os.listdir(path_to_old_config)
         for old_file in old_config_files:

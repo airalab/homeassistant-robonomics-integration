@@ -8,10 +8,10 @@ import json
 import logging
 import os
 import shutil
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 from platform import platform
-import tempfile
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -33,19 +33,22 @@ from .const import (
     CONF_PINATA_SECRET,
     CONF_SENDING_TIMEOUT,
     CONF_SUB_OWNER_ADDRESS,
+    CONFIG_PREFIX,
+    CREATE_BACKUP_SERVICE,
     DATA_BACKUP_ENCRYPTED_NAME,
     DATA_PATH,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     HANDLE_TIME_CHANGE,
+    IPFS_CONFIG_PATH,
     MAX_NUMBER_OF_REQUESTS,
     PINATA,
+    PLATFORMS,
+    RESTORE_BACKUP_SERVICE,
     ROBONOMICS,
     TIME_CHANGE_COUNT,
     TIME_CHANGE_UNSUB,
     TWIN_ID,
-    IPFS_CONFIG_PATH,
-    CONFIG_PREFIX,
 )
 from .get_states import get_and_send_data
 from .ipfs import add_backup_to_ipfs, create_folders, get_ipfs_data, get_last_file_hash, read_ipfs_local_file
@@ -181,10 +184,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         It creates secure backup, adds to IPFS and updates
         the Digital Twin topic.
         """
-
+        zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
+        if zigbee2mqtt_path is None:
+            zigbee2mqtt_path = "/opt/zigbee2mqtt"
+        _LOGGER.debug(f"Zigbee2mqtt path in creating backup: {zigbee2mqtt_path}")
         encrypted_backup_path, backup_path = await create_secure_backup(
             hass,
             Path(hass.config.path()),
+            zigbee2mqtt_path,
             admin_keypair=sub_admin_acc.keypair,
         )
         ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
@@ -201,6 +208,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             config_path = Path(hass.config.path())
             backup_encrypted_path = call.data.get("backup_path")
+            zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
+            if zigbee2mqtt_path is None:
+                zigbee2mqtt_path = "/opt/zigbee2mqtt"
             hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
             if backup_encrypted_path is None:
                 hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
@@ -214,16 +224,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
                 )
                 await unpack_backup(hass, Path(backup_path), sub_admin_kp)
-                await restore_from_backup(hass, Path(hass.config.path()))
+                await restore_from_backup(hass, zigbee2mqtt_path, Path(hass.config.path()))
             else:
                 backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
-                await restore_from_backup(hass, config_path)
+                await restore_from_backup(hass, zigbee2mqtt_path, config_path)
                 _LOGGER.debug(f"Config restored, restarting...")
         except Exception as e:
             _LOGGER.error(f"Exception in restore from backup service call: {e}")
 
-    hass.services.async_register(DOMAIN, "save_backup_to_robonomics", handle_save_backup)
-    hass.services.async_register(DOMAIN, "restore_from_robonomics_backup", handle_restore_from_backup)
+    hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
+    hass.services.async_register(DOMAIN, RESTORE_BACKUP_SERVICE, handle_restore_from_backup)
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(
         hass,
@@ -271,6 +281,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                 _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
+    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
 
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
@@ -296,5 +307,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     hass.data.pop(DOMAIN)
-    _LOGGER.debug(f"Robonomics integration was unloaded")
-    return True
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    _LOGGER.debug(f"Robonomics integration was unloaded: {unload_ok}")
+    return unload_ok

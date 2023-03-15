@@ -1,8 +1,12 @@
 """Constants for the Robonomics Control integration."""
 
+from homeassistant.const import Platform
+
 DOMAIN = "robonomics"
-CONF_IP = "ip"
-PLATFORMS = []
+PLATFORMS = [Platform.BUTTON]
+
+CREATE_BACKUP_SERVICE = "save_backup_to_robonomics"
+RESTORE_BACKUP_SERVICE = "restore_from_robonomics_backup"
 
 CONF_ADMIN_SEED = "admin_seed_secret"
 CONF_SUB_OWNER_ADDRESS = "sub_owner_address"
@@ -39,6 +43,8 @@ CONFIG_ENCRYPTED_PREFIX = "config_encrypted"
 BACKUP_PREFIX = "backup-"
 BACKUP_ENCRYPTED_PREFIX = "backup_encrypted"
 TWIN_ID = "twin_id"
+
+Z2M_CONFIG_NAME = "z2m_configuration.yaml"
 
 RWS_DAYS_LEFT_NOTIFY = 5
 TIME_CHANGE_COUNT = "time_change_count"
