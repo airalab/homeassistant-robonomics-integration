@@ -165,7 +165,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                     crypto_type=KeypairType.ED25519,
                 )
                 sender_kp = sender_acc.keypair
-                encrypted_data = encrypt_message(str(new_config), sender_kp, sender_kp.public_key)
+                encrypted_data = encrypt_message(json.dumps(new_config), sender_kp, sender_kp.public_key)
             else:
                 list_files = os.listdir(data_config_path)
                 for name_file in list_files:
