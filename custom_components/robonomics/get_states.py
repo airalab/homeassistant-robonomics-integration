@@ -172,7 +172,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                     crypto_type=KeypairType.ED25519,
                 )
                 sender_kp = sender_acc.keypair
-                encrypted_data = encrypt_message(str(new_config), sender_kp, sender_kp.public_key)
+                encrypted_data = encrypt_message(json.dumps(new_config), sender_kp, sender_kp.public_key)
                 filename = write_data_to_temp_file(encrypted_data, config=True)
                 _LOGGER.debug(f"Filename: {filename}")
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(hass, config_filename, filename)
