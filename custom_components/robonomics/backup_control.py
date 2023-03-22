@@ -171,16 +171,6 @@ async def restore_from_backup(
     if zigbee2mqtt_path[-1] != "/":
         zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
     try:
-        if os.path.exists(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}"):
-            if os.path.isdir(zigbee2mqtt_path) and os.path.isdir(f"{zigbee2mqtt_path}data"):
-                os.remove(f"{zigbee2mqtt_path}data/configuration.yaml")
-            else:
-                os.mkdir(zigbee2mqtt_path)
-                os.mkdir(f"{zigbee2mqtt_path}data")
-            shutil.copy(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", f"{zigbee2mqtt_path}data/configuration.yaml")
-    except Exception as e:
-        _LOGGER.error(f"Exception in restoring z2m: {e}")
-    try:
         old_config_files = os.listdir(path_to_old_config)
         for old_file in old_config_files:
             try:
@@ -205,6 +195,19 @@ async def restore_from_backup(
                 shutil.copy(f"{path_to_new_config}/{new_file}", f"{path_to_old_config}/{new_file}")
             except Exception as e:
                 _LOGGER.debug(f"Exception in copy files: {e}")
+        try:
+            if os.path.exists(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}"):
+                if os.path.isdir(zigbee2mqtt_path) and os.path.isdir(f"{zigbee2mqtt_path}data"):
+                    os.remove(f"{zigbee2mqtt_path}data/configuration.yaml")
+                else:
+                    os.mkdir(zigbee2mqtt_path)
+                    os.mkdir(f"{zigbee2mqtt_path}data")
+                shutil.copy(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", f"{zigbee2mqtt_path}data/configuration.yaml")
+        except Exception as e:
+            _LOGGER.warning(
+                f"Exception in restoring z2m: {e}. Zigbee2mqtt configuration will be placed in homeassistant configuration directory"
+            )
+            shutil.copy(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", f"{path_to_old_config}/{Z2M_CONFIG_NAME}")
         shutil.rmtree(path_to_new_config_dir)
         _LOGGER.debug(f"Config was replaced")
         hass.states.async_set(f"{DOMAIN}.backup", "Restored")
