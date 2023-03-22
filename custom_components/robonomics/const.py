@@ -7,6 +7,7 @@ PLATFORMS = [Platform.BUTTON]
 
 CREATE_BACKUP_SERVICE = "save_backup_to_robonomics"
 RESTORE_BACKUP_SERVICE = "restore_from_robonomics_backup"
+SAVE_VIDEO_SERVICE = "save_video_to_robonomics"
 
 CONF_ADMIN_SEED = "admin_seed_secret"
 CONF_SUB_OWNER_ADDRESS = "sub_owner_address"
@@ -22,7 +23,7 @@ CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
 
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
-LOCAL_GATEWAY = "http://localhost:8080/ipfs/"
+PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 
 SENDING_TIMEOUT = "sending_timeout"
 ROBONOMICS = "robonomics"
@@ -38,6 +39,7 @@ IPFS_HASH_CONFIG = "ipfs_hash_config"
 IPFS_TELEMETRY_PATH = "/ha_robonomics_telemetry"
 IPFS_BACKUP_PATH = "/ha_robonomics_backup"
 IPFS_CONFIG_PATH = "/ha_robonomics_config"
+IPFS_MEDIA_PATH = "/ha_robonomics_media"
 CONFIG_PREFIX = "config-"
 CONFIG_ENCRYPTED_PREFIX = "config_encrypted"
 BACKUP_PREFIX = "backup-"
@@ -62,3 +64,7 @@ EXCLUDE_FROM_BACKUP = [
     "backups/*",
     "OZW_Log.txt",
 ]
+
+ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
+MEDIA_ACC_H256 = "0x0000000000000000000000000000000000000000000000000000000000000001"
+MEDIA_ACC = "4CC7GkKuJJzFzswqz39m5qWbgXaQks9f36jCgsadpN2c1hnh"

@@ -1,8 +1,9 @@
-from substrateinterface import KeypairType, Keypair
-from robonomicsinterface import Account
-from requests import get
 import json
-from conf import LAUNCH_SEED, LAUNCH_CONTROLLER_ADDRESS, URL_TO_READ
+
+from conf import LAUNCH_CONTROLLER_ADDRESS, LAUNCH_SEED, URL_TO_READ
+from requests import get
+from robonomicsinterface import Account
+from substrateinterface import Keypair, KeypairType
 
 
 def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
@@ -21,6 +22,7 @@ def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_
 
     return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
 
+
 def main():
     print(f"Get request to {URL_TO_READ}")
     resp = get(URL_TO_READ)
@@ -35,5 +37,6 @@ def main():
         f.write(message)
     json_message = json.loads(message)
     return json_message
+
 
 main()

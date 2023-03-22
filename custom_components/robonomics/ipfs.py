@@ -39,11 +39,12 @@ from .const import (
     IPFS_CONFIG_PATH,
     IPFS_GATEWAY,
     IPFS_MAX_FILE_NUMBER,
+    IPFS_MEDIA_PATH,
     IPFS_TELEMETRY_PATH,
-    LOCAL_GATEWAY,
     MAX_NUMBER_OF_REQUESTS,
     MORALIS_GATEWAY,
     PINATA,
+    PINATA_GATEWAY,
     SECONDS_IN_DAY,
 )
 from .utils import get_hash, to_thread
@@ -128,11 +129,49 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
     return ipfs_hash
 
 
+async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    """Send media file to IPFS
+
+    :param hass: Home Assistant instance
+    :param filename: file with media.
+
+    :return: IPFS hash of the file
+    """
+
+    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_MEDIA_PATH, True, None, None)
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
+
+
+@to_thread
+def get_folder_hash(ipfs_folder: str) -> str:
+    """Get IPFS hash of the given folder in MFS
+
+    :param ipfs_folder: the name of the folder with the path
+
+    :return: IPFS hash of the folder
+    """
+
+    try:
+        with ipfshttpclient2.connect() as client:
+            res = client.files.stat(ipfs_folder)
+            return res["Hash"]
+    except Exception as e:
+        _LOGGER.error(f"Exception in getting folder hash: {e}")
+
+
 @to_thread
 def create_folders() -> None:
     """Function creates IPFS folders to store Robonomics telemetry, configuration and backup files"""
 
     with ipfshttpclient2.connect() as client:
+        try:
+            client.files.mkdir(IPFS_MEDIA_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_MEDIA_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_MEDIA_PATH}")
         try:
             client.files.mkdir(IPFS_TELEMETRY_PATH)
         except ipfshttpclient2.exceptions.ErrorResponse:
@@ -218,8 +257,8 @@ async def get_ipfs_data(
     number_of_request: int,
     gateways: tp.List[str] = [
         IPFS_GATEWAY,
-        LOCAL_GATEWAY,
         MORALIS_GATEWAY,
+        PINATA_GATEWAY,
     ],
 ) -> tp.Optional[str]:
     """Get data from IPFS.
@@ -240,6 +279,7 @@ async def get_ipfs_data(
     try:
         tasks = []
         _LOGGER.debug(f"Request to IPFS number {number_of_request}")
+        tasks.append(_get_from_local_node_by_hash(ipfs_hash))
         for gateway in gateways:
             if gateway[-1] != "/":
                 gateway += "/"
@@ -587,3 +627,15 @@ async def _get_request(
             return None
     else:
         return None
+
+
+@to_thread
+def _get_from_local_node_by_hash(ipfs_hash: str) -> tp.Optional[str]:
+    try:
+        with ipfshttpclient2.connect() as client:
+            res = client.cat(ipfs_hash)
+            res_str = res.decode()
+            _LOGGER.debug(f"Got data {ipfs_hash} from local gateway")
+            return res_str
+    except Exception as e:
+        _LOGGER.error(f"Exception in getting file from local node by hash: {e}")

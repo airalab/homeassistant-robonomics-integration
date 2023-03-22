@@ -1,10 +1,18 @@
+import json
+import os
+
+import ipfshttpclient2
+from conf import (
+    LAUNCH_COMMAND,
+    LAUNCH_CONTROLLER_ADDRESS,
+    LAUNCH_GATEWAY_PORT,
+    LAUNCH_GATEWAY_URL,
+    LAUNCH_SEED,
+    LAUNCH_SUB_OWNER_ADDRESS,
+)
 from robonomicsinterface import Account, Launch
 from robonomicsinterface.utils import web_3_auth
-from substrateinterface import KeypairType, Keypair
-import json
-import ipfshttpclient2
-import os
-from conf import LAUNCH_SEED, LAUNCH_COMMAND, LAUNCH_CONTROLLER_ADDRESS, LAUNCH_SUB_OWNER_ADDRESS, LAUNCH_GATEWAY_URL, LAUNCH_GATEWAY_PORT
+from substrateinterface import Keypair, KeypairType
 
 seed = LAUNCH_SEED
 command = LAUNCH_COMMAND
@@ -13,6 +21,7 @@ sub_owner_address = LAUNCH_SUB_OWNER_ADDRESS
 url = LAUNCH_GATEWAY_URL
 port = LAUNCH_GATEWAY_PORT
 encrypt = True
+
 
 def encrypt_message(message, sender_keypair: Keypair, recipient_public_key: bytes) -> str:
     """
@@ -26,6 +35,7 @@ def encrypt_message(message, sender_keypair: Keypair, recipient_public_key: byte
     """
     encrypted = sender_keypair.encrypt_message(message, recipient_public_key)
     return f"0x{encrypted.hex()}"
+
 
 message = json.dumps(command)
 print(f"Message: {message}")
@@ -41,7 +51,7 @@ with open(filename, "w") as f:
 
 usr, pwd = web_3_auth(seed)
 with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)) as client:
-    result_ipfs = client.add(filename, pin=False)['Hash']
+    result_ipfs = client.add(filename, pin=False)["Hash"]
 print(f"IPFS hash: {result_ipfs}")
 os.remove(filename)
 

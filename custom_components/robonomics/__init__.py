@@ -8,13 +8,12 @@ import json
 import logging
 import os
 import shutil
-import tempfile
+from copy import deepcopy
 from datetime import timedelta
-from pathlib import Path
 from platform import platform
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
@@ -23,7 +22,7 @@ from substrateinterface import Keypair, KeypairType
 
 _LOGGER = logging.getLogger(__name__)
 
-from .backup_control import check_backup_change, create_secure_backup, restore_from_backup, unpack_backup
+from .backup_control import check_backup_change
 from .const import (
     CONF_ADMIN_SEED,
     CONF_IPFS_GATEWAY,
@@ -35,7 +34,6 @@ from .const import (
     CONF_SUB_OWNER_ADDRESS,
     CONFIG_PREFIX,
     CREATE_BACKUP_SERVICE,
-    DATA_BACKUP_ENCRYPTED_NAME,
     DATA_PATH,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
@@ -46,15 +44,17 @@ from .const import (
     PLATFORMS,
     RESTORE_BACKUP_SERVICE,
     ROBONOMICS,
+    SAVE_VIDEO_SERVICE,
     TIME_CHANGE_COUNT,
     TIME_CHANGE_UNSUB,
     TWIN_ID,
 )
 from .get_states import get_and_send_data
-from .ipfs import add_backup_to_ipfs, create_folders, get_ipfs_data, get_last_file_hash, read_ipfs_local_file
+from .ipfs import create_folders, get_ipfs_data, get_last_file_hash, read_ipfs_local_file
 from .manage_users import manage_users
 from .robonomics import Robonomics, check_subscription_left_days
-from .utils import decrypt_message, delete_temp_file
+from .services import restore_from_backup_service_call, save_backup_service_call, save_video
+from .utils import decrypt_message
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -179,59 +179,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
 
-    async def handle_save_backup(call):
+    async def handle_save_backup(call: ServiceCall) -> None:
         """Callback for save_backup_to_robonomics service.
         It creates secure backup, adds to IPFS and updates
         the Digital Twin topic.
         """
-        zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
-        if zigbee2mqtt_path is None:
-            zigbee2mqtt_path = "/opt/zigbee2mqtt"
-        _LOGGER.debug(f"Zigbee2mqtt path in creating backup: {zigbee2mqtt_path}")
-        encrypted_backup_path, backup_path = await create_secure_backup(
-            hass,
-            Path(hass.config.path()),
-            zigbee2mqtt_path,
-            admin_keypair=sub_admin_acc.keypair,
-        )
-        ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
-        _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
-        delete_temp_file(encrypted_backup_path)
-        delete_temp_file(backup_path)
-        await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(ipfs_hash, hass.data[DOMAIN][TWIN_ID])
 
-    async def handle_restore_from_backup(call):
+        await save_backup_service_call(hass, call, sub_admin_acc)
+
+    async def handle_restore_from_backup(call: ServiceCall) -> None:
         """Callback for restore_from_robonomics_backup service.
         It restores configuration file from backup.
         """
 
-        try:
-            config_path = Path(hass.config.path())
-            backup_encrypted_path = call.data.get("backup_path")
-            zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
-            if zigbee2mqtt_path is None:
-                zigbee2mqtt_path = "/opt/zigbee2mqtt"
-            hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-            if backup_encrypted_path is None:
-                hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
-                _LOGGER.debug("Start looking for backup ipfs hash")
-                ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
-                result = await get_ipfs_data(hass, ipfs_backup_hash, 0)
-                backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
-                with open(backup_path, "w") as f:
-                    f.write(result)
-                sub_admin_kp = Keypair.create_from_mnemonic(
-                    hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-                )
-                await unpack_backup(hass, Path(backup_path), sub_admin_kp)
-                await restore_from_backup(hass, zigbee2mqtt_path, Path(hass.config.path()))
-            else:
-                backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
-                await restore_from_backup(hass, zigbee2mqtt_path, config_path)
-                _LOGGER.debug(f"Config restored, restarting...")
-        except Exception as e:
-            _LOGGER.error(f"Exception in restore from backup service call: {e}")
+        await restore_from_backup_service_call(hass, call, sub_admin_acc)
 
+    async def handle_save_video(call: ServiceCall) -> None:
+        """Callback for save_video_to_robonomics service"""
+        data = deepcopy(call.data)
+        if "duration" in data:
+            duration = data["duration"]
+            data.pop("duration")
+        else:
+            duration = 10
+        path = data["path"]
+        data.pop("path")
+        await save_video(hass, data, path, duration)
+
+    hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
     hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
     hass.services.async_register(DOMAIN, RESTORE_BACKUP_SERVICE, handle_restore_from_backup)
 

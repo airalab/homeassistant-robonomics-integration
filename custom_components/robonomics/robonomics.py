@@ -17,9 +17,11 @@ from .const import (
     CONF_SUB_OWNER_ADDRESS,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
+    MEDIA_ACC,
     ROBONOMICS,
     RWS_DAYS_LEFT_NOTIFY,
     TWIN_ID,
+    ZERO_ACC,
 )
 from .get_states import get_and_send_data
 from .ipfs import get_ipfs_data
@@ -27,8 +29,6 @@ from .manage_users import change_password, manage_users
 from .utils import create_notification, decrypt_message, to_thread
 
 _LOGGER = logging.getLogger(__name__)
-
-ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
 
 
 async def check_subscription_left_days(hass: HomeAssistant) -> None:
@@ -253,7 +253,7 @@ class Robonomics:
             _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
             if info is not None:
                 for topic in info:
-                    _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
+                    # _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
                     if topic[0] == bytes_hash:
                         if topic[1] == self.sub_owner_address:
                             _LOGGER.debug(f"Topic with this backup exists")
@@ -289,7 +289,7 @@ class Robonomics:
             _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
             if info is not None:
                 for topic in info:
-                    _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
+                    # _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
                     if topic[0] == bytes_hash:
                         if topic[1] == sub_admin.get_address():
                             _LOGGER.debug(f"Topic with this config exists")
@@ -300,6 +300,37 @@ class Robonomics:
                             f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
                         )
             dt.set_source(twin_number, bytes_hash, sub_admin.get_address())
+            _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
+        except Exception as e:
+            _LOGGER.error(f"Exception in set config topic {e}")
+
+    @to_thread
+    def set_media_topic(self, ipfs_hash: str, twin_number: int) -> None:
+        """Create new topic in Digital Twin for updated media folder
+
+        :param ipfs_hash: Hash for the media folder
+        :param twin_number: Twin number where hash stores
+        """
+
+        try:
+            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
+            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            info = dt.get_info(twin_number)
+            bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
+            _LOGGER.debug(f"Bytes media hash: {bytes_hash}")
+            if info is not None:
+                for topic in info:
+                    # _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
+                    if topic[0] == bytes_hash:
+                        if topic[1] == MEDIA_ACC:
+                            _LOGGER.debug(f"Topic with this config exists")
+                            return
+                    if topic[1] == sub_admin.get_address():
+                        dt.set_source(twin_number, topic[0], ZERO_ACC)
+                        _LOGGER.debug(
+                            f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
+                        )
+            dt.set_source(twin_number, bytes_hash, MEDIA_ACC)
             _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
         except Exception as e:
             _LOGGER.error(f"Exception in set config topic {e}")

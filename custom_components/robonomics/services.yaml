@@ -23,3 +23,26 @@ restore_from_robonomics_backup:
       example: "/home/homeassistant/.homeassistant/backups/example.tar.xz"
       selector:
         text:
+
+save_video_to_robonomics:
+  name: Save recording to robonomics
+  description: Record a video, save it to IPFS and Digital Twin
+  target:
+      entity:
+        domain: camera
+  fields:
+    path:
+      description: This path must be set in configuration.yaml
+      name: Path to save the recording
+      required: true
+      example: "/tmp"
+      selector:
+        text:
+    duration:
+      description: Duration of the recording in seconds (default 10s)
+      name: Duration
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 90
