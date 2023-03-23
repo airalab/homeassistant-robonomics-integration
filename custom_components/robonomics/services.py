@@ -3,8 +3,10 @@
 import logging
 import tempfile
 import time
+import os
 import typing as tp
 from pathlib import Path
+import asyncio
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -45,8 +47,13 @@ async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, 
     res = await hass.services.async_call(
         domain=CAMERA_DOMAIN, service=SERVICE_RECORD, service_data=data, target=target, blocking=True
     )
-    _LOGGER.debug(f"Video has been recorded with res: {res}")
-    if res:
+    count = 0
+    while not os.path.isfile(f"{path}/{filename}"):
+        await asyncio.sleep(2)
+        count += 1
+        if count > 10:
+            break
+    if os.path.isfile(f"{path}/{filename}"):
         video_ipfs_hash = await add_media_to_ipfs(hass, f"{path}/{filename}")
         folder_ipfs_hash = await get_folder_hash(IPFS_MEDIA_PATH)
         await hass.data[DOMAIN][ROBONOMICS].set_media_topic(folder_ipfs_hash, hass.data[DOMAIN][TWIN_ID])

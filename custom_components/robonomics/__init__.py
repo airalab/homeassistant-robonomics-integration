@@ -196,15 +196,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_save_video(call: ServiceCall) -> None:
         """Callback for save_video_to_robonomics service"""
-        data = deepcopy(call.data)
-        if "duration" in data:
-            duration = data["duration"]
-            data.pop("duration")
+        if "entity_id" in call.data:
+            target = {"entity_id": call.data["entity_id"]}
+        elif "device_id" in call.data:
+            target = {"device_id": call.data["device_id"]}
+        if "duration" in call.data:
+            duration = call.data["duration"]
         else:
             duration = 10
-        path = data["path"]
-        data.pop("path")
-        await save_video(hass, data, path, duration)
+        path = call.data["path"]
+        await save_video(hass, target, path, duration)
 
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
     hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
