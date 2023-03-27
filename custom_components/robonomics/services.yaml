@@ -1,6 +1,15 @@
 save_backup_to_robonomics:
   name: Save Backup to Robonomics
   description: Create new backup, save it to IPFS and send a transaction to Robonomics blockchain with IPFS hash
+  fields:
+    zigbee2mqtt_path:
+      name: Path to zigbee2mqtt config (Optional)
+      description: If doesn't set, backup from /opt/zigbee2mqtt if exists
+      required: false
+      advanced: true
+      example: /opt/zigbee2mqtt
+      selector:
+        text:
 
 restore_from_robonomics_backup:
   name: Restore from the Backup in Robonomics
@@ -14,3 +23,26 @@ restore_from_robonomics_backup:
       example: "/home/homeassistant/.homeassistant/backups/example.tar.xz"
       selector:
         text:
+
+save_video_to_robonomics:
+  name: Save recording to robonomics
+  description: Record a video, save it to IPFS and Digital Twin
+  target:
+      entity:
+        domain: camera
+  fields:
+    path:
+      description: This path must be set in configuration.yaml
+      name: Path to save the recording
+      required: true
+      example: "/tmp"
+      selector:
+        text:
+    duration:
+      description: Duration of the recording in seconds (default 10s)
+      name: Duration
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 90

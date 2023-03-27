@@ -1,21 +1,19 @@
-# import nacl.bindings
-import nacl.public
-from substrateinterface import Keypair, KeypairType
-
-# import secrets
+import asyncio
+import functools
+import logging
+import os
+import random
+import string
+import tempfile
+import time
+import typing as tp
 from typing import Union
 
-# import base64
-import random, string
-import functools
-import typing as tp
-import asyncio
-import logging
 import ipfshttpclient2
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
 from homeassistant.core import HomeAssistant
-import time
+from substrateinterface import Keypair
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,10 +63,6 @@ def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_
     return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
 
 
-def str2bool(v):
-    return v.lower() in ("on", "true", "t", "1", "y", "yes", "yeah")
-
-
 def generate_pass(length: int) -> str:
     """Generate random low letter string with the given length
 
@@ -107,22 +101,29 @@ def get_hash(filename: str) -> tp.Optional[str]:
     return ipfs_hash_local
 
 
-def write_data_to_file(data: str, data_path: str, config: bool = False) -> str:
+def write_data_to_temp_file(data: str, config: bool = False) -> str:
     """
     Create file and store data in it
 
     :param data: data, which to be written to the file
-    :param data_path: path, where to store file
-    :param config:
-    :return:
+    :param config: is file fo config (True) or for telemetry (False)
+
+    :return: path to created file
     """
+    dirname = tempfile.gettempdir()
     if config:
-        filename = f"{data_path}/config_encrypted-{time.time()}"
+        filename = f"{dirname}/config_encrypted-{time.time()}"
     else:
-        filename = f"{data_path}/data-{time.time()}"
+        filename = f"{dirname}/data-{time.time()}"
     with open(filename, "w") as f:
         f.write(data)
     return filename
 
-# TODO:
-# chage import get_hash in ipfs.py to import get_hash from utils
+
+def delete_temp_file(filename: str) -> None:
+    """
+    Delete temporary file
+
+    :param filename: the name of the file to delete
+    """
+    os.remove(filename)
