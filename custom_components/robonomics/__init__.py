@@ -246,9 +246,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         _LOGGER.debug(f"Can't decrypt last telemetry: {e}")
                 try:
                     if TWIN_ID not in hass.data[DOMAIN]:
-                        _LOGGER.debug(f"Start creating new digital twin")
-                        hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-                        _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                        _LOGGER.debug("Start looking for the last digital twin belonging to controller")
+                        twin_id = await hass.data[DOMAIN][ROBONOMICS].get_last_digital_twin()
+                        if twin_id is not None:
+                            _LOGGER.debug(f"Last twin id is {twin_id}")
+                            hass.data[DOMAIN][TWIN_ID] = twin_id
+                        else:
+                            _LOGGER.debug(f"Start creating new digital twin")
+                            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
                     else:
                         _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
                 except Exception as e:
