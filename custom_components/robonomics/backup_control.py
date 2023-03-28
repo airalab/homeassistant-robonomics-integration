@@ -29,6 +29,7 @@ from .const import (
     ROBONOMICS,
     TWIN_ID,
     Z2M_CONFIG_NAME,
+    EXCLUDE_FROM_FULL_BACKUP,
 )
 from .ipfs import get_last_file_hash
 from .utils import decrypt_message, encrypt_message, to_thread
@@ -71,6 +72,7 @@ def create_secure_backup(
     config_path: Path,
     zigbee2mqtt_path: str,
     admin_keypair: Keypair,
+    full: bool,
 ) -> (str, str):
     """Create secure .tar.xz archive and returns the path to it
 
@@ -78,6 +80,7 @@ def create_secure_backup(
     :param config_path: Path to the configuration file
     :param zigbee2mqtt_path: Path to zigbee2mqtt config
     :param admin_keypair: Keypair to encrypt backup
+    :param full: Create full backup with database or not
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
@@ -89,12 +92,16 @@ def create_secure_backup(
     backup_name = f"{BACKUP_PREFIX}{backup_name_time[0]}_{backup_name_time[1]}.tar.xz"
     path_to_tar = Path(tempfile.gettempdir())
     tar_path = path_to_tar.joinpath(f"{backup_name}")
-    _LOGGER.debug(f"Start creating backup: {tar_path}")
+    _LOGGER.debug(f"Start creating backup: {tar_path}, full: {full}")
     list_files = os.listdir(config_path)
+    if full:
+        excludes = EXCLUDE_FROM_FULL_BACKUP
+    else:
+        excludes = EXCLUDE_FROM_BACKUP
     try:
         with tarfile.open(tar_path, "w:xz") as tar:
             for file_item in list_files:
-                for exclude in EXCLUDE_FROM_BACKUP:
+                for exclude in excludes:
                     path = Path(file_item)
                     if path.match(exclude):
                         # _LOGGER.debug(f"Exclude {path}")

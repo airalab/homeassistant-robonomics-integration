@@ -70,6 +70,7 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
     """
 
     zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
+    full = call.data.get("full")
     if zigbee2mqtt_path is None:
         zigbee2mqtt_path = "/opt/zigbee2mqtt"
     _LOGGER.debug(f"Zigbee2mqtt path in creating backup: {zigbee2mqtt_path}")
@@ -78,6 +79,7 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
         Path(hass.config.path()),
         zigbee2mqtt_path,
         admin_keypair=sub_admin_acc.keypair,
+        full=full,
     )
     ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
     _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")

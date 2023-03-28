@@ -1,3 +1,5 @@
+"""This module contain methods to communicate with Robonomics blockchain"""
+
 import asyncio
 import json
 import logging
