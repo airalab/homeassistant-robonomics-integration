@@ -20,6 +20,8 @@ CONF_IPFS_GATEWAY_AUTH = "user_ipfs_gateway_auth"
 CONF_IPFS_GATEWAY_PORT = "user_ipfs_gateway_port"
 CONF_WARN_DATA_SENDING = "warn_data_sending"
 CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
+CONF_PINATA_USE = "pinata_use"
+CONF_CUSTOM_GATEWAY_USE = "custom_gateway_use"
 
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
