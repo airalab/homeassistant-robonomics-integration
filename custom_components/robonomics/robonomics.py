@@ -324,7 +324,7 @@ class Robonomics:
                         if topic[1] == MEDIA_ACC:
                             _LOGGER.debug(f"Topic with this config exists")
                             return
-                    if topic[1] == self.controller_address:
+                    if topic[1] == MEDIA_ACC:
                         dt.set_source(twin_number, topic[0], ZERO_ACC)
                         _LOGGER.debug(
                             f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
