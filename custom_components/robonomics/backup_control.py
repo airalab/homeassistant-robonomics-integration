@@ -213,12 +213,10 @@ async def restore_from_backup(
             if os.path.exists(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}"):
                 if os.path.isdir(mosquitto_path) and os.path.exists(f"{mosquitto_path}passwd"):
                     os.remove(f"{mosquitto_path}passwd")
-                else:
-                    os.mkdir(mosquitto_path)
                 shutil.copy(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}", f"{mosquitto_path}passwd")
         except Exception as e:
             _LOGGER.warning(
-                f"Exception in restoring z2m: {e}. Zigbee2mqtt configuration will be placed in homeassistant configuration directory"
+                f"Exception in restoring mosquitto password: {e}. Zigbee2mqtt configuration will be placed in homeassistant configuration directory"
             )
             shutil.copy(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}", f"{path_to_old_config}/{MQTT_CONFIG_NAME}")
         try:
