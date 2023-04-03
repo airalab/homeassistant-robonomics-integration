@@ -70,14 +70,18 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
     """
 
     zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
+    mosquitto_path = call.data.get("mosquitto_path")
     full = call.data.get("full")
     if zigbee2mqtt_path is None:
         zigbee2mqtt_path = "/opt/zigbee2mqtt"
+    if mosquitto_path is None:
+        mosquitto_path = "/etc/mosquitto"
     _LOGGER.debug(f"Zigbee2mqtt path in creating backup: {zigbee2mqtt_path}")
     encrypted_backup_path, backup_path = await create_secure_backup(
         hass,
         Path(hass.config.path()),
         zigbee2mqtt_path,
+        mosquitto_path,
         admin_keypair=sub_admin_acc.keypair,
         full=full,
     )

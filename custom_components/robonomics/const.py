@@ -49,6 +49,7 @@ BACKUP_ENCRYPTED_PREFIX = "backup_encrypted"
 TWIN_ID = "twin_id"
 
 Z2M_CONFIG_NAME = "z2m_configuration.yaml"
+MQTT_CONFIG_NAME = "mqtt_password"
 
 RWS_DAYS_LEFT_NOTIFY = 5
 TIME_CHANGE_COUNT = "time_change_count"
