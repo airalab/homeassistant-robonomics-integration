@@ -33,11 +33,11 @@ async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, st
 
 
 def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
-    """Encrypt message with sender private key and recepient public key
+    """Encrypt message with sender private key and recipient public key
 
     :param message: Message to encrypt
     :param sender_keypair: Sender account Keypair
-    :param recipient_public_key: Recepient public key
+    :param recipient_public_key: Recipient public key
 
     :return: encrypted message
     """
