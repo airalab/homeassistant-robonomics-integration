@@ -30,7 +30,9 @@ from .utils import delete_temp_file, encrypt_message
 _LOGGER = logging.getLogger(__name__)
 
 
-async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, duration: int, sub_admin_acc: Account) -> None:
+async def save_video(
+    hass: HomeAssistant, target: tp.Dict[str, str], path: str, duration: int, sub_admin_acc: Account
+) -> None:
     """Record a video with given duration, save it in IPFS and Digital Twin
 
     :param hass: Home Assistant instance
@@ -56,15 +58,17 @@ async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, 
             break
     if os.path.isfile(f"{path}/{filename}"):
         _LOGGER.debug(f"Start encrypt video {filename}")
+        admin_keypair: Keypair = sub_admin_acc.keypair
         with open(f"{path}/{filename}", "rb") as f:
             video_data = f.read()
-        encrypted_data = encrypt_message(video_data, sub_admin_acc, sub_admin_acc.public_key)
+        encrypted_data = encrypt_message(video_data, admin_keypair, admin_keypair.public_key)
         with open(f"{path}/{filename}", "w") as f:
             f.write(encrypted_data)
 
-        video_ipfs_hash = await add_media_to_ipfs(hass, f"{path}/{filename}")
+        await add_media_to_ipfs(hass, f"{path}/{filename}")
         folder_ipfs_hash = await get_folder_hash(IPFS_MEDIA_PATH)
         # delete file from system
+        _LOGGER.debug(f"delete original video {filename}")
         os.remove(f"{path}/{filename}")
         await hass.data[DOMAIN][ROBONOMICS].set_media_topic(folder_ipfs_hash, hass.data[DOMAIN][TWIN_ID])
 
