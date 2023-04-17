@@ -7,51 +7,47 @@ add_backup_to_ipfs(), create_folders() and get_ipfs_data().
 
 from __future__ import annotations
 
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.core import HomeAssistant
-
-from substrateinterface import Keypair, KeypairType
-from robonomicsinterface.utils import web_3_auth
-from crustinterface import Mainnet
-
-from datetime import datetime, timedelta
-from aiohttp import ClientSession
-from pinatapy import PinataPy
-from ast import literal_eval
-from pathlib import Path
-import ipfshttpclient2
-import typing as tp
 import asyncio
-import logging
 import json
-import os
+import logging
+import typing as tp
+from datetime import datetime, timedelta
 
-from .backup_control import restore_from_backup, unpack_backup, get_hash
-from .utils import decrypt_message, to_thread
+import ipfshttpclient2
+from aiohttp import ClientSession
+from crustinterface import Mainnet
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from pinatapy import PinataPy
+from robonomicsinterface.utils import web_3_auth
+from substrateinterface import KeypairType
 
 from .const import (
-    MORALIS_GATEWAY,
-    IPFS_GATEWAY,
+    BACKUP_ENCRYPTED_PREFIX,
+    BACKUP_PREFIX,
     CONF_ADMIN_SEED,
-    DOMAIN,
-    PINATA,
-    LOCAL_GATEWAY,
-    HANDLE_LAUNCH,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
-    DATA_BACKUP_ENCRYPTED_PATH,
-    TWIN_ID,
-    MAX_NUMBER_OF_REQUESTS,
-    IPFS_TELEMETRY_PATH,
-    SECONDS_IN_DAY,
     CONF_IPFS_GATEWAY_PORT,
+    CONF_PINATA_PUB,
+    CONF_PINATA_SECRET,
+    CONFIG_ENCRYPTED_PREFIX,
+    CONFIG_PREFIX,
+    DOMAIN,
+    HANDLE_IPFS_REQUEST,
     IPFS_BACKUP_PATH,
     IPFS_CONFIG_PATH,
-    CONF_PINATA_SECRET,
-    CONF_PINATA_PUB,
+    IPFS_GATEWAY,
     IPFS_MAX_FILE_NUMBER,
     IPFS_MEDIA_PATH,
+    IPFS_TELEMETRY_PATH,
+    MAX_NUMBER_OF_REQUESTS,
+    MORALIS_GATEWAY,
+    PINATA,
+    PINATA_GATEWAY,
+    SECONDS_IN_DAY,
 )
+from .utils import get_hash, to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,7 +63,7 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
 
     pin = await _check_save_previous_pin(filename)
     if not pin:
-        last_file_name, last_file_hash = await _get_last_file_hash(IPFS_TELEMETRY_PATH)
+        last_file_name, last_file_hash = await get_last_file_hash(IPFS_TELEMETRY_PATH)
     else:
         last_file_hash = None
         last_file_name = None
@@ -77,41 +73,57 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
     return ipfs_hash
 
 
-async def add_config_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encrypted: str) -> tp.Optional[str]:
     """Send configuration file to IPFS
 
     :param hass: Home Assistant instance
     :param filename: file with configuration of Home Assistant dashboard and services
+    :param filename_encrypted: file with encrypted configuration of Home Assistant dashboard and services
 
     :return: IPFS hash of file
     """
 
-    last_file_name, last_file_hash = await _get_last_file_hash(IPFS_CONFIG_PATH)
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_CONFIG_PATH, prefix=CONFIG_PREFIX)
+    last_file_encrypted_name, last_file_encrypted_hash = await get_last_file_hash(
+        IPFS_CONFIG_PATH, prefix=CONFIG_ENCRYPTED_PREFIX
+    )
     new_hash = await get_hash(filename)
+    new_hash_encrypted = await get_hash(filename_encrypted)
     if new_hash == last_file_hash:
         _LOGGER.debug(f"Last config hash and the current are the same: {last_file_hash}")
-        return last_file_hash
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_CONFIG_PATH, False, last_file_hash, last_file_name)
+        return last_file_encrypted_hash
+    await _add_to_local_node(filename, False, IPFS_CONFIG_PATH, last_file_name)
+    ipfs_hash, size = await _add_to_ipfs(
+        hass, filename_encrypted, IPFS_CONFIG_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+    )
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash
 
 
-async def add_backup_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encrypted: str) -> tp.Optional[str]:
     """Send backup file to IPFS
 
     :param hass: Home Assistant instance
-    :param filename: file with full Home Assistant backup.
+    :param filename: file with full Home Assistant backup
+    :param filename_encrypted: encrypted file with full Home Assistant backup
 
     :return: IPFS hash of file
     """
 
-    last_file_name, last_file_hash = await _get_last_file_hash(IPFS_BACKUP_PATH)
+    last_file_name, last_file_hash = await get_last_file_hash(IPFS_BACKUP_PATH, prefix=BACKUP_PREFIX)
+    last_file_encrypted_name, last_file_encrypted_hash = await get_last_file_hash(
+        IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX
+    )
     new_hash = await get_hash(filename)
+    new_hash_encrypted = await get_hash(filename_encrypted)
     if new_hash == last_file_hash:
         _LOGGER.debug(f"Last backup hash and the current are the same: {last_file_hash}")
-        return last_file_hash
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_BACKUP_PATH, False, last_file_hash, last_file_name)
+        return last_file_encrypted_hash
+    await _add_to_local_node(filename, False, IPFS_BACKUP_PATH, last_file_name)
+    ipfs_hash, size = await _add_to_ipfs(
+        hass, filename_encrypted, IPFS_BACKUP_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+    )
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash
@@ -133,10 +145,33 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
 
 
 @to_thread
+def get_folder_hash(ipfs_folder: str) -> str:
+    """Get IPFS hash of the given folder in MFS
+
+    :param ipfs_folder: the name of the folder with the path
+
+    :return: IPFS hash of the folder
+    """
+
+    try:
+        with ipfshttpclient2.connect() as client:
+            res = client.files.stat(ipfs_folder)
+            return res["Hash"]
+    except Exception as e:
+        _LOGGER.error(f"Exception in getting folder hash: {e}")
+
+
+@to_thread
 def create_folders() -> None:
     """Function creates IPFS folders to store Robonomics telemetry, configuration and backup files"""
 
     with ipfshttpclient2.connect() as client:
+        try:
+            client.files.mkdir(IPFS_MEDIA_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_MEDIA_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_MEDIA_PATH}")
         try:
             client.files.mkdir(IPFS_TELEMETRY_PATH)
         except ipfshttpclient2.exceptions.ErrorResponse:
@@ -184,44 +219,99 @@ def check_if_hash_in_folder(ipfs_hash: str, folder: str) -> bool:
             return False
 
 
+@to_thread
+def get_last_file_hash(path: str, prefix: str = None) -> (str, str):
+    """function return name and hash of the last telemetry, configuration and backup
+
+    :param path: path to directory with files
+    :param prefix: if not None, look for the last file with this prefix
+
+    :return: name of last file, and file hash
+    """
+    _LOGGER.debug(f"Getting last file hash from {path} with prefix {prefix}")
+    try:
+        with ipfshttpclient2.connect() as client:
+            files = client.files.ls(path)
+            if len(files["Entries"]) > 0:
+                if prefix is not None:
+                    last_file = None
+                    last_hash = None
+                    for fileinfo in files["Entries"]:
+                        if fileinfo["Name"][: len(prefix)] == prefix:
+                            last_file = fileinfo["Name"]
+                            last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
+                else:
+                    last_file = files["Entries"][-1]["Name"]
+                    last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
+                _LOGGER.debug(f"Last {path} file {last_file}, with hash {last_hash}")
+                return last_file, last_hash
+            else:
+                return None, None
+    except Exception as e:
+        _LOGGER.error(f"Exception in get_last_file_hash: {e}")
+        return None, None
+
+
+@to_thread
+def read_ipfs_local_file(filename: str, path: str) -> tp.Union[str, dict]:
+    """Read data from file pinned in local node
+
+    :param filename: name of the file
+    :param path: path to the file in MFS
+
+    :return: dict with the data in json, string data otherwise
+    """
+
+    with ipfshttpclient2.connect() as client:
+        try:
+            _LOGGER.debug(f"Read data from local file: {path}/{filename}")
+            data = client.files.read(f"{path}/{filename}")
+        except Exception as e:
+            _LOGGER.warning(f"Exception in reading ipfs local file: {e}")
+            return None
+        try:
+            data_json = json.loads(data)
+            return data_json
+        except Exception as e:
+            _LOGGER.debug(f"Data is not json: {e}")
+        data = data.decode("utf-8")
+        return data
+
+
 async def get_ipfs_data(
     hass: HomeAssistant,
     ipfs_hash: str,
-    sender_address: str,
     number_of_request: int,
-    launch: bool = True,
-    telemetry: bool = False,
     gateways: tp.List[str] = [
-        LOCAL_GATEWAY,
         IPFS_GATEWAY,
         MORALIS_GATEWAY,
+        PINATA_GATEWAY,
     ],
-) -> bool:
-    """Recursive function to Get data from IPFS.
+) -> tp.Optional[str]:
+    """Get data from IPFS.
 
     Call when need to download telemetry, launch or backup files.
-    call different functions depend on which file need to download.
-    if download telemetry - it will restore "digital twin" from telemetry
-    if download launch - call _run_launch_command() function to start device
-    if download backup - restore backup
 
     :param hass: Home assistant instance
     :param ipfs_hash: hash of requested file
-    :param sender_address: sender's address, who sends launch command
     :param number_of_request: attempt number of get request
-    :param launch: bool value, that will get launch file
-    :param telemetry: bool value, that will get telemetry file
     :param gateways: list of IPFS gateways, where function will search a file
 
-    :return: bool as result of operation
+    :return: Data from IPFS hash or None if can't get data
     """
 
     if number_of_request >= MAX_NUMBER_OF_REQUESTS:
-        return False
+        return None
     websession = async_create_clientsession(hass)
     try:
         tasks = []
         _LOGGER.debug(f"Request to IPFS number {number_of_request}")
+        tasks.append(_get_from_local_node_by_hash(ipfs_hash))
+        for gateway in gateways:
+            if gateway[-1] != "/":
+                gateway += "/"
+            url = f"{gateway}{ipfs_hash}"
+            tasks.append(_get_request(hass, websession, url))
         if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
             custom_gateway = hass.data[DOMAIN][CONF_IPFS_GATEWAY]
             if custom_gateway is not None:
@@ -230,40 +320,27 @@ async def get_ipfs_data(
                 if custom_gateway[-5:] != "ipfs/":
                     custom_gateway += "ipfs/"
                 url = f"{custom_gateway}{ipfs_hash}"
-                tasks.append(
-                    asyncio.create_task(_get_request(hass, websession, url, sender_address, launch, telemetry))
-                )
-        for gateway in gateways:
-            if gateway[-1] != "/":
-                gateway += "/"
-            url = f"{gateway}{ipfs_hash}"
-            tasks.append(asyncio.create_task(_get_request(hass, websession, url, sender_address, launch, telemetry)))
-        for task in tasks:
+                tasks.append(_get_request(hass, websession, url))
+        for task in asyncio.as_completed(tasks):
             res = await task
             if res:
-                return True
+                return res
         else:
-            if hass.data[DOMAIN][HANDLE_LAUNCH]:
+            if hass.data[DOMAIN][HANDLE_IPFS_REQUEST]:
                 res = await get_ipfs_data(
                     hass,
                     ipfs_hash,
-                    sender_address,
                     number_of_request + 1,
-                    launch=launch,
-                    telemetry=telemetry,
                     gateways=gateways,
                 )
                 return res
     except Exception as e:
         _LOGGER.error(f"Exception in get ipfs: {e}")
-        if hass.data[DOMAIN][HANDLE_LAUNCH]:
+        if hass.data[DOMAIN][HANDLE_IPFS_REQUEST]:
             res = await get_ipfs_data(
                 hass,
                 ipfs_hash,
-                sender_address,
                 number_of_request + 1,
-                launch=launch,
-                telemetry=telemetry,
                 gateways=gateways,
             )
             return res
@@ -316,30 +393,6 @@ def _check_save_previous_pin(filename: str) -> bool:
 
 
 @to_thread
-def _get_last_file_hash(path: str) -> (str, str):
-    """function return name and hash of the last telemetry, configuration and backup
-
-    :param path: path to directory with files
-
-    :return: name of last file, and file hash
-    """
-
-    try:
-        with ipfshttpclient2.connect() as client:
-            files = client.files.ls(path)
-            if len(files["Entries"]) > 0:
-                last_file = files["Entries"][-1]["Name"]
-                last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
-                _LOGGER.debug(f"Last telemetry file {last_file}, with hash {last_hash}")
-                return last_file, last_hash
-            else:
-                return None, None
-    except Exception as e:
-        _LOGGER.error(f"Exception in get_last_file_hash: {e}")
-        return None, None
-
-
-@to_thread
 def _add_to_local_node(
     filename: str,
     pin: bool,
@@ -349,7 +402,7 @@ def _add_to_local_node(
     """function add file to local IPFS client
 
     :param filename: file with data
-    :param pin: if False, unpin previous file
+    :param pin: should save previous pin or not
     :param path: path to folder where to store file
     :param last_file_name: name of file, which should be unpin(if needed)
 
@@ -389,7 +442,7 @@ def _add_to_pinata(
     :param hass:  Home Assistant instance
     :param filename: file with data
     :param pinata: pinata client object
-    :param pin: if False, unpin previous file
+    :param pin: should save previous pin or not
     :param last_file_hash: hash of file, which should be unpinned(if needed)
 
     :return: IPFS hash of file and file size in IPFS
@@ -432,7 +485,7 @@ def _add_to_custom_gateway(
     :param filename: file with data
     :param url: URL of IPFS public gateway
     :param port: port number of gateway
-    :param pin: if False, unpin previous file
+    :param pin: should save previous pin or not
     :param seed: seed of web3 account. Required if the gateway have web3 authorization
     :param last_file_hash: hash of file, which should be unpin(if needed)
 
@@ -529,7 +582,7 @@ async def _add_to_ipfs(
     :param hass: Home Assistant instance
     :param filename: file with data
     :param path: local directory where to store file
-    :param pin: if False, unpin previous file
+    :param pin: should save previous pin or not
     :param last_file_hash: hash of file, which should be unpinned(if needed)
     :param last_file_name: name of file, which should be unpinned(if needed)
 
@@ -571,75 +624,18 @@ async def _add_to_ipfs(
         return None, None
 
 
-def _run_launch_command(hass: HomeAssistant, encrypted_command: str, sender_address: str) -> None:
-    """Function to unwrap launch command and call Home Assistant service for device
-
-    :param hass: Home Assistant instance
-    :param encrypted_command: command from IPFS
-    :param sender_address: launch's user address
-    """
-
-    try:
-        if encrypted_command is None:
-            _LOGGER.error(f"Can't get command")
-            return
-    except Exception as e:
-        _LOGGER.error(f"Exception in get ipfs command: {e}")
-        return None
-    _LOGGER.debug(f"Got from launch: {encrypted_command}")
-    if "platform" in encrypted_command:
-        message = literal_eval(encrypted_command)
-    else:
-        kp_sender = Keypair(ss58_address=sender_address, crypto_type=KeypairType.ED25519)
-        sub_admin_kp = Keypair.create_from_mnemonic(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
-        try:
-            decrypted = decrypt_message(encrypted_command, kp_sender.public_key, sub_admin_kp)
-        except Exception as e:
-            _LOGGER.error(f"Exception in decrypt command: {e}")
-            return None
-        decrypted = str(decrypted)[2:-1]
-        _LOGGER.debug(f"Decrypted command: {decrypted}")
-        message = literal_eval(decrypted)
-    try:
-        # domain="light", service="turn_on", service_data={"rgb_color": [30, 30, 230]}
-        # target={"entity_id": "light.shapes_9275"}
-        message_entity_id = message["params"]["entity_id"]
-        params = message["params"].copy()
-        del params["entity_id"]
-        if params == {}:
-            params = None
-        hass.async_create_task(
-            hass.services.async_call(
-                domain=message["platform"],
-                service=message["name"],
-                service_data=params,
-                target={"entity_id": message_entity_id},
-            )
-        )
-    except Exception as e:
-        _LOGGER.error(f"Exception in sending command: {e}")
-
-
 async def _get_request(
     hass: HomeAssistant,
     websession: ClientSession,
     url: str,
-    sender_address: str,
-    launch: bool,
-    telemetry: bool,
-) -> bool:
-    """provide get request to IPFS gateways.
-
-    This function wraps to asyncio in get_ipfs_data() function.
+) -> tp.Optional[str]:
+    """Provide async get request to given IPFS gateway.
 
     :param hass: Home Assistant instance
     :param websession: aiohttp Client Session
     :param url: URL with IPFS gateway + IPFS hash of file
-    :param sender_address: sender's address, who sends launch command
-    :param launch: bool value, that will get launch file
-    :param telemetry: bool value, that will get telemetry file
 
-    :return: True, if launch success
+    :return: Data from IPFS hash or None
     """
 
     _LOGGER.debug(f"Request to {url}")
@@ -647,44 +643,26 @@ async def _get_request(
         resp = await websession.get(url)
     except Exception as e:
         _LOGGER.warning(f"Exception - {e} in request to {url}")
-        return False
-    _LOGGER.debug(f"Response from {url} is {resp.status}, telemetry: {telemetry}, launch: {launch}")
+        return None
+    _LOGGER.debug(f"Response from {url} is {resp.status}")
     if resp.status == 200:
-        if hass.data[DOMAIN][HANDLE_LAUNCH]:
-            hass.data[DOMAIN][HANDLE_LAUNCH] = False
+        if hass.data[DOMAIN][HANDLE_IPFS_REQUEST]:
+            hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = False
             result = await resp.text()
-            if launch:
-                _LOGGER.debug(f"Result: {result}")
-                _run_launch_command(hass, result, sender_address)
-                return True
-            elif telemetry:
-                try:
-                    _LOGGER.debug("Start getting info about telemetry")
-                    sub_admin_kp = Keypair.create_from_mnemonic(
-                        hass.data[DOMAIN][CONF_ADMIN_SEED],
-                        crypto_type=KeypairType.ED25519,
-                    )
-                    decrypted = decrypt_message(result, sub_admin_kp.public_key, sub_admin_kp)
-                    ##############################################
-                    decrypted_str = decrypted.decode("utf-8")
-                    decrypted_json = json.loads(decrypted_str)
-                    _LOGGER.debug(f"Restored twin id is {decrypted_json['twin_id']}")
-                    hass.data[DOMAIN][TWIN_ID] = decrypted_json["twin_id"]
-                    return True
-                except Exception as e:
-                    _LOGGER.debug(f"Can't decrypt last telemetry: {e}")
-                    return False
-            else:
-                backup_path = f"{os.path.expanduser('~')}/{DATA_BACKUP_ENCRYPTED_PATH}"
-                with open(backup_path, "w") as f:
-                    f.write(result)
-                sub_admin_kp = Keypair.create_from_mnemonic(
-                    hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-                )
-                await unpack_backup(hass, Path(backup_path), sub_admin_kp)
-                await restore_from_backup(hass, Path(hass.config.path()))
-                return True
+            return result
         else:
-            return False
+            return None
     else:
-        return False
+        return None
+
+
+@to_thread
+def _get_from_local_node_by_hash(ipfs_hash: str) -> tp.Optional[str]:
+    try:
+        with ipfshttpclient2.connect() as client:
+            res = client.cat(ipfs_hash)
+            res_str = res.decode()
+            _LOGGER.debug(f"Got data {ipfs_hash} from local gateway")
+            return res_str
+    except Exception as e:
+        _LOGGER.error(f"Exception in getting file from local node by hash: {e}")

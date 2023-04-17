@@ -16,3 +16,7 @@ class NoSubscription(HomeAssistantError):
 
 class ControllerNotInDevices(HomeAssistantError):
     """Account for given controller seed is not in subscription devices"""
+
+
+class CantConnectToIPFS(HomeAssistantError):
+    """Can't connect to IPFS local node"""
