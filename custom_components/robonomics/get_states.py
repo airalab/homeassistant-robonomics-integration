@@ -260,12 +260,11 @@ async def _get_states(
                     device_name = str(device.name_by_user) if device.name_by_user != None else str(device.name)
                     devices_data[entity_data.device_id] = {
                         "name": device_name,
-                        "entities": {entity_data.entity_id: entity_info},
+                        "entities": [entity_data.entity_id],
                     }
                 else:
-                    devices_data[entity_data.device_id]["entities"][entity_data.entity_id] = entity_info
-            else:
-                entities_data[entity_data.entity_id] = entity_info
+                    devices_data[entity_data.device_id]["entities"].append(entity_data.entity_id)
+            entities_data[entity_data.entity_id] = entity_info
 
     all_data["devices"] = devices_data
     all_data["entities"] = entities_data
