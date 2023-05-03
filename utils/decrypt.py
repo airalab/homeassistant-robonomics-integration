@@ -24,14 +24,18 @@ def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_
 
 
 def main():
+    sender = Account(LAUNCH_SEED, crypto_type=KeypairType.ED25519)
     print(f"Get request to {URL_TO_READ}")
     resp = get(URL_TO_READ)
     print(f"Response: {resp.status_code}")
     encrypted = resp.text
+    encr_json = json.loads(encrypted)
+    new_encr_seed = encr_json[sender.get_address()]
+    new_seed = decrypt_message(new_encr_seed, sender.keypair.public_key, sender.keypair)
+    new_sender = Account(new_seed.decode(), crypto_type=KeypairType.ED25519)
+    encrypted_message = encr_json["data"]
 
-    sender = Account(LAUNCH_SEED, crypto_type=KeypairType.ED25519)
-    recepient = Keypair(ss58_address=LAUNCH_CONTROLLER_ADDRESS, crypto_type=KeypairType.ED25519)
-    message = decrypt_message(encrypted, sender.keypair.public_key, sender.keypair)
+    message = decrypt_message(encrypted_message, sender.keypair.public_key, new_sender.keypair)
     message = message.decode("utf-8")
     with open("decrypted", "w") as f:
         f.write(message)
