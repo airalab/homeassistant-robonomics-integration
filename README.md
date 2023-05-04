@@ -15,15 +15,11 @@ More information you can find on [Robonomics Wiki](https://wiki.robonomics.netwo
 
 1.1) Using HACS
 
-In the HACS panel, go to `Integrations` and click on three dots in the upper right corner. Choose `Custom repositories` and add the link to the Robonomics Integration repository:
-```
-https://github.com/airalab/homeassistant-robonomics-integration
-```
-In the second field choose `Integration` and press `Add` button.
+In the HACS panel, go to `Integrations` and click on `Explore & Download Repositories` button and find Robonomics Integration:
 
-![robonomics-users](images/hacs.png)
+![robonomics-users](images/inst.png)
 
-Close this window and press on `Explore & Download Repositories` button in the lower right corner. Find `Robonomics` and press `Download`
+Open it and press `Download this repository with HACS` in the end of the page.
 
 1.2) Manually
 
