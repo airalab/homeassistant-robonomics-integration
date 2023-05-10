@@ -67,8 +67,6 @@ EXCLUDE_FROM_BACKUP = [
 
 DELETE_ATTRIBUTES = [
     "unit_of_measurement",
-    "min_mireds",
-    "max_mireds",
     "linkquality",
     "transition",
     "supported_features",
