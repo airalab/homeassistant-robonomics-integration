@@ -2,12 +2,26 @@ save_backup_to_robonomics:
   name: Save Backup to Robonomics
   description: Create new backup, save it to IPFS and send a transaction to Robonomics blockchain with IPFS hash
   fields:
+    full:
+      name: Full Backup
+      description: If checked, database will be added to the backup
+      required: true
+      selector:
+        boolean:
     zigbee2mqtt_path:
       name: Path to zigbee2mqtt config (Optional)
-      description: If doesn't set, backup from /opt/zigbee2mqtt if exists
+      description: If doesn't set, backup from /opt/zigbee2mqtt/ if exists
       required: false
       advanced: true
       example: /opt/zigbee2mqtt
+      selector:
+        text:
+    mosquitto_path:
+      name: Path to mosquitto password file (Optional)
+      description: If doesn't set, backup /etc/mosquitto/passwd if exists
+      required: false
+      advanced: true
+      example: /etc/mosquitto
       selector:
         text:
 

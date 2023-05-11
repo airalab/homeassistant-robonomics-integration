@@ -46,7 +46,9 @@
                     "sending_timeout": "Интервал отправки данных (мин)",
                     "user_ipfs_gateway": "IPFS gateway (необязательно)",
                     "user_ipfs_gateway_auth": "Использовать seed-фразу аккаунта контроллера для аутентификации IPFS (необязательно)",
-                    "user_ipfs_gateway_port": "Порт для IPFS gateway (необязательно)"
+                    "user_ipfs_gateway_port": "Порт для IPFS gateway (необязательно)",
+                    "pinata_use": "Использовать Pinata для хранения файлов в IPFS",
+                    "custom_gateway_use": "Использовать внешний IPFS gateway для хранения файлов"
                 },
                 "description": "Укажите интервал отправки данных и данные для Pinata."
             }

@@ -1,3 +1,5 @@
+"""This module contain methods to communicate with Robonomics blockchain"""
+
 import asyncio
 import json
 import logging
@@ -11,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
+import substrateinterface as substrate
 
 from .const import (
     CONF_ADMIN_SEED,
@@ -153,11 +156,13 @@ class Robonomics:
         self,
         hass: HomeAssistant,
         sub_owner_address: str,
-        sub_admin_seed: str,
+        controller_seed: str,
     ) -> None:
         self.hass: HomeAssistant = hass
         self.sub_owner_address: str = sub_owner_address
-        self.sub_admin_seed: str = sub_admin_seed
+        self.controller_seed: str = controller_seed
+        self.controller_account: Account = Account(seed=self.controller_seed, crypto_type=KeypairType.ED25519)
+        self.controller_address: str = self.controller_account.get_address()
         self.sending_states: bool = False
         self.sending_creds: bool = False
         self.on_queue: int = 0
@@ -182,9 +187,8 @@ class Robonomics:
         """
 
         try:
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
             datalog = Datalog(Account())
-            last_hash = datalog.get_item(sub_admin.get_address())
+            last_hash = datalog.get_item(self.controller_address)
             _LOGGER.debug(f"Got last hash from datalog: {last_hash}")
             if last_hash[1][:2] != "Qm":
                 return None
@@ -202,8 +206,7 @@ class Robonomics:
         """
 
         try:
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
             dt_it, tr_hash = dt.create()
             _LOGGER.debug(f"Digital twin number {dt_it} was created with transaction hash {tr_hash}")
             return dt_it
@@ -221,8 +224,7 @@ class Robonomics:
         """
 
         try:
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
             info = dt.get_info(twin_number)
             if info is not None:
                 for topic in info:
@@ -246,8 +248,7 @@ class Robonomics:
         """
 
         try:
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
             info = dt.get_info(twin_number)
             bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
             _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
@@ -282,8 +283,7 @@ class Robonomics:
         """
 
         try:
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
             info = dt.get_info(twin_number)
             bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
             _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
@@ -291,15 +291,15 @@ class Robonomics:
                 for topic in info:
                     # _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")
                     if topic[0] == bytes_hash:
-                        if topic[1] == sub_admin.get_address():
+                        if topic[1] == self.controller_address:
                             _LOGGER.debug(f"Topic with this config exists")
                             return
-                    if topic[1] == sub_admin.get_address():
+                    if topic[1] == self.controller_address:
                         dt.set_source(twin_number, topic[0], ZERO_ACC)
                         _LOGGER.debug(
                             f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
                         )
-            dt.set_source(twin_number, bytes_hash, sub_admin.get_address())
+            dt.set_source(twin_number, bytes_hash, self.controller_address)
             _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
         except Exception as e:
             _LOGGER.error(f"Exception in set config topic {e}")
@@ -313,8 +313,7 @@ class Robonomics:
         """
 
         try:
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-            dt = DigitalTwin(sub_admin, rws_sub_owner=self.sub_owner_address)
+            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
             info = dt.get_info(twin_number)
             bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
             _LOGGER.debug(f"Bytes media hash: {bytes_hash}")
@@ -325,7 +324,7 @@ class Robonomics:
                         if topic[1] == MEDIA_ACC:
                             _LOGGER.debug(f"Topic with this config exists")
                             return
-                    if topic[1] == sub_admin.get_address():
+                    if topic[1] == MEDIA_ACC:
                         dt.set_source(twin_number, topic[0], ZERO_ACC)
                         _LOGGER.debug(
                             f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
@@ -346,7 +345,6 @@ class Robonomics:
 
         _LOGGER.debug(f"Start look for password for {address}")
         datalog = Datalog(Account())
-        sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
         try:
             last_datalog = datalog.get_item(address, 0)[1]
         except:
@@ -355,7 +353,7 @@ class Robonomics:
         try:
             data = json.loads(last_datalog)
             if "admin" in data:
-                if data["subscription"] == self.sub_owner_address and data["ha"] == sub_admin.get_address():
+                if data["subscription"] == self.sub_owner_address and data["ha"] == self.controller_address:
                     return data["admin"]
         except:
             pass
@@ -368,7 +366,7 @@ class Robonomics:
                 _LOGGER.debug(datalog_data)
                 data = json.loads(datalog_data)
                 if "admin" in data:
-                    if data["subscription"] == self.sub_owner_address and data["ha"] == sub_admin.get_address():
+                    if data["subscription"] == self.sub_owner_address and data["ha"] == self.controller_address:
                         return data["admin"]
             except Exception as e:
                 # _LOGGER.error(f"Exception in find password {e}")
@@ -401,9 +399,8 @@ class Robonomics:
 
         try:
             # _LOGGER.debug(f"Data from subscription callback: {data}")
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
-            if type(data[1]) == str and data[1] == sub_admin.get_address():  ## Launch
-                if data[0] in self.devices_list or data[0] == sub_admin.get_address():
+            if type(data[1]) == str and data[1] == self.controller_address:  ## Launch
+                if data[0] in self.devices_list or data[0] == self.controller_address:
                     self.hass.async_create_task(_handle_launch(self.hass, data))
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
@@ -476,7 +473,7 @@ class Robonomics:
         else:
             self.sending_states = True
             self.on_queue = 0
-        receipt = await self.send_datalog(data, self.sub_admin_seed, True)
+        receipt = await self.send_datalog(data, self.controller_seed, True)
         self.sending_states = False
         return receipt
 
@@ -489,9 +486,8 @@ class Robonomics:
         try:
             devices_list = RWS(Account()).get_devices(self.sub_owner_address)
             _LOGGER.debug(f"Got devices list: {devices_list}")
-            sub_admin = Account(seed=self.sub_admin_seed, crypto_type=KeypairType.ED25519)
             if devices_list != None:
-                devices_list.remove(sub_admin.get_address())
+                devices_list.remove(self.controller_address)
                 try:
                     devices_list.remove(self.sub_owner_address)
                 except:
@@ -500,3 +496,51 @@ class Robonomics:
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
+
+    @to_thread
+    def get_last_digital_twin(self, account: str = None) -> tp.Optional[int]:
+        """Find the last digital twin belongint to the given account
+
+        :param account: Address of the account that own the Digital Twin
+
+        :return: The last Twin id belonging to the account
+        """
+        try:
+            if account is None:
+                account = self.controller_address
+
+            REMOTE_WS = "wss://kusama.rpc.robonomics.network"
+            TYPE_REGISTRY = {
+                "types": {
+                    "Record": "Vec<u8>",
+                    "<T as frame_system::Config>::AccountId": "AccountId",
+                    "RingBufferItem": {
+                        "type": "struct",
+                        "type_mapping": [["timestamp", "Compact<u64>"], ["payload", "Vec<u8>"]],
+                    },
+                    "RingBufferIndex": {
+                        "type": "struct",
+                        "type_mapping": [["start", "Compact<u64>"], ["end", "Compact<u64>"]],
+                    },
+                }
+            }
+
+            ri_instance = substrate.SubstrateInterface(
+                url=REMOTE_WS,
+                ss58_format=32,
+                type_registry_preset="substrate-node-template",
+                type_registry=TYPE_REGISTRY,
+            )
+
+            query = ri_instance.query_map("DigitalTwin", "Owner")
+            twins = []
+            for twin in query:
+                if twin[1].value == account:
+                    twins.append(twin[0].value)
+            _LOGGER.debug(f"Digital twinf belonging to controller account: {twins}")
+            if len(twins) > 0:
+                return max(twins)
+            else:
+                return
+        except Exception as e:
+            _LOGGER.error(f"Exception in looking for the last digital twin: {e}")

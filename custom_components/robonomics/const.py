@@ -20,6 +20,8 @@ CONF_IPFS_GATEWAY_AUTH = "user_ipfs_gateway_auth"
 CONF_IPFS_GATEWAY_PORT = "user_ipfs_gateway_port"
 CONF_WARN_DATA_SENDING = "warn_data_sending"
 CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
+CONF_PINATA_USE = "pinata_use"
+CONF_CUSTOM_GATEWAY_USE = "custom_gateway_use"
 
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
@@ -47,6 +49,7 @@ BACKUP_ENCRYPTED_PREFIX = "backup_encrypted"
 TWIN_ID = "twin_id"
 
 Z2M_CONFIG_NAME = "z2m_configuration.yaml"
+MQTT_CONFIG_NAME = "mqtt_password"
 
 RWS_DAYS_LEFT_NOTIFY = 5
 TIME_CHANGE_COUNT = "time_change_count"
@@ -59,6 +62,14 @@ EXCLUDE_FROM_BACKUP = [
     ".DS_Store",
     "*.db",
     "*.db-*",
+    "*.log.*",
+    "*.log",
+    "backups/*",
+    "OZW_Log.txt",
+]
+EXCLUDE_FROM_FULL_BACKUP = [
+    "__pycache__/*",
+    ".DS_Store",
     "*.log.*",
     "*.log",
     "backups/*",

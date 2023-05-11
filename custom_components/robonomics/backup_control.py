@@ -29,6 +29,8 @@ from .const import (
     ROBONOMICS,
     TWIN_ID,
     Z2M_CONFIG_NAME,
+    EXCLUDE_FROM_FULL_BACKUP,
+    MQTT_CONFIG_NAME,
 )
 from .ipfs import get_last_file_hash
 from .utils import decrypt_message, encrypt_message, to_thread
@@ -70,7 +72,9 @@ def create_secure_backup(
     hass: HomeAssistant,
     config_path: Path,
     zigbee2mqtt_path: str,
+    mosquitto_path: str,
     admin_keypair: Keypair,
+    full: bool,
 ) -> (str, str):
     """Create secure .tar.xz archive and returns the path to it
 
@@ -78,23 +82,30 @@ def create_secure_backup(
     :param config_path: Path to the configuration file
     :param zigbee2mqtt_path: Path to zigbee2mqtt config
     :param admin_keypair: Keypair to encrypt backup
+    :param full: Create full backup with database or not
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
     if zigbee2mqtt_path[-1] != "/":
         zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
+    if mosquitto_path[-1] != "/":
+        mosquitto_path = f"{mosquitto_path}/"
     hass.states.async_set(f"{DOMAIN}.backup", "Creating")
     backup_name_time = str(datetime.now()).split()
     backup_name_time[1] = backup_name_time[1].split(".")[0]
     backup_name = f"{BACKUP_PREFIX}{backup_name_time[0]}_{backup_name_time[1]}.tar.xz"
     path_to_tar = Path(tempfile.gettempdir())
     tar_path = path_to_tar.joinpath(f"{backup_name}")
-    _LOGGER.debug(f"Start creating backup: {tar_path}")
+    _LOGGER.debug(f"Start creating backup: {tar_path}, full: {full}")
     list_files = os.listdir(config_path)
+    if full:
+        excludes = EXCLUDE_FROM_FULL_BACKUP
+    else:
+        excludes = EXCLUDE_FROM_BACKUP
     try:
         with tarfile.open(tar_path, "w:xz") as tar:
             for file_item in list_files:
-                for exclude in EXCLUDE_FROM_BACKUP:
+                for exclude in excludes:
                     path = Path(file_item)
                     if path.match(exclude):
                         # _LOGGER.debug(f"Exclude {path}")
@@ -105,6 +116,9 @@ def create_secure_backup(
             if os.path.isdir(zigbee2mqtt_path) and os.path.isfile(f"{zigbee2mqtt_path}data/configuration.yaml"):
                 _LOGGER.debug("Zigbee2MQTT configuration exists and will be added to backup")
                 tar.add(f"{zigbee2mqtt_path}data/configuration.yaml", arcname=Z2M_CONFIG_NAME)
+            if os.path.isdir(mosquitto_path) and os.path.isfile(f"{mosquitto_path}passwd"):
+                _LOGGER.debug("Mosquitto configuration exists and will be added to backup")
+                tar.add(f"{mosquitto_path}passwd", arcname=MQTT_CONFIG_NAME)
         _LOGGER.debug(f"Backup {tar_path} was created")
         _LOGGER.debug(f"Start encrypt backup {tar_path}")
         with open(tar_path, "rb") as f:
@@ -167,7 +181,7 @@ async def restore_from_backup(
     :param path_to_new_config_dir: Path to the unpacked backup
     :param zigbee2mqtt_path: Path to unpack zigbee2mqtt config
     """
-
+    mosquitto_path = "/etc/mosquitto/"
     if zigbee2mqtt_path[-1] != "/":
         zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
     try:
@@ -195,6 +209,16 @@ async def restore_from_backup(
                 shutil.copy(f"{path_to_new_config}/{new_file}", f"{path_to_old_config}/{new_file}")
             except Exception as e:
                 _LOGGER.debug(f"Exception in copy files: {e}")
+        try:
+            if os.path.exists(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}"):
+                if os.path.isdir(mosquitto_path) and os.path.exists(f"{mosquitto_path}passwd"):
+                    os.remove(f"{mosquitto_path}passwd")
+                shutil.copy(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}", f"{mosquitto_path}passwd")
+        except Exception as e:
+            _LOGGER.warning(
+                f"Exception in restoring mosquitto password: {e}. Zigbee2mqtt configuration will be placed in homeassistant configuration directory"
+            )
+            shutil.copy(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}", f"{path_to_old_config}/{MQTT_CONFIG_NAME}")
         try:
             if os.path.exists(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}"):
                 if os.path.isdir(zigbee2mqtt_path) and os.path.isdir(f"{zigbee2mqtt_path}data"):

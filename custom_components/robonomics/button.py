@@ -1,3 +1,5 @@
+"""This file contains classes for `button` entities that calls backup services"""
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant

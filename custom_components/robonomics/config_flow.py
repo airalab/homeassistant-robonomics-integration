@@ -29,6 +29,8 @@ from .const import (
     CONF_WARN_ACCOUNT_MANAGMENT,
     CONF_WARN_DATA_SENDING,
     DOMAIN,
+    CONF_CUSTOM_GATEWAY_USE,
+    CONF_PINATA_USE
 )
 from .exceptions import (
     CantConnectToIPFS,
@@ -224,6 +226,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self.config_entry = config_entry
         _LOGGER.debug(config_entry.data)
         self.updated_config = self.config_entry.data.copy()
+        _LOGGER.debug(f"Updated config: {self.updated_config}")
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage Timeout and Pinata and Custom IPFS gateways.
@@ -234,6 +237,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         """
 
         if user_input is not None:
+            _LOGGER.debug(f"User input: {user_input}")
+            if not user_input[CONF_PINATA_USE]:
+                user_input.pop(CONF_PINATA_PUB, None)
+                user_input.pop(CONF_PINATA_SECRET, None)
+                self.updated_config.pop(CONF_PINATA_PUB, None)
+                self.updated_config.pop(CONF_PINATA_SECRET, None)
+            if not user_input[CONF_CUSTOM_GATEWAY_USE]:
+                user_input.pop(CONF_IPFS_GATEWAY, None)
+                self.updated_config.pop(CONF_IPFS_GATEWAY, None)
+            del user_input[CONF_PINATA_USE]
+            del user_input[CONF_CUSTOM_GATEWAY_USE]
+
             self.updated_config.update(user_input)
 
             self.hass.config_entries.async_update_entry(self.config_entry, data=self.updated_config)
@@ -252,8 +267,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_SENDING_TIMEOUT,
                             default=self.config_entry.data[CONF_SENDING_TIMEOUT],
                         ): int,
+                        vol.Required(CONF_PINATA_USE, default=True): bool,
                         vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
                         vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
+                        vol.Required(CONF_CUSTOM_GATEWAY_USE, default=True): bool,
                         vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
                         vol.Required(CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port): int,
                         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
@@ -266,8 +283,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_SENDING_TIMEOUT,
                             default=self.config_entry.data[CONF_SENDING_TIMEOUT],
                         ): int,
+                        vol.Required(CONF_PINATA_USE, default=True): bool,
                         vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
                         vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
+                        vol.Required(CONF_CUSTOM_GATEWAY_USE, default=False): bool,
                         vol.Optional(CONF_IPFS_GATEWAY): str,
                         vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
                         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
@@ -284,8 +303,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_SENDING_TIMEOUT,
                             default=self.config_entry.data[CONF_SENDING_TIMEOUT],
                         ): int,
+                        vol.Required(CONF_PINATA_USE, default=False): bool,
                         vol.Optional(CONF_PINATA_PUB): str,
                         vol.Optional(CONF_PINATA_SECRET): str,
+                        vol.Required(CONF_CUSTOM_GATEWAY_USE, default=True): bool,
                         vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
                         vol.Required(CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port): int,
                         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
@@ -298,8 +319,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_SENDING_TIMEOUT,
                             default=self.config_entry.data[CONF_SENDING_TIMEOUT],
                         ): int,
+                        vol.Required(CONF_PINATA_USE, default=False): bool,
                         vol.Optional(CONF_PINATA_PUB): str,
                         vol.Optional(CONF_PINATA_SECRET): str,
+                        vol.Required(CONF_CUSTOM_GATEWAY_USE, default=False): bool,
                         vol.Optional(CONF_IPFS_GATEWAY): str,
                         vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
                         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,

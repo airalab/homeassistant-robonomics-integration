@@ -25,18 +25,21 @@ from .const import (
     TWIN_ID,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
-from .utils import delete_temp_file
+from .utils import delete_temp_file, encrypt_message
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, duration: int) -> None:
+async def save_video(
+    hass: HomeAssistant, target: tp.Dict[str, str], path: str, duration: int, sub_admin_acc: Account
+) -> None:
     """Record a video with given duration, save it in IPFS and Digital Twin
 
     :param hass: Home Assistant instance
-    :param entity_id: ID of the camera entity
+    :param target: What should this service use as targeted areas, devices or entities. Usually it's camera entity ID.
     :param path: Path to save the video (must be also in configuration.yaml)
     :param duration: Duration of the recording in seconds
+    :param sub_admin_acc: Controller account address
     """
 
     if path[-1] == "/":
@@ -44,7 +47,7 @@ async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, 
     filename = f"video-{int(time.time())}.mp4"
     data = {"duration": duration, "filename": f"{path}/{filename}"}
     _LOGGER.debug(f"Started recording video {path}/{filename} for {duration} seconds")
-    res = await hass.services.async_call(
+    await hass.services.async_call(
         domain=CAMERA_DOMAIN, service=SERVICE_RECORD, service_data=data, target=target, blocking=True
     )
     count = 0
@@ -54,8 +57,19 @@ async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, 
         if count > 10:
             break
     if os.path.isfile(f"{path}/{filename}"):
-        video_ipfs_hash = await add_media_to_ipfs(hass, f"{path}/{filename}")
+        _LOGGER.debug(f"Start encrypt video {filename}")
+        admin_keypair: Keypair = sub_admin_acc.keypair
+        with open(f"{path}/{filename}", "rb") as f:
+            video_data = f.read()
+        encrypted_data = encrypt_message(video_data, admin_keypair, admin_keypair.public_key)
+        with open(f"{path}/{filename}", "w") as f:
+            f.write(encrypted_data)
+
+        await add_media_to_ipfs(hass, f"{path}/{filename}")
         folder_ipfs_hash = await get_folder_hash(IPFS_MEDIA_PATH)
+        # delete file from system
+        _LOGGER.debug(f"delete original video {filename}")
+        os.remove(f"{path}/{filename}")
         await hass.data[DOMAIN][ROBONOMICS].set_media_topic(folder_ipfs_hash, hass.data[DOMAIN][TWIN_ID])
 
 
@@ -70,14 +84,20 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
     """
 
     zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
+    mosquitto_path = call.data.get("mosquitto_path")
+    full = call.data.get("full")
     if zigbee2mqtt_path is None:
         zigbee2mqtt_path = "/opt/zigbee2mqtt"
+    if mosquitto_path is None:
+        mosquitto_path = "/etc/mosquitto"
     _LOGGER.debug(f"Zigbee2mqtt path in creating backup: {zigbee2mqtt_path}")
     encrypted_backup_path, backup_path = await create_secure_backup(
         hass,
         Path(hass.config.path()),
         zigbee2mqtt_path,
+        mosquitto_path,
         admin_keypair=sub_admin_acc.keypair,
+        full=full,
     )
     ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
     _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")

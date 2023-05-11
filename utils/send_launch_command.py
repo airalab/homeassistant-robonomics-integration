@@ -13,6 +13,7 @@ from conf import (
 from robonomicsinterface import Account, Launch
 from robonomicsinterface.utils import web_3_auth
 from substrateinterface import Keypair, KeypairType
+from robonomicsinterface.utils import ipfs_qm_hash_to_32_bytes
 
 seed = LAUNCH_SEED
 command = LAUNCH_COMMAND
@@ -53,6 +54,7 @@ usr, pwd = web_3_auth(seed)
 with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)) as client:
     result_ipfs = client.add(filename, pin=False)["Hash"]
 print(f"IPFS hash: {result_ipfs}")
+print(f"IPFS hash for launch {ipfs_qm_hash_to_32_bytes(result_ipfs)}")
 os.remove(filename)
 
 launch = Launch(sender, rws_sub_owner=sub_owner_address)
