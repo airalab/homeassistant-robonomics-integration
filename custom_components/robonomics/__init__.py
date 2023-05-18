@@ -263,7 +263,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                 _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
-    hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
 
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
