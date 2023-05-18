@@ -263,7 +263,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
                 _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
-    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
 
     # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
@@ -289,6 +289,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     hass.data.pop(DOMAIN)
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics integration was unloaded: {unload_ok}")
     return unload_ok
