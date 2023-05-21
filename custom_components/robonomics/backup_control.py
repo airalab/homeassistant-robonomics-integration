@@ -240,14 +240,18 @@ async def restore_from_backup(
 
 
 class _BackupZ2M:
-    def __init__(self, hass: HomeAssistant):
+    """Class to create zigbee2mqtt backup"""
+    def __init__(self, hass: HomeAssistant) -> None:
         self.remove_mqtt_subscribe: tp.Optional[tp.Callable] = None
         self.hass: HomeAssistant = hass
         self.received: bool = False
         self.z2m_backup_path: tp.Optional[str] = None
 
-    def _z2m_backup_callback(self, msg: ReceiveMessage):
-        """ """
+    def _z2m_backup_callback(self, msg: ReceiveMessage) -> None:
+        """Callback on response topic for z2m backup. 
+        It will create a zip file anc close subscription to the topic.
+        :param msg: MQTT message 
+        """
         _LOGGER.debug("Received message with z2m backup")
         payload = json.loads(msg.payload)
         zip_arc_b64 = payload["data"]["zip"]
@@ -258,8 +262,11 @@ class _BackupZ2M:
         _LOGGER.debug("Subscription to response topic was removed")
         self.received = True
 
-    def _create_z2m_backup(self):
-        """ """
+    def _create_z2m_backup(self) -> tp.Optional[str]:
+        """Send message to mqtt topic to create z2m backup and supscribe to the response topic
+        
+        :return: Path to the backup file 
+        """
         _LOGGER.debug("Start creating zigbee2mqtt backup")
         publish(self.hass, Z2M_BACKUP_TOPIC_REQUEST, "")
         _LOGGER.debug("Message to create z2m backup was sent")
