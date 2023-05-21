@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import shutil
-from copy import deepcopy
 from datetime import timedelta
 from platform import platform
 
@@ -22,7 +21,6 @@ from substrateinterface import Keypair, KeypairType
 
 _LOGGER = logging.getLogger(__name__)
 
-from .backup_control import check_backup_change
 from .const import (
     CONF_ADMIN_SEED,
     CONF_IPFS_GATEWAY,
@@ -71,8 +69,6 @@ async def init_integration(hass: HomeAssistant) -> None:
     except Exception as e:
         print(f"Exception in fist check devices {e}")
 
-    await check_backup_change(hass)
-    # await asyncio.sleep(60)
     await get_and_send_data(hass)
 
 

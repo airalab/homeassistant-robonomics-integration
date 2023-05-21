@@ -19,18 +19,18 @@ from substrateinterface.utils.ss58 import is_valid_ss58_address
 
 from .const import (
     CONF_ADMIN_SEED,
+    CONF_CUSTOM_GATEWAY_USE,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
     CONF_IPFS_GATEWAY_PORT,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
+    CONF_PINATA_USE,
     CONF_SENDING_TIMEOUT,
     CONF_SUB_OWNER_ADDRESS,
     CONF_WARN_ACCOUNT_MANAGMENT,
     CONF_WARN_DATA_SENDING,
     DOMAIN,
-    CONF_CUSTOM_GATEWAY_USE,
-    CONF_PINATA_USE
 )
 from .exceptions import (
     CantConnectToIPFS,

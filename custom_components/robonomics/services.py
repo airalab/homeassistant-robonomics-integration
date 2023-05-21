@@ -1,12 +1,12 @@
 """File with functions for Home Assistant services"""
 
+import asyncio
 import logging
+import os
 import tempfile
 import time
-import os
 import typing as tp
 from pathlib import Path
-import asyncio
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -31,7 +31,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def save_video(
-    hass: HomeAssistant, target: tp.Dict[str, str], path: str, duration: int, sub_admin_acc: Account
+    hass: HomeAssistant,
+    target: tp.Dict[str, str],
+    path: str,
+    duration: int,
+    sub_admin_acc: Account,
 ) -> None:
     """Record a video with given duration, save it in IPFS and Digital Twin
 
@@ -48,7 +52,11 @@ async def save_video(
     data = {"duration": duration, "filename": f"{path}/{filename}"}
     _LOGGER.debug(f"Started recording video {path}/{filename} for {duration} seconds")
     await hass.services.async_call(
-        domain=CAMERA_DOMAIN, service=SERVICE_RECORD, service_data=data, target=target, blocking=True
+        domain=CAMERA_DOMAIN,
+        service=SERVICE_RECORD,
+        service_data=data,
+        target=target,
+        blocking=True,
     )
     count = 0
     while not os.path.isfile(f"{path}/{filename}"):

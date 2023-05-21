@@ -8,12 +8,12 @@ import typing as tp
 from ast import literal_eval
 from threading import Thread
 
+import substrateinterface as substrate
 from aenum import extend_enum
 from homeassistant.core import HomeAssistant, callback
 from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
-import substrateinterface as substrate
 
 from .const import (
     CONF_ADMIN_SEED,
@@ -145,7 +145,10 @@ async def _handle_backup_change(hass: HomeAssistant) -> None:
     """
 
     _LOGGER.debug("Start handle backup change")
-    service_data = {"message": "Backup was updated in Robonomics", "title": "Update Backup"}
+    service_data = {
+        "message": "Backup was updated in Robonomics",
+        "title": "Update Backup",
+    }
     await create_notification(hass, service_data)
 
 
@@ -516,11 +519,17 @@ class Robonomics:
                     "<T as frame_system::Config>::AccountId": "AccountId",
                     "RingBufferItem": {
                         "type": "struct",
-                        "type_mapping": [["timestamp", "Compact<u64>"], ["payload", "Vec<u8>"]],
+                        "type_mapping": [
+                            ["timestamp", "Compact<u64>"],
+                            ["payload", "Vec<u8>"],
+                        ],
                     },
                     "RingBufferIndex": {
                         "type": "struct",
-                        "type_mapping": [["start", "Compact<u64>"], ["end", "Compact<u64>"]],
+                        "type_mapping": [
+                            ["start", "Compact<u64>"],
+                            ["end", "Compact<u64>"],
+                        ],
                     },
                 }
             }

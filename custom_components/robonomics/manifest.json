@@ -1,6 +1,7 @@
 {
   "domain": "robonomics",
   "name": "Robonomics",
+  "after_dependencies": ["mqtt"],
   "codeowners": ["@airalab"],
   "config_flow": true,
   "dependencies": ["recorder", "lovelace", "notify"],
