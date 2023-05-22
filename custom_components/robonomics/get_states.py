@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import tempfile
 import time
 import typing as tp
 from datetime import datetime, timedelta
-from platform import platform
 
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 from homeassistant.components.recorder import get_instance, history

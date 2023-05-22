@@ -48,7 +48,9 @@ BACKUP_PREFIX = "backup-"
 BACKUP_ENCRYPTED_PREFIX = "backup_encrypted"
 TWIN_ID = "twin_id"
 
-Z2M_CONFIG_NAME = "z2m_configuration.yaml"
+Z2M_CONFIG_NAME = "z2m_data.zip"
+Z2M_BACKUP_TOPIC_REQUEST = "zigbee2mqtt/bridge/request/backup"
+Z2M_BACKUP_TOPIC_RESPONSE = "zigbee2mqtt/bridge/response/backup"
 MQTT_CONFIG_NAME = "mqtt_password"
 
 RWS_DAYS_LEFT_NOTIFY = 5

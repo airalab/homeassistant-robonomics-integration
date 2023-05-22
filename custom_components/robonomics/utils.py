@@ -101,7 +101,7 @@ def get_hash(filename: str) -> tp.Optional[str]:
     return ipfs_hash_local
 
 
-def write_data_to_temp_file(data: str, config: bool = False) -> str:
+def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False) -> str:
     """
     Create file and store data in it
 
@@ -111,12 +111,18 @@ def write_data_to_temp_file(data: str, config: bool = False) -> str:
     :return: path to created file
     """
     dirname = tempfile.gettempdir()
-    if config:
-        filename = f"{dirname}/config_encrypted-{time.time()}"
+    if type(data) == str:
+        if config:
+            filename = f"{dirname}/config_encrypted-{time.time()}"
+        else:
+            filename = f"{dirname}/data-{time.time()}"
+        with open(filename, "w") as f:
+            f.write(data)
     else:
-        filename = f"{dirname}/data-{time.time()}"
-    with open(filename, "w") as f:
-        f.write(data)
+        filename = f"{dirname}/z2m-backup.zip"
+        with open(filename, "wb") as f:
+            f.write(data)
+
     return filename
 
 

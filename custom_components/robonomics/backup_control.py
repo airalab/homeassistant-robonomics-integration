@@ -9,14 +9,22 @@ This file is imported as a module to `__init__.py` to create two services.
     * restore_from_backup - rrestores configuration from unpacked backup
 """
 
+import base64
+import json
 import logging
 import os
 import shutil
 import tarfile
 import tempfile
+import time
+import typing as tp
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
+from homeassistant.components.mqtt import ReceiveMessage
+from homeassistant.components.mqtt.client import publish, subscribe
+from homeassistant.components.mqtt.util import mqtt_config_entry_enabled
 from homeassistant.core import HomeAssistant
 from substrateinterface import Keypair
 
@@ -25,53 +33,21 @@ from .const import (
     BACKUP_PREFIX,
     DOMAIN,
     EXCLUDE_FROM_BACKUP,
-    IPFS_BACKUP_PATH,
-    ROBONOMICS,
-    TWIN_ID,
-    Z2M_CONFIG_NAME,
     EXCLUDE_FROM_FULL_BACKUP,
     MQTT_CONFIG_NAME,
+    Z2M_BACKUP_TOPIC_REQUEST,
+    Z2M_BACKUP_TOPIC_RESPONSE,
+    Z2M_CONFIG_NAME,
 )
-from .ipfs import get_last_file_hash
-from .utils import decrypt_message, encrypt_message, to_thread
+from .utils import decrypt_message, encrypt_message, to_thread, write_data_to_temp_file
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def check_backup_change(hass: HomeAssistant) -> None:
-    """Compare local and remote (from Robonomics) backups. If they are not the same, user is notified.
-
-    :param hass: HomeAssistant instance
-    """
-
-    try:
-        _LOGGER.debug(f"Start checking backup")
-        ipfs_hash_remote = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
-        _LOGGER.debug(f"Backup remote hash: {ipfs_hash_remote}")
-        _, ipfs_hash_local = await get_last_file_hash(IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX)
-        _LOGGER.debug(f"Backup local hash: {ipfs_hash_local}")
-        if ipfs_hash_remote != ipfs_hash_local:
-            _LOGGER.debug("Backup was updated")
-            service_data = {
-                "message": "Remote backup was updated in Robonomics",
-                "title": "Update Backup",
-            }
-            await hass.services.async_call(
-                domain="notify",
-                service="persistent_notification",
-                service_data=service_data,
-            )
-        else:
-            _LOGGER.debug("Backup wasn't updated")
-    except Exception as e:
-        _LOGGER.warning(f"Exception in check backup change: {e}")
 
 
 @to_thread
 def create_secure_backup(
     hass: HomeAssistant,
     config_path: Path,
-    zigbee2mqtt_path: str,
     mosquitto_path: str,
     admin_keypair: Keypair,
     full: bool,
@@ -80,14 +56,11 @@ def create_secure_backup(
 
     :param hass: HomeAssistant instance
     :param config_path: Path to the configuration file
-    :param zigbee2mqtt_path: Path to zigbee2mqtt config
     :param admin_keypair: Keypair to encrypt backup
     :param full: Create full backup with database or not
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
-    if zigbee2mqtt_path[-1] != "/":
-        zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
     if mosquitto_path[-1] != "/":
         mosquitto_path = f"{mosquitto_path}/"
     hass.states.async_set(f"{DOMAIN}.backup", "Creating")
@@ -113,9 +86,10 @@ def create_secure_backup(
                 else:
                     # _LOGGER.debug(f"Addidng {config_path}/{file_item}")
                     tar.add(f"{config_path}/{file_item}")
-            if os.path.isdir(zigbee2mqtt_path) and os.path.isfile(f"{zigbee2mqtt_path}data/configuration.yaml"):
-                _LOGGER.debug("Zigbee2MQTT configuration exists and will be added to backup")
-                tar.add(f"{zigbee2mqtt_path}data/configuration.yaml", arcname=Z2M_CONFIG_NAME)
+            if mqtt_config_entry_enabled(hass):
+                z2m_backup_path = _BackupZ2M(hass)._create_z2m_backup()
+                if z2m_backup_path is not None:
+                    tar.add(z2m_backup_path, arcname=Z2M_CONFIG_NAME)
             if os.path.isdir(mosquitto_path) and os.path.isfile(f"{mosquitto_path}passwd"):
                 _LOGGER.debug("Mosquitto configuration exists and will be added to backup")
                 tar.add(f"{mosquitto_path}passwd", arcname=MQTT_CONFIG_NAME)
@@ -172,6 +146,7 @@ def unpack_backup(
 async def restore_from_backup(
     hass: HomeAssistant,
     zigbee2mqtt_path: str,
+    mosquitto_path: str,
     path_to_old_config: Path,
     path_to_new_config_dir: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
 ) -> None:
@@ -180,8 +155,11 @@ async def restore_from_backup(
     :param path_to_old_config: Path to the hass configuration directory
     :param path_to_new_config_dir: Path to the unpacked backup
     :param zigbee2mqtt_path: Path to unpack zigbee2mqtt config
+    :param mosquitto_path: Path to unpack mosquitto config
     """
-    mosquitto_path = "/etc/mosquitto/"
+
+    if mosquitto_path[-1] != "/":
+        mosquitto_path = f"{mosquitto_path}/"
     if zigbee2mqtt_path[-1] != "/":
         zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
     try:
@@ -206,35 +184,99 @@ async def restore_from_backup(
                 _LOGGER.debug(f"Exception in copy directories: {e}")
         for new_file in new_config_files:
             try:
-                shutil.copy(f"{path_to_new_config}/{new_file}", f"{path_to_old_config}/{new_file}")
+                shutil.copy(
+                    f"{path_to_new_config}/{new_file}",
+                    f"{path_to_old_config}/{new_file}",
+                )
             except Exception as e:
                 _LOGGER.debug(f"Exception in copy files: {e}")
         try:
             if os.path.exists(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}"):
                 if os.path.isdir(mosquitto_path) and os.path.exists(f"{mosquitto_path}passwd"):
                     os.remove(f"{mosquitto_path}passwd")
-                shutil.copy(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}", f"{mosquitto_path}passwd")
+                shutil.copy(
+                    f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}",
+                    f"{mosquitto_path}passwd",
+                )
+                _LOGGER.debug(f"Mosquitto password file was restored to {mosquitto_path}passwd")
         except Exception as e:
             _LOGGER.warning(
-                f"Exception in restoring mosquitto password: {e}. Zigbee2mqtt configuration will be placed in homeassistant configuration directory"
+                f"Exception in restoring mosquitto password: {e}. Mosquitto configuration will be placed in homeassistant configuration directory"
             )
-            shutil.copy(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}", f"{path_to_old_config}/{MQTT_CONFIG_NAME}")
+            shutil.copy(
+                f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}",
+                f"{path_to_old_config}/{MQTT_CONFIG_NAME}",
+            )
         try:
             if os.path.exists(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}"):
-                if os.path.isdir(zigbee2mqtt_path) and os.path.isdir(f"{zigbee2mqtt_path}data"):
-                    os.remove(f"{zigbee2mqtt_path}data/configuration.yaml")
+                if os.path.isdir(zigbee2mqtt_path):
+                    if os.path.isdir(f"{zigbee2mqtt_path}data"):
+                        shutil.rmtree(f"{zigbee2mqtt_path}data")
+                    with zipfile.ZipFile(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", "r") as zip_ref:
+                        zip_ref.extractall(f"{zigbee2mqtt_path}data")
+                    _LOGGER.debug(f"Z2M configuration was restored to {zigbee2mqtt_path}data")
                 else:
-                    os.mkdir(zigbee2mqtt_path)
-                    os.mkdir(f"{zigbee2mqtt_path}data")
-                shutil.copy(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", f"{zigbee2mqtt_path}data/configuration.yaml")
+                    _LOGGER.warning(
+                        f"Zigbee2mqtt does not exist in {zigbee2mqtt_path}, configuration will be restored in homeassistant configuration directory"
+                    )
+                    shutil.copy(
+                        f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}",
+                        f"{path_to_old_config}/{Z2M_CONFIG_NAME}",
+                    )
         except Exception as e:
             _LOGGER.warning(
                 f"Exception in restoring z2m: {e}. Zigbee2mqtt configuration will be placed in homeassistant configuration directory"
             )
-            shutil.copy(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", f"{path_to_old_config}/{Z2M_CONFIG_NAME}")
+            shutil.copy(
+                f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}",
+                f"{path_to_old_config}/{Z2M_CONFIG_NAME}",
+            )
         shutil.rmtree(path_to_new_config_dir)
         _LOGGER.debug(f"Config was replaced")
         hass.states.async_set(f"{DOMAIN}.backup", "Restored")
         await hass.services.async_call("homeassistant", "restart")
     except Exception as e:
         _LOGGER.debug(f"Exception in restore from backup: {e}")
+
+
+class _BackupZ2M:
+    """Class to create zigbee2mqtt backup"""
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.remove_mqtt_subscribe: tp.Optional[tp.Callable] = None
+        self.hass: HomeAssistant = hass
+        self.received: bool = False
+        self.z2m_backup_path: tp.Optional[str] = None
+
+    def _z2m_backup_callback(self, msg: ReceiveMessage) -> None:
+        """Callback on response topic for z2m backup. 
+        It will create a zip file anc close subscription to the topic.
+        :param msg: MQTT message 
+        """
+        _LOGGER.debug("Received message with z2m backup")
+        payload = json.loads(msg.payload)
+        zip_arc_b64 = payload["data"]["zip"]
+        zip_arc_bytes = base64.b64decode(zip_arc_b64)
+        self.z2m_backup_path = write_data_to_temp_file(zip_arc_bytes)
+        _LOGGER.debug(f"z2m archive was written to {self.z2m_backup_path}")
+        self.remove_mqtt_subscribe()
+        _LOGGER.debug("Subscription to response topic was removed")
+        self.received = True
+
+    def _create_z2m_backup(self) -> tp.Optional[str]:
+        """Send message to mqtt topic to create z2m backup and supscribe to the response topic
+        
+        :return: Path to the backup file 
+        """
+        _LOGGER.debug("Start creating zigbee2mqtt backup")
+        publish(self.hass, Z2M_BACKUP_TOPIC_REQUEST, "")
+        _LOGGER.debug("Message to create z2m backup was sent")
+        self.remove_mqtt_subscribe = subscribe(self.hass, Z2M_BACKUP_TOPIC_RESPONSE, self._z2m_backup_callback)
+        _LOGGER.debug("Subscribed")
+        i = 0
+        while not self.received:
+            time.sleep(1)
+            i = i + 1
+            if i > 10:
+                _LOGGER.debug("Backup zigbee2mqtt wasn't created")
+                break
+        return self.z2m_backup_path

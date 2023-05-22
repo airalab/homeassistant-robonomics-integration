@@ -8,17 +8,9 @@ save_backup_to_robonomics:
       required: true
       selector:
         boolean:
-    zigbee2mqtt_path:
-      name: Path to zigbee2mqtt config (Optional)
-      description: If doesn't set, backup from /opt/zigbee2mqtt/ if exists
-      required: false
-      advanced: true
-      example: /opt/zigbee2mqtt
-      selector:
-        text:
     mosquitto_path:
       name: Path to mosquitto password file (Optional)
-      description: If doesn't set, backup /etc/mosquitto/passwd if exists
+      description: Defines the path to mosquitto 'passwd' file will be backed up, with a default value of '/etc/mosquitto' if not specified.
       required: false
       advanced: true
       example: /etc/mosquitto
@@ -29,12 +21,20 @@ restore_from_robonomics_backup:
   name: Restore from the Backup in Robonomics
   description: Get the latest backup from Robonomics Network and restore from it
   fields:
-    backup_path:
-      description: Path to the backup enrypted file (if doesn't set get backup from Robonomics blockchain)
-      name: Path to the backup (Optional)
+    mosquitto_path:
+      name: Path to mosquitto password file (Optional)
+      description: Defines the path to mosquitto configuration where 'passwd' file will be restored, with a default value of '/etc/mosquitto' if not specified.
       required: false
       advanced: true
-      example: "/home/homeassistant/.homeassistant/backups/example.tar.xz"
+      example: /etc/mosquitto
+      selector:
+        text:
+    zigbee2mqtt_path:
+      name: Path to zigbee2mqtt config (Optional)
+      description: Defines the path to the zigbee2mqtt configuration where 'data' directory will be restored, with a default value of '/opt/zigbee2mqtt' if not specified.
+      required: false
+      advanced: true
+      example: /opt/zigbee2mqtt
       selector:
         text:
 

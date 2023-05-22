@@ -94,7 +94,12 @@ async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
         return last_file_encrypted_hash
     await _add_to_local_node(filename, False, IPFS_CONFIG_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
-        hass, filename_encrypted, IPFS_CONFIG_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+        hass,
+        filename_encrypted,
+        IPFS_CONFIG_PATH,
+        False,
+        last_file_encrypted_hash,
+        last_file_encrypted_name,
     )
     await _upload_to_crust(hass, ipfs_hash, size)
 
@@ -122,7 +127,12 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
         return last_file_encrypted_hash
     await _add_to_local_node(filename, False, IPFS_BACKUP_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
-        hass, filename_encrypted, IPFS_BACKUP_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+        hass,
+        filename_encrypted,
+        IPFS_BACKUP_PATH,
+        False,
+        last_file_encrypted_hash,
+        last_file_encrypted_name,
     )
     await _upload_to_crust(hass, ipfs_hash, size)
 
@@ -437,7 +447,8 @@ def _add_to_pinata(
             pinata.remove_pin_from_ipfs(last_file_hash)
             _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
             hass.data[DOMAIN][PINATA] = PinataPy(
-                hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET]
+                hass.data[DOMAIN][CONF_PINATA_PUB],
+                hass.data[DOMAIN][CONF_PINATA_SECRET],
             )
         except Exception as e:
             _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")

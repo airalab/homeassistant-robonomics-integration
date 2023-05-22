@@ -1,12 +1,12 @@
 """File with functions for Home Assistant services"""
 
+import asyncio
 import logging
+import os
 import tempfile
 import time
-import os
 import typing as tp
 from pathlib import Path
-import asyncio
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -31,7 +31,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def save_video(
-    hass: HomeAssistant, target: tp.Dict[str, str], path: str, duration: int, sub_admin_acc: Account
+    hass: HomeAssistant,
+    target: tp.Dict[str, str],
+    path: str,
+    duration: int,
+    sub_admin_acc: Account,
 ) -> None:
     """Record a video with given duration, save it in IPFS and Digital Twin
 
@@ -48,7 +52,11 @@ async def save_video(
     data = {"duration": duration, "filename": f"{path}/{filename}"}
     _LOGGER.debug(f"Started recording video {path}/{filename} for {duration} seconds")
     await hass.services.async_call(
-        domain=CAMERA_DOMAIN, service=SERVICE_RECORD, service_data=data, target=target, blocking=True
+        domain=CAMERA_DOMAIN,
+        service=SERVICE_RECORD,
+        service_data=data,
+        target=target,
+        blocking=True,
     )
     count = 0
     while not os.path.isfile(f"{path}/{filename}"):
@@ -83,18 +91,13 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
     :param sub_admin_acc: controller Robonomics account
     """
 
-    zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
     mosquitto_path = call.data.get("mosquitto_path")
     full = call.data.get("full")
-    if zigbee2mqtt_path is None:
-        zigbee2mqtt_path = "/opt/zigbee2mqtt"
     if mosquitto_path is None:
         mosquitto_path = "/etc/mosquitto"
-    _LOGGER.debug(f"Zigbee2mqtt path in creating backup: {zigbee2mqtt_path}")
     encrypted_backup_path, backup_path = await create_secure_backup(
         hass,
         Path(hass.config.path()),
-        zigbee2mqtt_path,
         mosquitto_path,
         admin_keypair=sub_admin_acc.keypair,
         full=full,
@@ -117,27 +120,15 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
 
     try:
         config_path = Path(hass.config.path())
-        backup_encrypted_path = call.data.get("backup_path")
         zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
         if zigbee2mqtt_path is None:
             zigbee2mqtt_path = "/opt/zigbee2mqtt"
+        mosquitto_path = call.data.get("mosquitto_path")
+        if mosquitto_path is None:
+            mosquitto_path = "/etc/mosquitto"
         hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-        if backup_encrypted_path is None:
-            hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
-            _LOGGER.debug("Start looking for backup ipfs hash")
-            ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
-            result = await get_ipfs_data(hass, ipfs_backup_hash, 0)
-            backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
-            with open(backup_path, "w") as f:
-                f.write(result)
-            sub_admin_kp = Keypair.create_from_mnemonic(
-                hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-            )
-            await unpack_backup(hass, Path(backup_path), sub_admin_kp)
-            await restore_from_backup(hass, zigbee2mqtt_path, Path(hass.config.path()))
-        else:
-            backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
-            await restore_from_backup(hass, zigbee2mqtt_path, config_path)
-            _LOGGER.debug(f"Config restored, restarting...")
+        backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
+        await restore_from_backup(hass, zigbee2mqtt_path, mosquitto_path, config_path)
+        _LOGGER.debug(f"Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")
