@@ -48,7 +48,6 @@ _LOGGER = logging.getLogger(__name__)
 def create_secure_backup(
     hass: HomeAssistant,
     config_path: Path,
-    zigbee2mqtt_path: str,
     mosquitto_path: str,
     admin_keypair: Keypair,
     full: bool,
@@ -57,14 +56,11 @@ def create_secure_backup(
 
     :param hass: HomeAssistant instance
     :param config_path: Path to the configuration file
-    :param zigbee2mqtt_path: Path to zigbee2mqtt config
     :param admin_keypair: Keypair to encrypt backup
     :param full: Create full backup with database or not
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
-    if zigbee2mqtt_path[-1] != "/":
-        zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
     if mosquitto_path[-1] != "/":
         mosquitto_path = f"{mosquitto_path}/"
     hass.states.async_set(f"{DOMAIN}.backup", "Creating")
@@ -150,6 +146,7 @@ def unpack_backup(
 async def restore_from_backup(
     hass: HomeAssistant,
     zigbee2mqtt_path: str,
+    mosquitto_path: str,
     path_to_old_config: Path,
     path_to_new_config_dir: Path = Path(f"{os.path.expanduser('~')}/backup_new"),
 ) -> None:
@@ -158,8 +155,11 @@ async def restore_from_backup(
     :param path_to_old_config: Path to the hass configuration directory
     :param path_to_new_config_dir: Path to the unpacked backup
     :param zigbee2mqtt_path: Path to unpack zigbee2mqtt config
+    :param mosquitto_path: Path to unpack mosquitto config
     """
-    mosquitto_path = "/etc/mosquitto/"
+
+    if mosquitto_path[-1] != "/":
+        mosquitto_path = f"{mosquitto_path}/"
     if zigbee2mqtt_path[-1] != "/":
         zigbee2mqtt_path = f"{zigbee2mqtt_path}/"
     try:
