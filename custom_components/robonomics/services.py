@@ -127,8 +127,18 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
         if mosquitto_path is None:
             mosquitto_path = "/etc/mosquitto"
         hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-        backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
-        await restore_from_backup(hass, zigbee2mqtt_path, mosquitto_path, config_path)
+        hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
+        _LOGGER.debug("Start looking for backup ipfs hash")
+        ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
+        result = await get_ipfs_data(hass, ipfs_backup_hash, 0)
+        backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
+        with open(backup_path, "w") as f:
+            f.write(result)
+        sub_admin_kp = Keypair.create_from_mnemonic(
+            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+        )
+        await unpack_backup(hass, Path(backup_path), sub_admin_kp)
+        await restore_from_backup(hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path()))
         _LOGGER.debug(f"Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")

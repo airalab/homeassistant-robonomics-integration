@@ -39,7 +39,7 @@ from .const import (
     Z2M_BACKUP_TOPIC_RESPONSE,
     Z2M_CONFIG_NAME,
 )
-from .utils import decrypt_message, encrypt_message, to_thread, write_data_to_temp_file
+from .utils import decrypt_message, encrypt_message, to_thread, write_data_to_temp_file, delete_temp_file
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +90,7 @@ def create_secure_backup(
                 z2m_backup_path = _BackupZ2M(hass)._create_z2m_backup()
                 if z2m_backup_path is not None:
                     tar.add(z2m_backup_path, arcname=Z2M_CONFIG_NAME)
+                    delete_temp_file(z2m_backup_path)
             if os.path.isdir(mosquitto_path) and os.path.isfile(f"{mosquitto_path}passwd"):
                 _LOGGER.debug("Mosquitto configuration exists and will be added to backup")
                 tar.add(f"{mosquitto_path}passwd", arcname=MQTT_CONFIG_NAME)
