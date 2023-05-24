@@ -174,7 +174,7 @@ async def restore_from_backup(
             except Exception as e:
                 _LOGGER.debug(f"Exception in deleting files: {e}")
         for dirname, dirnames, filenames in os.walk(path_to_new_config_dir):
-            if "configuration.yaml" in filenames:
+            if ".HA_VERSION" in filenames:
                 path_to_new_config = dirname
                 new_config_files = filenames
                 new_config_dirs = dirnames
