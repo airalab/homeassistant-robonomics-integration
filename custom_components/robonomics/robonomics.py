@@ -254,7 +254,7 @@ class Robonomics:
             dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
             info = dt.get_info(twin_number)
             bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
-            _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
+            _LOGGER.debug(f"Bytes backup hash: {bytes_hash}")
             if info is not None:
                 for topic in info:
                     # _LOGGER.debug(f"Topic {topic}, ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}")

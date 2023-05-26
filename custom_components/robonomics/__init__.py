@@ -67,7 +67,7 @@ async def init_integration(hass: HomeAssistant) -> None:
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
     except Exception as e:
-        print(f"Exception in fist check devices {e}")
+        _LOGGER.error(f"Exception in fist check devices {e}")
 
     await get_and_send_data(hass)
 

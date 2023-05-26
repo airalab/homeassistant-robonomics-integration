@@ -13,8 +13,15 @@ from homeassistant.components.camera.const import SERVICE_RECORD
 from homeassistant.core import HomeAssistant, ServiceCall
 from robonomicsinterface import Account
 from substrateinterface import Keypair, KeypairType
+from homeassistant.components.hassio import is_hassio
 
-from .backup_control import create_secure_backup, restore_from_backup, unpack_backup
+from .backup_control import (
+    create_secure_backup,
+    restore_from_backup,
+    unpack_backup,
+    create_secure_backup_hassio,
+    restore_backup_hassio,
+)
 from .const import (
     CONF_ADMIN_SEED,
     DATA_BACKUP_ENCRYPTED_NAME,
@@ -91,17 +98,20 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
     :param sub_admin_acc: controller Robonomics account
     """
 
-    mosquitto_path = call.data.get("mosquitto_path")
-    full = call.data.get("full")
-    if mosquitto_path is None:
-        mosquitto_path = "/etc/mosquitto"
-    encrypted_backup_path, backup_path = await create_secure_backup(
-        hass,
-        Path(hass.config.path()),
-        mosquitto_path,
-        admin_keypair=sub_admin_acc.keypair,
-        full=full,
-    )
+    if is_hassio(hass):
+        encrypted_backup_path, backup_path = await create_secure_backup_hassio(hass, sub_admin_acc.keypair)
+    else:
+        mosquitto_path = call.data.get("mosquitto_path")
+        full = call.data.get("full")
+        if mosquitto_path is None:
+            mosquitto_path = "/etc/mosquitto"
+        encrypted_backup_path, backup_path = await create_secure_backup(
+            hass,
+            Path(hass.config.path()),
+            mosquitto_path,
+            admin_keypair=sub_admin_acc.keypair,
+            full=full,
+        )
     ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
     _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
     delete_temp_file(encrypted_backup_path)
@@ -119,13 +129,6 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
     """
 
     try:
-        config_path = Path(hass.config.path())
-        zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
-        if zigbee2mqtt_path is None:
-            zigbee2mqtt_path = "/opt/zigbee2mqtt"
-        mosquitto_path = call.data.get("mosquitto_path")
-        if mosquitto_path is None:
-            mosquitto_path = "/etc/mosquitto"
         hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
         hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
         _LOGGER.debug("Start looking for backup ipfs hash")
@@ -134,11 +137,19 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
         backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
         with open(backup_path, "w") as f:
             f.write(result)
-        sub_admin_kp = Keypair.create_from_mnemonic(
-            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-        )
-        await unpack_backup(hass, Path(backup_path), sub_admin_kp)
-        await restore_from_backup(hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path()))
-        _LOGGER.debug(f"Config restored, restarting...")
+        sub_admin_kp = Keypair.create_from_mnemonic(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+        if is_hassio(hass):
+            await restore_backup_hassio(hass, Path(backup_path), sub_admin_kp)
+        else:
+            config_path = Path(hass.config.path())
+            zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
+            if zigbee2mqtt_path is None:
+                zigbee2mqtt_path = "/opt/zigbee2mqtt"
+            mosquitto_path = call.data.get("mosquitto_path")
+            if mosquitto_path is None:
+                mosquitto_path = "/etc/mosquitto"
+            await unpack_backup(hass, Path(backup_path), sub_admin_kp)
+            await restore_from_backup(hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path()))
+            _LOGGER.debug(f"Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")
