@@ -36,6 +36,10 @@ def main():
     encrypted_message = encr_json["data"]
 
     message = decrypt_message(encrypted_message, sender.keypair.public_key, new_sender.keypair)
+    # encrypted_message = encrypted
+    # message = decrypt_message(encrypted_message, sender.keypair.public_key, sender.keypair)
+    # with open("decrypted.tar.xz", "wb") as f:
+    #      f.write(message)
     message = message.decode("utf-8")
     with open("decrypted", "w") as f:
         f.write(message)
