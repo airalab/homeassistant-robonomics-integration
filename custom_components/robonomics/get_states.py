@@ -199,7 +199,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 sender_kp = sender_acc.keypair
                 devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
                 devices_list_with_admin.append(sender_acc.get_address())
-                encrypted_data = encrypt_for_devices(str(new_config), sender_kp, devices_list_with_admin)
+                encrypted_data = encrypt_for_devices(json.dumps(new_config), sender_kp, devices_list_with_admin)
                 filename = write_data_to_temp_file(encrypted_data, config=True)
                 _LOGGER.debug(f"Filename: {filename}")
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(hass, config_filename, filename)
