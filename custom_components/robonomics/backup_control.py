@@ -29,7 +29,6 @@ from homeassistant.core import HomeAssistant
 from substrateinterface import Keypair
 
 from homeassistant.components.hassio.const import DOMAIN as HASSIO_DOMAIN
-from homeassistant.components.hassio.const import X_HASS_SOURCE
 from homeassistant.components.hassio.handler import async_create_backup
 from http import HTTPStatus
 import aiohttp
@@ -316,7 +315,7 @@ async def _send_command_hassio(
             data=payload,
             headers={
                 aiohttp.hdrs.AUTHORIZATION: (f"Bearer {os.environ.get('SUPERVISOR_TOKEN', '')}"),
-                X_HASS_SOURCE: "core.handler",
+                "X-Hass-Source": "core.handler",
             },
             timeout=aiohttp.ClientTimeout(total=10),
         )
