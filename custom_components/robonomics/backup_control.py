@@ -28,6 +28,11 @@ from homeassistant.components.mqtt.util import mqtt_config_entry_enabled
 from homeassistant.core import HomeAssistant
 from substrateinterface import Keypair
 
+from homeassistant.components.hassio.const import DOMAIN as HASSIO_DOMAIN
+from homeassistant.components.hassio.handler import async_create_backup
+from http import HTTPStatus
+import aiohttp
+
 from .const import (
     BACKUP_ENCRYPTED_PREFIX,
     BACKUP_PREFIX,
@@ -174,7 +179,7 @@ async def restore_from_backup(
             except Exception as e:
                 _LOGGER.debug(f"Exception in deleting files: {e}")
         for dirname, dirnames, filenames in os.walk(path_to_new_config_dir):
-            if "configuration.yaml" in filenames:
+            if ".HA_VERSION" in filenames:
                 path_to_new_config = dirname
                 new_config_files = filenames
                 new_config_dirs = dirnames
@@ -240,8 +245,88 @@ async def restore_from_backup(
         _LOGGER.debug(f"Exception in restore from backup: {e}")
 
 
+async def restore_backup_hassio(hass: HomeAssistant, path_to_encrypted: Path, admin_keypair: Keypair) -> None:
+    """Restore superviser backup
+    :param hass: Home Assistant instanse
+    :param path_to_encrypted: Path to encrypted backup downloaded from IPFS
+    :param admin_keypair: Controller Keypair
+    """
+    _LOGGER.debug(f"Start decrypting backup {path_to_encrypted}")
+    hassio = hass.data[HASSIO_DOMAIN]
+    hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
+    with open(path_to_encrypted) as f:
+        encrypted = f.read()
+    decrypted = decrypt_message(encrypted, admin_keypair.public_key, admin_keypair)
+    _LOGGER.error(f"Start uploading backup to hassio")
+    response = await _send_command_hassio(hass, "/backups/new/upload", "post", {"file": decrypted})
+    try:
+        resp = await response.json()
+        slug = resp["data"]["slug"]
+        _LOGGER.debug(f"Response upload: {resp}")
+        _LOGGER.debug(f"Backup {slug} uploaded")
+    except Exception as e:
+        _LOGGER.error(f"Exception in respose from backup upload request")
+    _LOGGER.debug(f"Start restoring backup hassio")
+    response = await _send_command_hassio(hass, f"/backups/{slug}/restore/full", "post")
+
+
+async def create_secure_backup_hassio(hass: HomeAssistant, admin_keypair: Keypair) -> (str, str):
+    """Create superviser backup
+    :param hass: Home Assistant instanse
+    :param admin_keypair: Controller Keypair
+
+    :return: Path to encrypted backup archive and for not encrypted backup
+    """
+    try:
+        _LOGGER.debug("Start creating hassio backup")
+        resp_create = await async_create_backup(hass, {})
+        _LOGGER.debug(f"Hassio backup was created with response {resp_create}")
+        slug = resp_create["slug"]
+        response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
+        backup = await response.read()
+        _LOGGER.error(f"Backup {slug} downloaded")
+        encrypted_data = encrypt_message(backup, admin_keypair, admin_keypair.public_key)
+        tarpath = write_data_to_temp_file(backup, filename=f"{slug}.tar")
+        encrypted_tarpath = write_data_to_temp_file(encrypted_data, filename=f"{slug}_encrypted")
+        _LOGGER.debug(f"Backup was encrypted")
+        return encrypted_tarpath, tarpath
+    except Exception as e:
+        _LOGGER.error(f"Exception in create_secure_backup_hassio: {e}")
+        return None, None
+
+
+async def _send_command_hassio(
+    hass: HomeAssistant, command: str, method: str, payload: tp.Optional[tp.Dict[str, tp.Any]] = None
+) -> tp.Coroutine:
+    """Send API command to Superviser
+    :param hass: Home Assistant instanse
+    :param command: Superviser API endpoint
+    :param method: 'get' or 'post' request
+    :param payload: Payload for the request
+
+    :return: Coroutine response
+    """
+    hassio = hass.data[HASSIO_DOMAIN]
+    try:
+        _LOGGER.debug(f"Start {method} request to {command} hassio")
+        request = await hassio.websession.request(
+            method,
+            f"http://{hassio._ip}{command}",
+            data=payload,
+            headers={
+                aiohttp.hdrs.AUTHORIZATION: (f"Bearer {os.environ.get('SUPERVISOR_TOKEN', '')}"),
+                "X-Hass-Source": "core.handler",
+            },
+            timeout=aiohttp.ClientTimeout(total=10),
+        )
+        return request
+    except Exception as e:
+        _LOGGER.error(f"Exception in download backup hassio: {e}")
+
+
 class _BackupZ2M:
     """Class to create zigbee2mqtt backup"""
+
     def __init__(self, hass: HomeAssistant) -> None:
         self.remove_mqtt_subscribe: tp.Optional[tp.Callable] = None
         self.hass: HomeAssistant = hass
@@ -249,9 +334,9 @@ class _BackupZ2M:
         self.z2m_backup_path: tp.Optional[str] = None
 
     def _z2m_backup_callback(self, msg: ReceiveMessage) -> None:
-        """Callback on response topic for z2m backup. 
+        """Callback on response topic for z2m backup.
         It will create a zip file anc close subscription to the topic.
-        :param msg: MQTT message 
+        :param msg: MQTT message
         """
         _LOGGER.debug("Received message with z2m backup")
         payload = json.loads(msg.payload)
@@ -265,8 +350,8 @@ class _BackupZ2M:
 
     def _create_z2m_backup(self) -> tp.Optional[str]:
         """Send message to mqtt topic to create z2m backup and supscribe to the response topic
-        
-        :return: Path to the backup file 
+
+        :return: Path to the backup file
         """
         _LOGGER.debug("Start creating zigbee2mqtt backup")
         publish(self.hass, Z2M_BACKUP_TOPIC_REQUEST, "")

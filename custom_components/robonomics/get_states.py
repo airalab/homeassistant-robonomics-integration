@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_get_all_descriptions
+import homeassistant.util.dt as dt_util
 from robonomicsinterface import Account
 from substrateinterface import KeypairType
 
@@ -102,8 +103,8 @@ async def _get_state_history(hass: HomeAssistant, entity_id: str) -> tp.List[tp.
     :return: List of states with date for the given entity in the last 24hrs
     """
 
-    start = datetime.now() - timedelta(hours=24)
-    end = datetime.now()
+    start = dt_util.utcnow() - timedelta(hours=24)
+    end = dt_util.utcnow()
     instance = get_instance(hass)
     states = await instance.async_add_executor_job(
         _state_changes_during_period,
