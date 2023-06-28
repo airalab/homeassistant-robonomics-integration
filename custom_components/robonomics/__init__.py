@@ -48,9 +48,9 @@ from .const import (
     TWIN_ID,
 )
 from .get_states import get_and_send_data
-from .ipfs import create_folders, get_ipfs_data, get_last_file_hash, read_ipfs_local_file
+from .ipfs import create_folders, get_ipfs_data, get_last_file_hash, read_ipfs_local_file, wait_ipfs_daemon
 from .manage_users import manage_users
-from .robonomics import Robonomics, check_subscription_left_days
+from .robonomics import Robonomics, check_subscription_left_days, get_or_create_twin_id
 from .services import restore_from_backup_service_call, save_backup_service_call, save_video
 from .utils import decrypt_message
 
@@ -148,7 +148,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if os.path.isdir(data_path):
         shutil.rmtree(data_path)
 
-    await create_folders()
+    await wait_ipfs_daemon()
+    try:
+        await create_folders()
+    except Exception as e:
+        _LOGGER.error(f"Exception in create ipfs folders: {e}")
+        await wait_ipfs_daemon()
 
     hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = False
     entry.async_on_unload(entry.add_update_listener(update_listener))
@@ -163,6 +168,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """
 
         try:
+            hass.data[DOMAIN][ROBONOMICS].resubscribe()
+            if TWIN_ID not in hass.data[DOMAIN]:
+                _LOGGER.debug("There is no twin id. Looking for one...")
+                await get_or_create_twin_id(hass)
             time_change_count_in_day = 24 * 60 / (hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds / 60)
             hass.data[DOMAIN][TIME_CHANGE_COUNT] += 1
             if hass.data[DOMAIN][TIME_CHANGE_COUNT] >= time_change_count_in_day:
@@ -181,6 +190,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         the Digital Twin topic.
         """
 
+        if TWIN_ID not in hass.data[DOMAIN]:
+            _LOGGER.debug("There is no twin id. Looking for one...")
+            await get_or_create_twin_id(hass)
         await save_backup_service_call(hass, call, sub_admin_acc)
 
     async def handle_restore_from_backup(call: ServiceCall) -> None:
@@ -188,6 +200,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         It restores configuration file from backup.
         """
 
+        if TWIN_ID not in hass.data[DOMAIN]:
+            _LOGGER.debug("There is no twin id. Looking for one...")
+            await get_or_create_twin_id(hass)
         await restore_from_backup_service_call(hass, call, sub_admin_acc)
 
     async def handle_save_video(call: ServiceCall) -> None:
@@ -201,6 +216,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else:
             duration = 10
         path = call.data["path"]
+        if TWIN_ID not in hass.data[DOMAIN]:
+            _LOGGER.debug("There is no twin id. Looking for one...")
+            await get_or_create_twin_id(hass)
         await save_video(hass, target, path, duration, sub_admin_acc)
 
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
@@ -215,49 +233,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][ROBONOMICS].subscribe()
     await check_subscription_left_days(hass)
     if TWIN_ID not in hass.data[DOMAIN]:
-        try:
-            config_name, _ = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
-            current_config = await read_ipfs_local_file(config_name, IPFS_CONFIG_PATH)
-            _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
-            hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
-        except Exception as e:
-            _LOGGER.debug(f"Can't load config: {e}")
-            last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
-            if last_telemetry_hash is not None:
-                hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
-                res = await get_ipfs_data(hass, last_telemetry_hash, MAX_NUMBER_OF_REQUESTS - 1)
-                if res is not None:
-                    try:
-                        _LOGGER.debug("Start getting info about telemetry")
-                        sub_admin_kp = Keypair.create_from_mnemonic(
-                            hass.data[DOMAIN][CONF_ADMIN_SEED],
-                            crypto_type=KeypairType.ED25519,
-                        )
-                        decrypted = decrypt_message(res, sub_admin_kp.public_key, sub_admin_kp)
-                        decrypted_str = decrypted.decode("utf-8")
-                        decrypted_json = json.loads(decrypted_str)
-                        _LOGGER.debug(f"Restored twin id is {decrypted_json['twin_id']}")
-                        hass.data[DOMAIN][TWIN_ID] = decrypted_json["twin_id"]
-                    except Exception as e:
-                        _LOGGER.debug(f"Can't decrypt last telemetry: {e}")
-                try:
-                    if TWIN_ID not in hass.data[DOMAIN]:
-                        _LOGGER.debug("Start looking for the last digital twin belonging to controller")
-                        twin_id = await hass.data[DOMAIN][ROBONOMICS].get_last_digital_twin()
-                        if twin_id is not None:
-                            _LOGGER.debug(f"Last twin id is {twin_id}")
-                            hass.data[DOMAIN][TWIN_ID] = twin_id
-                        else:
-                            _LOGGER.debug(f"Start creating new digital twin")
-                            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-                            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
-                    else:
-                        _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
-                except Exception as e:
-                    _LOGGER.debug(f"Exception in configure digital twin: {e}")
-            else:
-                hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
-                _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+        await get_or_create_twin_id(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
