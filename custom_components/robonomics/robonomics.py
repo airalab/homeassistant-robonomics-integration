@@ -64,8 +64,11 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
                     decrypted = decrypt_message(res, sub_admin_kp.public_key, sub_admin_kp)
                     decrypted_str = decrypted.decode("utf-8")
                     decrypted_json = json.loads(decrypted_str)
-                    _LOGGER.debug(f"Restored twin id is {decrypted_json['twin_id']}")
-                    hass.data[DOMAIN][TWIN_ID] = decrypted_json["twin_id"]
+                    if int(decrypted_json['twin_id']) != -1:
+                        _LOGGER.debug(f"Restored twin id is {decrypted_json['twin_id']}")
+                        hass.data[DOMAIN][TWIN_ID] = decrypted_json["twin_id"]
+                    else:
+                        _LOGGER.debug(f"Restored twin id is incorrect: {decrypted_json['twin_id']}")
                 except Exception as e:
                     _LOGGER.debug(f"Can't decrypt last telemetry: {e}")
             try:
@@ -89,7 +92,9 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
             new_twin_id = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
             if new_twin_id != -1:
                 hass.data[DOMAIN][TWIN_ID] = new_twin_id
-            _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+            else:
+                _LOGGER.debug("Twin id was not created")
 
 async def check_subscription_left_days(hass: HomeAssistant) -> None:
     """Check subscription status and send notification.
