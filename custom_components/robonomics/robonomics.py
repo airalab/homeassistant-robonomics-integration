@@ -77,14 +77,18 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
                         hass.data[DOMAIN][TWIN_ID] = twin_id
                     else:
                         _LOGGER.debug(f"Start creating new digital twin")
-                        hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                        new_twin_id = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                        if new_twin_id != -1:
+                            hass.data[DOMAIN][TWIN_ID] = new_twin_id
                         _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
                 else:
                     _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
             except Exception as e:
                 _LOGGER.debug(f"Exception in configure digital twin: {e}")
         else:
-            hass.data[DOMAIN][TWIN_ID] = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+            new_twin_id = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+            if new_twin_id != -1:
+                hass.data[DOMAIN][TWIN_ID] = new_twin_id
             _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
 
 async def check_subscription_left_days(hass: HomeAssistant) -> None:
