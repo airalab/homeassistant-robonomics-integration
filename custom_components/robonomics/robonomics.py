@@ -451,6 +451,7 @@ class Robonomics:
     def resubscribe(self) -> None:
         """Close subscription and create new"""
         
+        _LOGGER.debug("Restart subscription to Robonomcis events")
         self.subscriber.cancel()
         self.subscribe()
 

@@ -27,6 +27,13 @@ IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
 PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 
+ROBONOMICS_WSS = [
+    "wss://kusama.rpc.robonomics.network/",
+    "wss://robonomics.leemo.me/",
+    "wss://robonomics.api.onfinality.io/public-ws/",
+    "wss://robonomics.0xsamsara.com/"
+]
+
 SENDING_TIMEOUT = "sending_timeout"
 ROBONOMICS = "robonomics"
 PINATA = "pinata"
