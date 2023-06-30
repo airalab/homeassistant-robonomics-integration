@@ -657,6 +657,7 @@ def _get_from_local_node_by_hash(ipfs_hash: str) -> tp.Optional[str]:
     except Exception as e:
         _LOGGER.error(f"Exception in getting file from local node by hash: {e}")
 
+
 @to_thread
 def _check_connection() -> bool:
     """Check connection to IPFS local node

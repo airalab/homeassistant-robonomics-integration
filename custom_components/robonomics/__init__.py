@@ -30,14 +30,11 @@ from .const import (
     CONF_PINATA_SECRET,
     CONF_SENDING_TIMEOUT,
     CONF_SUB_OWNER_ADDRESS,
-    CONFIG_PREFIX,
     CREATE_BACKUP_SERVICE,
     DATA_PATH,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     HANDLE_TIME_CHANGE,
-    IPFS_CONFIG_PATH,
-    MAX_NUMBER_OF_REQUESTS,
     PINATA,
     PLATFORMS,
     RESTORE_BACKUP_SERVICE,
@@ -48,11 +45,10 @@ from .const import (
     TWIN_ID,
 )
 from .get_states import get_and_send_data
-from .ipfs import create_folders, get_ipfs_data, get_last_file_hash, read_ipfs_local_file, wait_ipfs_daemon
+from .ipfs import create_folders, wait_ipfs_daemon
 from .manage_users import manage_users
-from .robonomics import Robonomics, check_subscription_left_days, get_or_create_twin_id
+from .robonomics import Robonomics, get_or_create_twin_id
 from .services import restore_from_backup_service_call, save_backup_service_call, save_video
-from .utils import decrypt_message
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -63,7 +59,7 @@ async def init_integration(hass: HomeAssistant) -> None:
 
     try:
         await asyncio.sleep(60)
-        start_devices_list = hass.data[DOMAIN][ROBONOMICS].get_devices_list()
+        start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
     except Exception as e:
@@ -168,7 +164,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """
 
         try:
-            hass.data[DOMAIN][ROBONOMICS].resubscribe()
+            await hass.data[DOMAIN][ROBONOMICS].resubscribe()
             if TWIN_ID not in hass.data[DOMAIN]:
                 _LOGGER.debug("There is no twin id. Looking for one...")
                 await get_or_create_twin_id(hass)
@@ -176,7 +172,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.data[DOMAIN][TIME_CHANGE_COUNT] += 1
             if hass.data[DOMAIN][TIME_CHANGE_COUNT] >= time_change_count_in_day:
                 hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
-                await check_subscription_left_days(hass)
+                await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
             _LOGGER.debug(f"Time changed: {event}")
             await get_and_send_data(hass)
         except Exception as e:
@@ -230,8 +226,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][HANDLE_TIME_CHANGE],
         hass.data[DOMAIN][CONF_SENDING_TIMEOUT],
     )
-    hass.data[DOMAIN][ROBONOMICS].subscribe()
-    await check_subscription_left_days(hass)
+    await hass.data[DOMAIN][ROBONOMICS].subscribe()
+    await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
     if TWIN_ID not in hass.data[DOMAIN]:
         await get_or_create_twin_id(hass)
 
