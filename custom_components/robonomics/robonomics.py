@@ -565,23 +565,27 @@ class Robonomics:
                 continue
         else:
             return None
+    
+    @to_thread
+    def _monitore_subscription(self) -> None:
+        try:
+            self.subscriber._subscription.join()
+        except TimeoutError:
+            _LOGGER.debug("Subscription TimeoutError, resubscribe with new ws")
+            self._change_current_wss()
+            asyncio.ensure_future(self.resubscribe)
 
     async def subscribe(self) -> None:
         """Subscribe to NewDevices, NewRecord, TopicChanged and NewLaunch events"""
 
         try:
-            async for attempt in AsyncRetrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
-                with attempt:
-                    try:
-                        account = Account(remote_ws=self.current_wss)
-                        self.subscriber = Subscriber(
-                            account,
-                            SubEvent.MultiEvent,
-                            subscription_handler=self.callback_new_event,
-                        )
-                    except TimeoutError:
-                        self._change_current_wss()
-                        raise TimeoutError
+            account = Account(remote_ws=self.current_wss)
+            self.subscriber = Subscriber(
+                account,
+                SubEvent.MultiEvent,
+                subscription_handler=self.callback_new_event,
+            )
+            asyncio.ensure_future(self._monitore_subscription())
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
 

@@ -46,7 +46,7 @@ save_video_to_robonomics:
         domain: camera
   fields:
     path:
-      description: This path must be set in configuration.yaml
+      description: Home Assistant must have access to this folder
       name: Path to save the recording
       required: true
       example: "/tmp"
