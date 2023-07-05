@@ -32,6 +32,11 @@ from homeassistant.components.mqtt.util import mqtt_config_entry_enabled
 from homeassistant.core import HomeAssistant
 from substrateinterface import Keypair
 
+from homeassistant.components.hassio.const import DOMAIN as HASSIO_DOMAIN
+from homeassistant.components.hassio.handler import async_create_backup
+from http import HTTPStatus
+import aiohttp
+
 from .const import (
     BACKUP_ENCRYPTED_PREFIX,
     BACKUP_PREFIX,
