@@ -574,6 +574,11 @@ class Robonomics:
             _LOGGER.debug("Subscription TimeoutError, resubscribe with new ws")
             self._change_current_wss()
             asyncio.ensure_future(self.resubscribe)
+        except Exception as e:
+            _LOGGER.debug(f"Subscription exception, resubscribe with new ws in 5 seconds: {e}")
+            time.sleep(5)
+            self._change_current_wss()
+            asyncio.ensure_future(self.resubscribe)
 
     async def subscribe(self) -> None:
         """Subscribe to NewDevices, NewRecord, TopicChanged and NewLaunch events"""
