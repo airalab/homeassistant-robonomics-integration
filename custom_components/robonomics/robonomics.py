@@ -565,20 +565,16 @@ class Robonomics:
                 continue
         else:
             return None
-    
-    @to_thread
-    def _monitore_subscription(self) -> None:
-        try:
-            self.subscriber._subscription.join()
-        except TimeoutError:
-            _LOGGER.debug("Subscription TimeoutError, resubscribe with new ws")
-            self._change_current_wss()
-            asyncio.ensure_future(self.resubscribe)
-        except Exception as e:
-            _LOGGER.debug(f"Subscription exception, resubscribe with new ws in 5 seconds: {e}")
-            time.sleep(5)
-            self._change_current_wss()
-            asyncio.ensure_future(self.resubscribe)
+
+    def is_subscription_alive(self) -> bool:
+        return self.subscriber._subscription.is_alive()
+
+    async def _monitore_subscription(self) -> None:
+        """Check if thread with subscription is alive every 15 seconds"""
+        while self.is_subscription_alive():
+            await asyncio.sleep(15)
+        self._change_current_wss()
+        await self.resubscribe()
 
     async def subscribe(self) -> None:
         """Subscribe to NewDevices, NewRecord, TopicChanged and NewLaunch events"""

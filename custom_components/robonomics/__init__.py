@@ -164,7 +164,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """
 
         try:
-            await hass.data[DOMAIN][ROBONOMICS].resubscribe()
+            if not hass.data[DOMAIN][ROBONOMICS].is_subscription_alive():
+                await hass.data[DOMAIN][ROBONOMICS].resubscribe()
             if TWIN_ID not in hass.data[DOMAIN]:
                 _LOGGER.debug("There is no twin id. Looking for one...")
                 await get_or_create_twin_id(hass)
