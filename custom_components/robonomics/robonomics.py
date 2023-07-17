@@ -14,55 +14,88 @@ from homeassistant.core import HomeAssistant, callback
 from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
+from tenacity import AsyncRetrying, Retrying, stop_after_attempt, wait_fixed
 
 from .const import (
     CONF_ADMIN_SEED,
-    CONF_SUB_OWNER_ADDRESS,
+    CONFIG_PREFIX,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
+    IPFS_CONFIG_PATH,
+    MAX_NUMBER_OF_REQUESTS,
     MEDIA_ACC,
     ROBONOMICS,
+    ROBONOMICS_WSS,
     RWS_DAYS_LEFT_NOTIFY,
     TWIN_ID,
     ZERO_ACC,
 )
 from .get_states import get_and_send_data
-from .ipfs import get_ipfs_data
+from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file
 from .manage_users import change_password, manage_users
 from .utils import create_notification, decrypt_message, to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def check_subscription_left_days(hass: HomeAssistant) -> None:
-    """Check subscription status and send notification.
+async def get_or_create_twin_id(hass: HomeAssistant) -> None:
+    """Try to get current twin id from local storage, datalogs or twin list in blockchain.
+    If no existing twin id, create new one.
 
     :param hass: HomeAssistant instance
     """
-
-    rws = RWS(Account())
-    rws_days_left = rws.get_days_left(addr=hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
-    _LOGGER.debug(f"Left {rws_days_left} days of subscription")
-    if rws_days_left == -1:
-        hass.states.async_set(f"{DOMAIN}.subscription_left_days", 100000)
-        _LOGGER.debug("Subscription is endless")
-        return
-    if rws_days_left:
-        hass.states.async_set(f"{DOMAIN}.subscription_left_days", rws_days_left)
-        if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
-            service_data = {
-                "message": f"""Your subscription is ending. You can use it for another {rws_days_left} days, 
-                                after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).""",
-                "title": "Robonomics Subscription Expires",
-            }
-            await create_notification(hass, service_data)
-    else:
-        hass.states.async_set(f"{DOMAIN}.subscription_left_days", 0)
-        service_data = {
-            "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).",
-            "title": "Robonomics Subscription Expires",
-        }
-        await create_notification(hass, service_data)
+    try:
+        config_name, _ = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
+        current_config = await read_ipfs_local_file(config_name, IPFS_CONFIG_PATH)
+        _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
+        hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
+    except Exception as e:
+        _LOGGER.debug(f"Can't load config: {e}")
+        last_telemetry_hash = await hass.data[DOMAIN][ROBONOMICS].get_last_telemetry_hash()
+        if last_telemetry_hash is not None:
+            hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
+            res = await get_ipfs_data(hass, last_telemetry_hash, MAX_NUMBER_OF_REQUESTS - 1)
+            if res is not None:
+                try:
+                    _LOGGER.debug("Start getting info about telemetry")
+                    sub_admin_kp = Keypair.create_from_mnemonic(
+                        hass.data[DOMAIN][CONF_ADMIN_SEED],
+                        crypto_type=KeypairType.ED25519,
+                    )
+                    decrypted = decrypt_message(res, sub_admin_kp.public_key, sub_admin_kp)
+                    decrypted_str = decrypted.decode("utf-8")
+                    decrypted_json = json.loads(decrypted_str)
+                    if int(decrypted_json["twin_id"]) != -1:
+                        _LOGGER.debug(f"Restored twin id is {decrypted_json['twin_id']}")
+                        hass.data[DOMAIN][TWIN_ID] = decrypted_json["twin_id"]
+                    else:
+                        _LOGGER.debug(f"Restored twin id is incorrect: {decrypted_json['twin_id']}")
+                except Exception as e:
+                    _LOGGER.debug(f"Can't decrypt last telemetry: {e}")
+            try:
+                if TWIN_ID not in hass.data[DOMAIN]:
+                    _LOGGER.debug("Start looking for the last digital twin belonging to controller")
+                    twin_id = await hass.data[DOMAIN][ROBONOMICS].get_last_digital_twin()
+                    if twin_id is not None:
+                        _LOGGER.debug(f"Last twin id is {twin_id}")
+                        hass.data[DOMAIN][TWIN_ID] = twin_id
+                    else:
+                        _LOGGER.debug(f"Start creating new digital twin")
+                        new_twin_id = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+                        if new_twin_id != -1:
+                            hass.data[DOMAIN][TWIN_ID] = new_twin_id
+                        _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+                else:
+                    _LOGGER.debug(f"Got twin id from telemetry: {hass.data[DOMAIN][TWIN_ID]}")
+            except Exception as e:
+                _LOGGER.debug(f"Exception in configure digital twin: {e}")
+        else:
+            new_twin_id = await hass.data[DOMAIN][ROBONOMICS].create_digital_twin()
+            if new_twin_id != -1:
+                hass.data[DOMAIN][TWIN_ID] = new_twin_id
+                _LOGGER.debug(f"New twin id is {hass.data[DOMAIN][TWIN_ID]}")
+            else:
+                _LOGGER.debug("Twin id was not created")
 
 
 def _run_launch_command(hass: HomeAssistant, encrypted_command: str, sender_address: str) -> None:
@@ -161,10 +194,13 @@ class Robonomics:
         sub_owner_address: str,
         controller_seed: str,
     ) -> None:
+        self.current_wss = ROBONOMICS_WSS[0]
         self.hass: HomeAssistant = hass
         self.sub_owner_address: str = sub_owner_address
         self.controller_seed: str = controller_seed
-        self.controller_account: Account = Account(seed=self.controller_seed, crypto_type=KeypairType.ED25519)
+        self.controller_account: Account = Account(
+            seed=self.controller_seed, crypto_type=KeypairType.ED25519, remote_ws=self.current_wss
+        )
         self.controller_address: str = self.controller_account.get_address()
         self.sending_states: bool = False
         self.sending_creds: bool = False
@@ -182,6 +218,58 @@ class Robonomics:
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
 
+    def _change_current_wss(self) -> None:
+        """Set next current wss"""
+
+        current_index = ROBONOMICS_WSS.index(self.current_wss)
+        if current_index == (len(ROBONOMICS_WSS) - 1):
+            next_index = 0
+        else:
+            next_index = current_index + 1
+        self.current_wss = ROBONOMICS_WSS[next_index]
+        _LOGGER.debug(f"New Robonomics ws is {self.current_wss}")
+        self.controller_account: Account = Account(
+            seed=self.controller_seed, crypto_type=KeypairType.ED25519, remote_ws=self.current_wss
+        )
+
+    async def check_subscription_left_days(self) -> None:
+        """Check subscription status and send notification.
+
+        :param hass: HomeAssistant instance
+        """
+        try:
+            async for attempt in AsyncRetrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        rws = RWS(Account(remote_ws=self.current_wss))
+                        rws_days_left = rws.get_days_left(addr=self.sub_owner_address)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
+            _LOGGER.debug(f"Left {rws_days_left} days of subscription")
+            if rws_days_left == -1:
+                self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", 100000)
+                _LOGGER.debug("Subscription is endless")
+                return
+            if rws_days_left:
+                self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", rws_days_left)
+                if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
+                    service_data = {
+                        "message": f"""Your subscription is ending. You can use it for another {rws_days_left} days, 
+                                        after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).""",
+                        "title": "Robonomics Subscription Expires",
+                    }
+                    await create_notification(self.hass, service_data)
+            else:
+                self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", 0)
+                service_data = {
+                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).",
+                    "title": "Robonomics Subscription Expires",
+                }
+                await create_notification(self.hass, service_data)
+        except Exception as e:
+            _LOGGER.error(f"Exception in requesting subscription left days: {e}")
+
     @to_thread
     def get_last_telemetry_hash(self) -> tp.Optional[str]:
         """Getting the last hash with telemetry from Datalog.
@@ -190,13 +278,22 @@ class Robonomics:
         """
 
         try:
-            datalog = Datalog(Account())
-            last_hash = datalog.get_item(self.controller_address)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        datalog = Datalog(Account(remote_ws=self.current_wss))
+                        last_hash = datalog.get_item(self.controller_address)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             _LOGGER.debug(f"Got last hash from datalog: {last_hash}")
             if last_hash[1][:2] != "Qm":
                 return None
             else:
                 return last_hash[1]
+        except TimeoutError:
+            self._change_current_wss()
+
         except Exception as e:
             _LOGGER.debug(f"Exception in getting last telemetry hash: {e}")
 
@@ -209,8 +306,14 @@ class Robonomics:
         """
 
         try:
-            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
-            dt_it, tr_hash = dt.create()
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        dt_it, tr_hash = dt.create()
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             _LOGGER.debug(f"Digital twin number {dt_it} was created with transaction hash {tr_hash}")
             return dt_it
         except Exception as e:
@@ -227,8 +330,14 @@ class Robonomics:
         """
 
         try:
-            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
-            info = dt.get_info(twin_number)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        info = dt.get_info(twin_number)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             if info is not None:
                 for topic in info:
                     if topic[1] == self.sub_owner_address:
@@ -251,8 +360,14 @@ class Robonomics:
         """
 
         try:
-            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
-            info = dt.get_info(twin_number)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        info = dt.get_info(twin_number)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
             _LOGGER.debug(f"Bytes backup hash: {bytes_hash}")
             if info is not None:
@@ -268,11 +383,25 @@ class Robonomics:
                             self.hass.async_create_task(create_notification(self.hass, service_data))
                             return
                     if topic[1] == self.sub_owner_address:
-                        dt.set_source(twin_number, topic[0], ZERO_ACC)
+                        for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                            with attempt:
+                                try:
+                                    dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                                    dt.set_source(twin_number, topic[0], ZERO_ACC)
+                                except TimeoutError:
+                                    self._change_current_wss()
+                                    raise TimeoutError
                         _LOGGER.debug(
                             f"Old backup topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
                         )
-            dt.set_source(twin_number, bytes_hash, self.sub_owner_address)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        dt.set_source(twin_number, bytes_hash, self.sub_owner_address)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             _LOGGER.debug(f"New backup topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
         except Exception as e:
             _LOGGER.error(f"Exception in set config topic {e}")
@@ -286,8 +415,14 @@ class Robonomics:
         """
 
         try:
-            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
-            info = dt.get_info(twin_number)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        info = dt.get_info(twin_number)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
             _LOGGER.debug(f"Bytes config hash: {bytes_hash}")
             if info is not None:
@@ -298,11 +433,25 @@ class Robonomics:
                             _LOGGER.debug(f"Topic with this config exists")
                             return
                     if topic[1] == self.controller_address:
-                        dt.set_source(twin_number, topic[0], ZERO_ACC)
+                        for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                            with attempt:
+                                try:
+                                    dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                                    dt.set_source(twin_number, topic[0], ZERO_ACC)
+                                except TimeoutError:
+                                    self._change_current_wss()
+                                    raise TimeoutError
                         _LOGGER.debug(
                             f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
                         )
-            dt.set_source(twin_number, bytes_hash, self.controller_address)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        dt.set_source(twin_number, bytes_hash, self.controller_address)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
         except Exception as e:
             _LOGGER.error(f"Exception in set config topic {e}")
@@ -316,8 +465,14 @@ class Robonomics:
         """
 
         try:
-            dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
-            info = dt.get_info(twin_number)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        info = dt.get_info(twin_number)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
             _LOGGER.debug(f"Bytes media hash: {bytes_hash}")
             if info is not None:
@@ -328,11 +483,25 @@ class Robonomics:
                             _LOGGER.debug(f"Topic with this config exists")
                             return
                     if topic[1] == MEDIA_ACC:
-                        dt.set_source(twin_number, topic[0], ZERO_ACC)
+                        for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                            with attempt:
+                                try:
+                                    dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                                    dt.set_source(twin_number, topic[0], ZERO_ACC)
+                                except TimeoutError:
+                                    self._change_current_wss()
+                                    raise TimeoutError
                         _LOGGER.debug(
                             f"Old topic removed {topic[0]}, old ipfs hash: {ipfs_32_bytes_to_qm_hash(topic[0])}"
                         )
-            dt.set_source(twin_number, bytes_hash, MEDIA_ACC)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        dt = DigitalTwin(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                        dt.set_source(twin_number, bytes_hash, MEDIA_ACC)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             _LOGGER.debug(f"New topic was created: {bytes_hash}, new ipfs hash: {ipfs_hash}")
         except Exception as e:
             _LOGGER.error(f"Exception in set config topic {e}")
@@ -347,9 +516,15 @@ class Robonomics:
         """
 
         _LOGGER.debug(f"Start look for password for {address}")
-        datalog = Datalog(Account())
         try:
-            last_datalog = datalog.get_item(address, 0)[1]
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        datalog = Datalog(Account(remote_ws=self.current_wss))
+                        last_datalog = datalog.get_item(address, 0)[1]
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
         except:
             return
         _LOGGER.debug(f"Last datalog: {last_datalog}")
@@ -360,12 +535,26 @@ class Robonomics:
                     return data["admin"]
         except:
             pass
-        indexes = datalog.get_index(address)
+        for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+            with attempt:
+                try:
+                    datalog = Datalog(Account(remote_ws=self.current_wss))
+                    indexes = datalog.get_index(address)
+                except TimeoutError:
+                    self._change_current_wss()
+                    raise TimeoutError
         last_datalog_index = indexes["end"] - 2
         _LOGGER.debug(f"Last index {last_datalog_index}")
         for i in range(5):
             try:
-                datalog_data = datalog.get_item(address, last_datalog_index - i)[1]
+                for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                    with attempt:
+                        try:
+                            datalog = Datalog(Account(remote_ws=self.current_wss))
+                            datalog_data = datalog.get_item(address, last_datalog_index - i)[1]
+                        except TimeoutError:
+                            self._change_current_wss()
+                            raise TimeoutError
                 _LOGGER.debug(datalog_data)
                 data = json.loads(datalog_data)
                 if "admin" in data:
@@ -377,21 +566,39 @@ class Robonomics:
         else:
             return None
 
-    def subscribe(self) -> None:
-        """Subscribe to NewDevices and NewLaunch events"""
+    def is_subscription_alive(self) -> bool:
+        return self.subscriber._subscription.is_alive()
+
+    async def _monitore_subscription(self) -> None:
+        """Check if thread with subscription is alive every 15 seconds"""
+        while self.is_subscription_alive():
+            await asyncio.sleep(15)
+        self._change_current_wss()
+        await self.resubscribe()
+
+    async def subscribe(self) -> None:
+        """Subscribe to NewDevices, NewRecord, TopicChanged and NewLaunch events"""
 
         try:
-            account = Account()
+            account = Account(remote_ws=self.current_wss)
             self.subscriber = Subscriber(
                 account,
                 SubEvent.MultiEvent,
                 subscription_handler=self.callback_new_event,
             )
+            asyncio.ensure_future(self._monitore_subscription())
         except Exception as e:
             _LOGGER.debug(f"subscribe exception {e}")
 
             time.sleep(4)
-            self.hass.data[DOMAIN][ROBONOMICS].subscribe()
+            await self.hass.data[DOMAIN][ROBONOMICS].subscribe()
+
+    async def resubscribe(self) -> None:
+        """Close subscription and create new"""
+
+        _LOGGER.debug("Restart subscription to Robonomcis events")
+        self.subscriber.cancel()
+        await self.subscribe()
 
     @callback
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
@@ -431,21 +638,17 @@ class Robonomics:
         :return: Exstrinsic hash
         """
 
-        account = Account(seed=seed, crypto_type=KeypairType.ED25519)
-        if subscription:
-            try:
-                _LOGGER.debug(f"Start creating rws datalog")
-                datalog = Datalog(account, rws_sub_owner=self.sub_owner_address)
-            except Exception as e:
-                _LOGGER.error(f"Create datalog class exception: {e}")
-        else:
-            try:
-                _LOGGER.debug(f"Start creating datalog")
-                datalog = Datalog(account)
-            except Exception as e:
-                _LOGGER.error(f"Create datalog class exception: {e}")
         try:
-            receipt = datalog.record(data)
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        account = Account(seed=seed, crypto_type=KeypairType.ED25519)
+                        _LOGGER.debug(f"Start creating rws datalog")
+                        datalog = Datalog(account, rws_sub_owner=self.sub_owner_address)
+                        receipt = datalog.record(data)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             _LOGGER.debug(f"Datalog created with hash: {receipt}")
             return receipt
         except Exception as e:
@@ -480,6 +683,7 @@ class Robonomics:
         self.sending_states = False
         return receipt
 
+    @to_thread
     def get_devices_list(self):
         """Return devices list for sub owner account
 
@@ -487,7 +691,14 @@ class Robonomics:
         """
 
         try:
-            devices_list = RWS(Account()).get_devices(self.sub_owner_address)
+            _LOGGER.debug("Start getting devices list")
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        devices_list = RWS(Account(remote_ws=self.current_wss)).get_devices(self.sub_owner_address)
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             _LOGGER.debug(f"Got devices list: {devices_list}")
             if devices_list != None:
                 devices_list.remove(self.controller_address)
@@ -512,7 +723,6 @@ class Robonomics:
             if account is None:
                 account = self.controller_address
 
-            REMOTE_WS = "wss://kusama.rpc.robonomics.network"
             TYPE_REGISTRY = {
                 "types": {
                     "Record": "Vec<u8>",
@@ -533,15 +743,20 @@ class Robonomics:
                     },
                 }
             }
+            for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+                with attempt:
+                    try:
+                        ri_instance = substrate.SubstrateInterface(
+                            url=self.current_wss,
+                            ss58_format=32,
+                            type_registry_preset="substrate-node-template",
+                            type_registry=TYPE_REGISTRY,
+                        )
 
-            ri_instance = substrate.SubstrateInterface(
-                url=REMOTE_WS,
-                ss58_format=32,
-                type_registry_preset="substrate-node-template",
-                type_registry=TYPE_REGISTRY,
-            )
-
-            query = ri_instance.query_map("DigitalTwin", "Owner")
+                        query = ri_instance.query_map("DigitalTwin", "Owner")
+                    except TimeoutError:
+                        self._change_current_wss()
+                        raise TimeoutError
             twins = []
             for twin in query:
                 if twin[1].value == account:

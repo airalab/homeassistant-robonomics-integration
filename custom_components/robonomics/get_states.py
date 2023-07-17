@@ -13,6 +13,7 @@ import time
 import typing as tp
 from datetime import datetime, timedelta
 
+import homeassistant.util.dt as dt_util
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 from homeassistant.components.recorder import get_instance, history
 from homeassistant.core import HomeAssistant
@@ -199,7 +200,8 @@ async def _get_states(
     :return: Dict with the history within 24hrs
     """
 
-    await _get_dashboard_and_services(hass)
+    if TWIN_ID in hass.data[DOMAIN]:
+        await _get_dashboard_and_services(hass)
     registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
     devices_data = {}
@@ -229,5 +231,8 @@ async def _get_states(
                     }
                 else:
                     devices_data[entity_data.device_id]["entities"][entity_data.entity_id] = entity_info
-    devices_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
+    if TWIN_ID in hass.data[DOMAIN]:
+        devices_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
+    else:
+        devices_data["twin_id"] = -1
     return devices_data
