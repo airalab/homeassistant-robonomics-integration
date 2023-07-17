@@ -6,22 +6,10 @@ from robonomicsinterface import Account
 from substrateinterface import Keypair, KeypairType
 
 
-def decrypt_message(
-    encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair
-) -> str:
-    """Decrypt message with recepient private key and sender puplic key
-
-    :param encrypted_message: Message to decrypt
-    :param sender_public_key: Sender public key
-    :param recipient_keypair: Recepient account keypair
-
-    :return: Decrypted message
-    """
-
+def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
     if encrypted_message[:2] == "0x":
         encrypted_message = encrypted_message[2:]
     bytes_encrypted = bytes.fromhex(encrypted_message)
-
     return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
 
 

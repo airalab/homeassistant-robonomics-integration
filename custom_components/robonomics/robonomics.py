@@ -33,7 +33,7 @@ from .const import (
 from .get_states import get_and_send_data
 from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file
 from .manage_users import change_password, manage_users
-from .utils import create_notification, decrypt_message, to_thread
+from .utils import create_notification, decrypt_message, to_thread, decrypt_message_devices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,11 +58,11 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
             if res is not None:
                 try:
                     _LOGGER.debug("Start getting info about telemetry")
-                    sub_admin_kp = Keypair.create_from_mnemonic(
+                    sub_admin_kp = Account(
                         hass.data[DOMAIN][CONF_ADMIN_SEED],
                         crypto_type=KeypairType.ED25519,
-                    )
-                    decrypted = decrypt_message(res, sub_admin_kp.public_key, sub_admin_kp)
+                    ).keypair
+                    decrypted = decrypt_message_devices(res, sub_admin_kp.public_key, sub_admin_kp)
                     decrypted_str = decrypted.decode("utf-8")
                     decrypted_json = json.loads(decrypted_str)
                     if int(decrypted_json["twin_id"]) != -1:

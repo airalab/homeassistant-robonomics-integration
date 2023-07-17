@@ -100,6 +100,30 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
         _LOGGER.error(f"Exception in encrypt for devices: {e}")
 
 
+def decrypt_message_devices(data: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+    """Decrypt message that was encrypted fo devices
+    
+    :param data: Ancrypted data
+    :param sender_public_key: Sender address
+    :param recipient_keypair: Recepient account keypair
+
+    :return: Decrypted message
+    """
+    try:
+        _LOGGER.debug(f"Start decrypt for device {recipient_keypair.ss58_address}")
+        data_json = json.loads(data)
+        if recipient_keypair.ss58_address in data_json:
+            decrypted_seed = decrypt_message(data_json[recipient_keypair.ss58_address], sender_public_key, recipient_keypair)
+            decrypted_acc = Account(decrypted_seed.decode("utf-8"), crypto_type=KeypairType.ED25519)
+            decrypted_data = decrypt_message(data_json["data"], sender_public_key, decrypted_acc.keypair)
+            return decrypted_data
+        else:
+            _LOGGER.error(f"Error in decrypt for devices: account is not in devices")
+    except Exception as e:
+        _LOGGER.error(f"Exception in decrypt for devices: {e}")
+
+
+
 def str2bool(v):
     return v.lower() in ("on", "true", "t", "1", "y", "yes", "yeah")
 
