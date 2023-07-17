@@ -52,6 +52,12 @@ from .utils import get_hash, to_thread
 _LOGGER = logging.getLogger(__name__)
 
 
+async def wait_ipfs_daemon() -> None:
+    _LOGGER.debug("Wait for IPFS local node connection...")
+    while not await _check_connection():
+        await asyncio.sleep(10)
+
+
 async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
     """Send telemetry files to IPFS
 
@@ -94,7 +100,12 @@ async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
         return last_file_encrypted_hash
     await _add_to_local_node(filename, False, IPFS_CONFIG_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
-        hass, filename_encrypted, IPFS_CONFIG_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+        hass,
+        filename_encrypted,
+        IPFS_CONFIG_PATH,
+        False,
+        last_file_encrypted_hash,
+        last_file_encrypted_name,
     )
     await _upload_to_crust(hass, ipfs_hash, size)
 
@@ -122,7 +133,12 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
         return last_file_encrypted_hash
     await _add_to_local_node(filename, False, IPFS_BACKUP_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
-        hass, filename_encrypted, IPFS_BACKUP_PATH, False, last_file_encrypted_hash, last_file_encrypted_name
+        hass,
+        filename_encrypted,
+        IPFS_BACKUP_PATH,
+        False,
+        last_file_encrypted_hash,
+        last_file_encrypted_name,
     )
     await _upload_to_crust(hass, ipfs_hash, size)
 
@@ -464,7 +480,8 @@ def _add_to_pinata(
             pinata.remove_pin_from_ipfs(last_file_hash)
             _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
             hass.data[DOMAIN][PINATA] = PinataPy(
-                hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET]
+                hass.data[DOMAIN][CONF_PINATA_PUB],
+                hass.data[DOMAIN][CONF_PINATA_SECRET],
             )
         except Exception as e:
             _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
@@ -666,3 +683,23 @@ def _get_from_local_node_by_hash(ipfs_hash: str) -> tp.Optional[str]:
             return res_str
     except Exception as e:
         _LOGGER.error(f"Exception in getting file from local node by hash: {e}")
+
+
+@to_thread
+def _check_connection() -> bool:
+    """Check connection to IPFS local node
+
+    :return: Connected or not
+    """
+
+    try:
+        with ipfshttpclient2.connect() as client:
+            pass
+        _LOGGER.debug("Connected to IPFS local node")
+        return True
+    except ipfshttpclient2.exceptions.ConnectionError:
+        _LOGGER.debug("Can't connect to IPFS")
+        return False
+    except Exception as e:
+        _LOGGER.error(f"Unexpected error in check ipfs connection: {e}")
+        return False

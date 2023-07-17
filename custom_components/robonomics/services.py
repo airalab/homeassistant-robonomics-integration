@@ -1,20 +1,29 @@
 """File with functions for Home Assistant services"""
 
+import asyncio
 import logging
+import os
 import tempfile
 import time
-import os
 import typing as tp
 from pathlib import Path
-import asyncio
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
+from homeassistant.components.hassio import is_hassio
 from homeassistant.core import HomeAssistant, ServiceCall
 from robonomicsinterface import Account
 from substrateinterface import Keypair, KeypairType
 
-from .backup_control import create_secure_backup, restore_from_backup, unpack_backup
+from homeassistant.components.hassio import is_hassio
+
+from .backup_control import (
+    create_secure_backup,
+    restore_from_backup,
+    unpack_backup,
+    create_secure_backup_hassio,
+    restore_backup_hassio,
+)
 from .const import (
     CONF_ADMIN_SEED,
     DATA_BACKUP_ENCRYPTED_NAME,
@@ -25,18 +34,25 @@ from .const import (
     TWIN_ID,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
-from .utils import delete_temp_file
+from .utils import delete_temp_file, encrypt_message
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, duration: int) -> None:
+async def save_video(
+    hass: HomeAssistant,
+    target: tp.Dict[str, str],
+    path: str,
+    duration: int,
+    sub_admin_acc: Account,
+) -> None:
     """Record a video with given duration, save it in IPFS and Digital Twin
 
     :param hass: Home Assistant instance
-    :param entity_id: ID of the camera entity
+    :param target: What should this service use as targeted areas, devices or entities. Usually it's camera entity ID.
     :param path: Path to save the video (must be also in configuration.yaml)
     :param duration: Duration of the recording in seconds
+    :param sub_admin_acc: Controller account address
     """
 
     if path[-1] == "/":
@@ -44,8 +60,12 @@ async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, 
     filename = f"video-{int(time.time())}.mp4"
     data = {"duration": duration, "filename": f"{path}/{filename}"}
     _LOGGER.debug(f"Started recording video {path}/{filename} for {duration} seconds")
-    res = await hass.services.async_call(
-        domain=CAMERA_DOMAIN, service=SERVICE_RECORD, service_data=data, target=target, blocking=True
+    await hass.services.async_call(
+        domain=CAMERA_DOMAIN,
+        service=SERVICE_RECORD,
+        service_data=data,
+        target=target,
+        blocking=True,
     )
     count = 0
     while not os.path.isfile(f"{path}/{filename}"):
@@ -54,8 +74,19 @@ async def save_video(hass: HomeAssistant, target: tp.Dict[str, str], path: str, 
         if count > 10:
             break
     if os.path.isfile(f"{path}/{filename}"):
-        video_ipfs_hash = await add_media_to_ipfs(hass, f"{path}/{filename}")
+        _LOGGER.debug(f"Start encrypt video {filename}")
+        admin_keypair: Keypair = sub_admin_acc.keypair
+        with open(f"{path}/{filename}", "rb") as f:
+            video_data = f.read()
+        encrypted_data = encrypt_message(video_data, admin_keypair, admin_keypair.public_key)
+        with open(f"{path}/{filename}", "w") as f:
+            f.write(encrypted_data)
+
+        await add_media_to_ipfs(hass, f"{path}/{filename}")
         folder_ipfs_hash = await get_folder_hash(IPFS_MEDIA_PATH)
+        # delete file from system
+        _LOGGER.debug(f"delete original video {filename}")
+        os.remove(f"{path}/{filename}")
         await hass.data[DOMAIN][ROBONOMICS].set_media_topic(folder_ipfs_hash, hass.data[DOMAIN][TWIN_ID])
 
 
@@ -69,16 +100,20 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
     :param sub_admin_acc: controller Robonomics account
     """
 
-    zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
-    if zigbee2mqtt_path is None:
-        zigbee2mqtt_path = "/opt/zigbee2mqtt"
-    _LOGGER.debug(f"Zigbee2mqtt path in creating backup: {zigbee2mqtt_path}")
-    encrypted_backup_path, backup_path = await create_secure_backup(
-        hass,
-        Path(hass.config.path()),
-        zigbee2mqtt_path,
-        admin_keypair=sub_admin_acc.keypair,
-    )
+    if is_hassio(hass):
+        encrypted_backup_path, backup_path = await create_secure_backup_hassio(hass, sub_admin_acc.keypair)
+    else:
+        mosquitto_path = call.data.get("mosquitto_path")
+        full = call.data.get("full")
+        if mosquitto_path is None:
+            mosquitto_path = "/etc/mosquitto"
+        encrypted_backup_path, backup_path = await create_secure_backup(
+            hass,
+            Path(hass.config.path()),
+            mosquitto_path,
+            admin_keypair=sub_admin_acc.keypair,
+            full=full,
+        )
     ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
     _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
     delete_temp_file(encrypted_backup_path)
@@ -96,28 +131,27 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
     """
 
     try:
-        config_path = Path(hass.config.path())
-        backup_encrypted_path = call.data.get("backup_path")
-        zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
-        if zigbee2mqtt_path is None:
-            zigbee2mqtt_path = "/opt/zigbee2mqtt"
         hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-        if backup_encrypted_path is None:
-            hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
-            _LOGGER.debug("Start looking for backup ipfs hash")
-            ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
-            result = await get_ipfs_data(hass, ipfs_backup_hash, 0)
-            backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
-            with open(backup_path, "w") as f:
-                f.write(result)
-            sub_admin_kp = Keypair.create_from_mnemonic(
-                hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-            )
-            await unpack_backup(hass, Path(backup_path), sub_admin_kp)
-            await restore_from_backup(hass, zigbee2mqtt_path, Path(hass.config.path()))
+        hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
+        _LOGGER.debug("Start looking for backup ipfs hash")
+        ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
+        result = await get_ipfs_data(hass, ipfs_backup_hash, 0)
+        backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
+        with open(backup_path, "w") as f:
+            f.write(result)
+        sub_admin_kp = Keypair.create_from_mnemonic(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+        if is_hassio(hass):
+            await restore_backup_hassio(hass, Path(backup_path), sub_admin_kp)
         else:
-            backup_path = await unpack_backup(hass, backup_encrypted_path, sub_admin_acc.keypair)
-            await restore_from_backup(hass, zigbee2mqtt_path, config_path)
+            config_path = Path(hass.config.path())
+            zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
+            if zigbee2mqtt_path is None:
+                zigbee2mqtt_path = "/opt/zigbee2mqtt"
+            mosquitto_path = call.data.get("mosquitto_path")
+            if mosquitto_path is None:
+                mosquitto_path = "/etc/mosquitto"
+            await unpack_backup(hass, Path(backup_path), sub_admin_kp)
+            await restore_from_backup(hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path()))
             _LOGGER.debug(f"Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")

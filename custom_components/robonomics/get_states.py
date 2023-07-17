@@ -8,19 +8,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import tempfile
 import time
 import typing as tp
 from datetime import datetime, timedelta
-from platform import platform
 
+import homeassistant.util.dt as dt_util
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 from homeassistant.components.recorder import get_instance, history
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_get_all_descriptions
+import homeassistant.util.dt as dt_util
 from robonomicsinterface import Account
 import typing as tp
 import os
@@ -113,8 +113,8 @@ async def _get_state_history(hass: HomeAssistant, entity_id: str) -> tp.List[tp.
     :return: List of states with date for the given entity in the last 24hrs
     """
 
-    start = datetime.now() - timedelta(hours=24)
-    end = datetime.now()
+    start = dt_util.utcnow() - timedelta(hours=24)
+    end = dt_util.utcnow()
     instance = get_instance(hass)
     states = await instance.async_add_executor_job(
         _state_changes_during_period,
@@ -227,7 +227,8 @@ async def _get_states(
     :return: Dict with the history within 24hrs
     """
 
-    await _get_dashboard_and_services(hass)
+    if TWIN_ID in hass.data[DOMAIN]:
+        await _get_dashboard_and_services(hass)
     registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
     devices_data = {}
@@ -270,6 +271,9 @@ async def _get_states(
 
     all_data["devices"] = devices_data
     all_data["entities"] = entities_data
-    all_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
+    if TWIN_ID in hass.data[DOMAIN]:
+        all_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
+    else:
+        all_data["twin_id"] = -1
     return all_data
 

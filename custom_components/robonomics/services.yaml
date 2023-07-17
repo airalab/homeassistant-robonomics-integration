@@ -2,12 +2,18 @@ save_backup_to_robonomics:
   name: Save Backup to Robonomics
   description: Create new backup, save it to IPFS and send a transaction to Robonomics blockchain with IPFS hash
   fields:
-    zigbee2mqtt_path:
-      name: Path to zigbee2mqtt config (Optional)
-      description: If doesn't set, backup from /opt/zigbee2mqtt if exists
+    full:
+      name: Full Backup
+      description: If checked, database will be added to the backup
+      required: true
+      selector:
+        boolean:
+    mosquitto_path:
+      name: Path to mosquitto password file (Optional)
+      description: Defines the path to mosquitto 'passwd' file will be backed up, with a default value of '/etc/mosquitto' if not specified.
       required: false
       advanced: true
-      example: /opt/zigbee2mqtt
+      example: /etc/mosquitto
       selector:
         text:
 
@@ -15,12 +21,20 @@ restore_from_robonomics_backup:
   name: Restore from the Backup in Robonomics
   description: Get the latest backup from Robonomics Network and restore from it
   fields:
-    backup_path:
-      description: Path to the backup enrypted file (if doesn't set get backup from Robonomics blockchain)
-      name: Path to the backup (Optional)
+    mosquitto_path:
+      name: Path to mosquitto password file (Optional)
+      description: Defines the path to mosquitto configuration where 'passwd' file will be restored, with a default value of '/etc/mosquitto' if not specified.
       required: false
       advanced: true
-      example: "/home/homeassistant/.homeassistant/backups/example.tar.xz"
+      example: /etc/mosquitto
+      selector:
+        text:
+    zigbee2mqtt_path:
+      name: Path to zigbee2mqtt config (Optional)
+      description: Defines the path to the zigbee2mqtt configuration where 'data' directory will be restored, with a default value of '/opt/zigbee2mqtt' if not specified.
+      required: false
+      advanced: true
+      example: /opt/zigbee2mqtt
       selector:
         text:
 
@@ -32,7 +46,7 @@ save_video_to_robonomics:
         domain: camera
   fields:
     path:
-      description: This path must be set in configuration.yaml
+      description: Home Assistant must have access to this folder
       name: Path to save the recording
       required: true
       example: "/tmp"

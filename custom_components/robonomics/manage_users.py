@@ -139,9 +139,6 @@ async def change_password(hass: HomeAssistant, data: tp.Tuple[tp.Union[str, tp.L
             return
         _LOGGER.debug("Restarting...")
         await provider.data.async_save()
-        # hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
-        # while hass.data[DOMAIN][ROBONOMICS].subscriber._subscription.is_alive():
-        #     await asyncio.sleep(0.5)
         await hass.services.async_call("homeassistant", "restart")
     else:
         _LOGGER.warning(f"Message for setting password for {data[0]} is in wrong format")

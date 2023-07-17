@@ -46,7 +46,9 @@
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
                     "user_ipfs_gateway": "Custom IPFS gateway (optional)",
                     "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)",
-                    "user_ipfs_gateway_port": "Port for the custom IPFS gateway (optional)"
+                    "user_ipfs_gateway_port": "Port for the custom IPFS gateway (optional)",
+                    "pinata_use": "Use Pinata to pin files",
+                    "custom_gateway_use": "Use custom gateway to pin files"
                 },
                 "description": "Configure sending timeout and Pinata credentials."
             }

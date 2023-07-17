@@ -40,11 +40,11 @@ async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, st
 
 
 def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
-    """Encrypt message with sender private key and recepient public key
+    """Encrypt message with sender private key and recipient public key
 
     :param message: Message to encrypt
     :param sender_keypair: Sender account Keypair
-    :param recipient_public_key: Recepient public key
+    :param recipient_public_key: Recipient public key
 
     :return: encrypted message
     """
@@ -142,23 +142,39 @@ def get_hash(filename: str) -> tp.Optional[str]:
     return ipfs_hash_local
 
 
-def write_data_to_temp_file(data: str, config: bool = False) -> str:
+def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, filename: str = None) -> str:
     """
     Create file and store data in it
 
     :param data: data, which to be written to the file
     :param config: is file fo config (True) or for telemetry (False)
+    :param filename: Name of the file if not config or z2m backup
 
     :return: path to created file
     """
     dirname = tempfile.gettempdir()
-    if config:
-        filename = f"{dirname}/config_encrypted-{time.time()}"
+    if filename is not None:
+        filepath = f"{dirname}/{filename}"
+        if type(data) == str:
+            with open(filepath, "w") as f:
+                f.write(data)
+        else:
+            with open(filepath, "wb") as f:
+                f.write(data)
     else:
-        filename = f"{dirname}/data-{time.time()}"
-    with open(filename, "w") as f:
-        f.write(data)
-    return filename
+        if type(data) == str:
+            if config:
+                filepath = f"{dirname}/config_encrypted-{time.time()}"
+            else:
+                filepath = f"{dirname}/data-{time.time()}"
+            with open(filepath, "w") as f:
+                f.write(data)
+        else:
+            filepath = f"{dirname}/z2m-backup.zip"
+            with open(filepath, "wb") as f:
+                f.write(data)
+
+    return filepath
 
 
 def delete_temp_file(filename: str) -> None:

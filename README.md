@@ -9,21 +9,30 @@ Integration gives you the remote access to your local smart home through encrypt
 
 More information you can find on [Robonomics Wiki](https://wiki.robonomics.network/docs/en/home-assistant-begin/).
 
+## Requirements
+
+To ensure proper functionality, your Home Assistant computer must have a local IPFS node installed. You can install it in the following ways:
+
+* As an add-on for the supervisor or Home Assistant OS, using this [link](https://github.com/airalab/ipfs-addon).
+* By using the installation script for Home Assistant core or Docker. Follow these steps:
+
+```bash
+wget https://raw.githubusercontent.com/airalab/robonomics-hass-utils/main/raspberry_pi/install_ipfs_arc_dependent.sh
+bash install_ipfs_arc_dependent.sh
+rm install_ipfs_arc_dependent.sh
+```
+
 ## Installation
 
 **1. Install files**
 
 1.1) Using HACS
 
-In the HACS panel, go to `Integrations` and click on three dots in the upper right corner. Choose `Custom repositories` and add the link to the Robonomics Integration repository:
-```
-https://github.com/airalab/homeassistant-robonomics-integration
-```
-In the second field choose `Integration` and press `Add` button.
+In the HACS panel, go to `Integrations` and click on `Explore & Download Repositories` button and find Robonomics Integration:
 
-![robonomics-users](images/hacs.png)
+![robonomics-users](images/inst.png)
 
-Close this window and press on `Explore & Download Repositories` button in the lower right corner. Find `Robonomics` and press `Download`
+Open it and press `Download this repository with HACS` in the end of the page.
 
 1.2) Manually
 
