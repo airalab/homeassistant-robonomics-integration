@@ -196,8 +196,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """
 
         try:
-            _LOGGER.debug(f"State changed: {event.data}")
             if event.data["old_state"].state != event.data["new_state"].state:
+                _LOGGER.debug(f"State changed: {event.data}")
                 if not hass.data[DOMAIN][ROBONOMICS].is_subscription_alive():
                     await hass.data[DOMAIN][ROBONOMICS].resubscribe()
                 if TWIN_ID not in hass.data[DOMAIN]:
