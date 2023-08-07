@@ -164,7 +164,7 @@ async def _handle_launch(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
         )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
         _LOGGER.debug(f"Result: {result}")
         _run_launch_command(hass, result, data[0])
-        await get_and_send_data(hass)
+        #await get_and_send_data(hass)
     except Exception as e:
         _LOGGER.error(f"Exception in launch handler command: {e}")
         return

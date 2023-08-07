@@ -41,6 +41,8 @@ IPFS_API = "ipfs_api"
 HANDLE_TIME_CHANGE = "hadle_time_change"
 TIME_CHANGE_UNSUB = "time_change_unsub"
 HANDLE_IPFS_REQUEST = "handle_ipfs_request"
+STATE_CHANGE_UNSUB = "state_change_unsub"
+HANDLE_STATE_CHANGE = "handle_state_change"
 
 DATA_PATH = ".ha_robonomics_data"
 DATA_BACKUP_ENCRYPTED_NAME = "backup_remote_encrypted"
