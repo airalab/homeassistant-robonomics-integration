@@ -190,9 +190,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_state_changed(event):
         """Callback for state changing subscription.
-        It calls every timeout from config to get and send telemtry.
+        It calls when switch entities change state to get and send telemtry.
 
-        :param event: Current date & time
+        :param event: Info about state change
         """
 
         try:
