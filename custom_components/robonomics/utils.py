@@ -78,7 +78,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
     :param sender_kp: ED25519 account keypair that encrypts the data
     :param devices: List of ss58 ED25519 addresses
 
-    :return: String with json consists of encrypted data and encrypted for all accounts from the list random generated key
+    :return: JSON string consists of encrypted data and a key encrypted for all accounts in the subscription
     """
     try:
         random_seed = Keypair.generate_mnemonic()

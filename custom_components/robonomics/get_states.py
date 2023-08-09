@@ -239,10 +239,7 @@ async def _get_states(
         entity_data = entity_registry.async_get(entity)
         entity_state = hass.states.get(entity)
         if entity_state != None:
-            try:
-                units = str(entity_state.attributes.get("unit_of_measurement"))
-            except:
-                units = "None"
+            units = str(entity_state.attributes.get("unit_of_measurement"))
             history = await _get_state_history(hass, entity_data.entity_id)
             entity_attributes = {}
             for attr in entity_state.attributes:
