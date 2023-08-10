@@ -22,6 +22,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_get_all_descriptions
 import homeassistant.util.dt as dt_util
 from robonomicsinterface import Account
+import typing as tp
+import os
+from datetime import timedelta, datetime
 from substrateinterface import KeypairType
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,9 +40,13 @@ from .const import (
     IPFS_HASH_CONFIG,
     ROBONOMICS,
     TWIN_ID,
+    DELETE_ATTRIBUTES,
+    IPFS_MEDIA_PATH,
+    CONF_SENDING_TIMEOUT,
 )
-from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs, get_last_file_hash, read_ipfs_local_file
-from .utils import delete_temp_file, encrypt_message, write_data_to_temp_file
+from .utils import encrypt_for_devices, get_hash, delete_temp_file, encrypt_message, write_data_to_temp_file
+from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs, add_media_to_ipfs, check_if_hash_in_folder, get_last_file_hash, read_ipfs_local_file
+import json
 
 
 async def get_and_send_data(hass: HomeAssistant):
@@ -56,10 +63,12 @@ async def get_and_send_data(hass: HomeAssistant):
     try:
         data = await _get_states(hass)
         data = json.dumps(data)
-        # with open('/home/homeassistant/ha_test_data', 'w') as f:
-        #     f.write(data)
+        with open("/home/homeassistant/ha_test_data", "w") as f:
+            f.write(data)
         _LOGGER.debug(f"Got states to send datalog")
-        encrypted_data = encrypt_message(str(data), sender_kp, sender_kp.public_key)
+        devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
+        devices_list_with_admin.append(sender_acc.get_address())
+        encrypted_data = encrypt_for_devices(str(data), sender_kp, devices_list_with_admin)
         await asyncio.sleep(2)
         filename = write_data_to_temp_file(encrypted_data)
         ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
@@ -149,6 +158,24 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
     except Exception as e:
         _LOGGER.warning(f"Exception in get dashboard: {e}")
         config_dashboard = None
+    if config_dashboard is not None:
+        for view in config_dashboard["views"]:
+            for card in view["cards"]:
+                if "image" in card:
+                    image_path = card["image"]
+                    if image_path[:6] == "/local":
+                        image_path = image_path.split("/")
+                        filename = f"{hass.config.path()}/www/{image_path[2]}"
+                        ipfs_hash_media = await get_hash(filename)
+                        card["image"] = ipfs_hash_media
+                        if not await check_if_hash_in_folder(ipfs_hash_media, IPFS_MEDIA_PATH):
+                            await add_media_to_ipfs(hass, filename)
+    try:
+        dashboard = hass.data[LOVELACE_DOMAIN]["dashboards"].get(None)
+        config_dashboard = await dashboard.async_load(False)
+    except Exception as e:
+        _LOGGER.warning(f"Exception in get dashboard: {e}")
+        config_dashboard = None
 
     last_config, _ = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
     current_config = await read_ipfs_local_file(last_config, IPFS_CONFIG_PATH)
@@ -159,6 +186,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             "services": services_list,
             "dashboard": config_dashboard,
             "twin_id": hass.data[DOMAIN][TWIN_ID],
+            "sending_timeout": hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds
         }
         if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
             if current_config != new_config:
@@ -167,12 +195,11 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 config_filename = f"{dirname}/config-{time.time()}"
                 with open(config_filename, "w") as f:
                     json.dump(new_config, f)
-                sender_acc = Account(
-                    seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
-                    crypto_type=KeypairType.ED25519,
-                )
+                sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
                 sender_kp = sender_acc.keypair
-                encrypted_data = encrypt_message(json.dumps(new_config), sender_kp, sender_kp.public_key)
+                devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
+                devices_list_with_admin.append(sender_acc.get_address())
+                encrypted_data = encrypt_for_devices(json.dumps(new_config), sender_kp, devices_list_with_admin)
                 filename = write_data_to_temp_file(encrypted_data, config=True)
                 _LOGGER.debug(f"Filename: {filename}")
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(hass, config_filename, filename)
@@ -205,34 +232,45 @@ async def _get_states(
     registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
     devices_data = {}
-    data = {}
+    entities_data = {}
+    all_data = {}
 
     for entity in entity_registry.entities:
         entity_data = entity_registry.async_get(entity)
-        if entity_data.device_id != None:
-            entity_state = hass.states.get(entity)
-            if entity_state != None:
-                try:
-                    units = str(entity_state.attributes.get("unit_of_measurement"))
-                except:
-                    units = "None"
-                history = await _get_state_history(hass, entity_data.entity_id)
-                entity_info = {
-                    "units": units,
-                    "state": str(entity_state.state),
-                    "history": history,
-                }
+        entity_state = hass.states.get(entity)
+        if entity_state != None:
+            units = str(entity_state.attributes.get("unit_of_measurement"))
+            history = await _get_state_history(hass, entity_data.entity_id)
+            entity_attributes = {}
+            for attr in entity_state.attributes:
+                if attr not in DELETE_ATTRIBUTES:
+                    if type(entity_state.attributes[attr]) == int or type(entity_state.attributes[attr]) == dict:
+                        entity_attributes[attr] = entity_state.attributes[attr]
+                    else:
+                        entity_attributes[attr] = str(entity_state.attributes[attr])
+            entity_info = {
+                "units": units,
+                "state": str(entity_state.state),
+                "attributes": entity_attributes,
+                "history": history,
+            }
+            if entity_data.device_id != None:
                 if entity_data.device_id not in devices_data:
                     device = registry.async_get(entity_data.device_id)
                     device_name = str(device.name_by_user) if device.name_by_user != None else str(device.name)
                     devices_data[entity_data.device_id] = {
                         "name": device_name,
-                        "entities": {entity_data.entity_id: entity_info},
+                        "entities": [entity_data.entity_id],
                     }
                 else:
-                    devices_data[entity_data.device_id]["entities"][entity_data.entity_id] = entity_info
+                    devices_data[entity_data.device_id]["entities"].append(entity_data.entity_id)
+            entities_data[entity_data.entity_id] = entity_info
+
+    all_data["devices"] = devices_data
+    all_data["entities"] = entities_data
     if TWIN_ID in hass.data[DOMAIN]:
-        devices_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
+        all_data["twin_id"] = hass.data[DOMAIN][TWIN_ID]
     else:
-        devices_data["twin_id"] = -1
-    return devices_data
+        all_data["twin_id"] = -1
+    return all_data
+

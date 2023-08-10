@@ -13,11 +13,12 @@ from platform import platform
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_filtered, TrackStates
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
 from robonomicsinterface import Account
-from substrateinterface import Keypair, KeypairType
+from substrateinterface import KeypairType
+from homeassistant.components.switch.const import DOMAIN as SWITCH_DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ from .const import (
     TIME_CHANGE_COUNT,
     TIME_CHANGE_UNSUB,
     TWIN_ID,
+    STATE_CHANGE_UNSUB,
+    HANDLE_STATE_CHANGE,
 )
 from .get_states import get_and_send_data
 from .ipfs import create_folders, wait_ipfs_daemon
@@ -59,6 +62,10 @@ async def init_integration(hass: HomeAssistant) -> None:
 
     try:
         await asyncio.sleep(60)
+        track_states = TrackStates(False, set(), SWITCH_DOMAIN)
+        hass.data[DOMAIN][STATE_CHANGE_UNSUB] = async_track_state_change_filtered(
+            hass, track_states, hass.data[DOMAIN][HANDLE_STATE_CHANGE]
+        )
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
@@ -181,6 +188,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
 
+    async def handle_state_changed(event):
+        """Callback for state changing subscription.
+        It calls when switch entities change state to get and send telemtry.
+
+        :param event: Info about state change
+        """
+
+        try:
+            if event.data["old_state"].state != event.data["new_state"].state:
+                _LOGGER.debug(f"State changed: {event.data}")
+                if not hass.data[DOMAIN][ROBONOMICS].is_subscription_alive():
+                    await hass.data[DOMAIN][ROBONOMICS].resubscribe()
+                if TWIN_ID not in hass.data[DOMAIN]:
+                    _LOGGER.debug("There is no twin id. Looking for one...")
+                    await get_or_create_twin_id(hass)
+                await get_and_send_data(hass)
+        except Exception as e:
+            _LOGGER.error(f"Exception in handle_state_changed: {e}")
+
+    hass.data[DOMAIN][HANDLE_STATE_CHANGE] = handle_state_changed
+
     async def handle_save_backup(call: ServiceCall) -> None:
         """Callback for save_backup_to_robonomics service.
         It creates secure backup, adds to IPFS and updates
@@ -227,6 +255,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][HANDLE_TIME_CHANGE],
         hass.data[DOMAIN][CONF_SENDING_TIMEOUT],
     )
+
     await hass.data[DOMAIN][ROBONOMICS].subscribe()
     await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
     if TWIN_ID not in hass.data[DOMAIN]:
@@ -256,6 +285,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
+    hass.data[DOMAIN][STATE_CHANGE_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     hass.data.pop(DOMAIN)
     unload_ok = await hass.config_entries.async_forward_entry_unload(entry, PLATFORMS)

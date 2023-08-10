@@ -1,3 +1,9 @@
+from substrateinterface import Keypair, KeypairType
+from robonomicsinterface import Account
+from typing import Union
+import random, string
+import functools
+import typing as tp
 import asyncio
 import functools
 import logging
@@ -13,7 +19,8 @@ import ipfshttpclient2
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
 from homeassistant.core import HomeAssistant
-from substrateinterface import Keypair
+import time
+import json
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,6 +68,64 @@ def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_
     bytes_encrypted = bytes.fromhex(encrypted_message)
 
     return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
+
+
+def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) -> str:
+    """
+    Encrypt data for random generated private key, then encrypt this key for device from the list
+
+    :param data: Data to encrypt
+    :param sender_kp: ED25519 account keypair that encrypts the data
+    :param devices: List of ss58 ED25519 addresses
+
+    :return: JSON string consists of encrypted data and a key encrypted for all accounts in the subscription
+    """
+    try:
+        random_seed = Keypair.generate_mnemonic()
+        random_acc = Account(random_seed, crypto_type=KeypairType.ED25519)
+        encrypted_data = encrypt_message(str(data), sender_kp, random_acc.keypair.public_key)
+        encrypted_keys = {}
+        _LOGGER.debug(f"Encrypt states for following devices: {devices}")
+        for device in devices:
+            try:
+                receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
+                encrypted_key = encrypt_message(random_seed, sender_kp, receiver_kp.public_key)
+            except Exception as e:
+                _LOGGER.warning(f"Faild to encrypt key for: {device} with error: {e}")
+            encrypted_keys[device] = encrypted_key
+        encrypted_keys["data"] = encrypted_data
+        data_final = json.dumps(encrypted_keys)
+        return data_final
+    except Exception as e:
+        _LOGGER.error(f"Exception in encrypt for devices: {e}")
+
+
+def decrypt_message_devices(data: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+    """Decrypt message that was encrypted fo devices
+    
+    :param data: Ancrypted data
+    :param sender_public_key: Sender address
+    :param recipient_keypair: Recepient account keypair
+
+    :return: Decrypted message
+    """
+    try:
+        _LOGGER.debug(f"Start decrypt for device {recipient_keypair.ss58_address}")
+        data_json = json.loads(data)
+        if recipient_keypair.ss58_address in data_json:
+            decrypted_seed = decrypt_message(data_json[recipient_keypair.ss58_address], sender_public_key, recipient_keypair)
+            decrypted_acc = Account(decrypted_seed.decode("utf-8"), crypto_type=KeypairType.ED25519)
+            decrypted_data = decrypt_message(data_json["data"], sender_public_key, decrypted_acc.keypair)
+            return decrypted_data
+        else:
+            _LOGGER.error(f"Error in decrypt for devices: account is not in devices")
+    except Exception as e:
+        _LOGGER.error(f"Exception in decrypt for devices: {e}")
+
+
+
+def str2bool(v):
+    return v.lower() in ("on", "true", "t", "1", "y", "yes", "yeah")
 
 
 def generate_pass(length: int) -> str:

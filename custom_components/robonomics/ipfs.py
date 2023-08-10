@@ -64,7 +64,7 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
     :param hass: Home Assistant instance
     :param filename: file with telemetry
 
-    :return: IPFS hash of file
+    :return: IPFS hash of the file
     """
 
     pin = await _check_save_previous_pin(filename)
@@ -86,7 +86,7 @@ async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
     :param filename: file with configuration of Home Assistant dashboard and services
     :param filename_encrypted: file with encrypted configuration of Home Assistant dashboard and services
 
-    :return: IPFS hash of file
+    :return: IPFS hash of the file
     """
 
     last_file_name, last_file_hash = await get_last_file_hash(IPFS_CONFIG_PATH, prefix=CONFIG_PREFIX)
@@ -119,7 +119,7 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
     :param filename: file with full Home Assistant backup
     :param filename_encrypted: encrypted file with full Home Assistant backup
 
-    :return: IPFS hash of file
+    :return: IPFS hash of the file
     """
 
     last_file_name, last_file_hash = await get_last_file_hash(IPFS_BACKUP_PATH, prefix=BACKUP_PREFIX)
@@ -154,7 +154,7 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
     :return: IPFS hash of the file
     """
 
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_MEDIA_PATH, True, None, None)
+    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_BACKUP_PATH, True, None, None)
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash
@@ -206,6 +206,33 @@ def create_folders() -> None:
             _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} exists")
         except Exception as e:
             _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_CONFIG_PATH}")
+        try:
+            client.files.mkdir(IPFS_MEDIA_PATH)
+        except ipfshttpclient2.exceptions.ErrorResponse:
+            _LOGGER.debug(f"IPFS folder {IPFS_MEDIA_PATH} exists")
+        except Exception as e:
+            _LOGGER.error(f"Exception - {e} in creating ipfs folder {IPFS_MEDIA_PATH}")
+
+
+@to_thread
+def check_if_hash_in_folder(ipfs_hash: str, folder: str) -> bool:
+    """Check if file with given ipfs hash is in the folder
+
+    :param ipfs_hash: IPFS hash of the file to check
+    "param folder: the name of the folder
+
+    :return: True if file is in the folder, False othervise
+    """
+    with ipfshttpclient2.connect() as client:
+        list_files = client.files.ls(folder)
+        if list_files["Entries"] is None:
+            return False
+        for fileinfo in list_files["Entries"]:
+            stat = client.files.stat(f"{folder}/{fileinfo['Name']}")
+            if ipfs_hash == stat["Hash"]:
+                return True
+        else:
+            return False
 
 
 @to_thread
@@ -215,7 +242,7 @@ def get_last_file_hash(path: str, prefix: str = None) -> (str, str):
     :param path: path to directory with files
     :param prefix: if not None, look for the last file with this prefix
 
-    :return: name of last file, and file hash
+    :return: name of the last file, and the file hash
     """
     _LOGGER.debug(f"Getting last file hash from {path} with prefix {prefix}")
     try:
@@ -395,7 +422,7 @@ def _add_to_local_node(
     :param path: path to folder where to store file
     :param last_file_name: name of file, which should be unpin(if needed)
 
-    :return: IPFS hash of file and file size in IPFS
+    :return: IPFS hash of the file and file size in IPFS
     """
 
     try:
@@ -434,7 +461,7 @@ def _add_to_pinata(
     :param pin: should save previous pin or not
     :param last_file_hash: hash of file, which should be unpinned(if needed)
 
-    :return: IPFS hash of file and file size in IPFS
+    :return: IPFS hash of the file and file size in IPFS
     """
 
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
@@ -479,7 +506,7 @@ def _add_to_custom_gateway(
     :param seed: seed of web3 account. Required if the gateway have web3 authorization
     :param last_file_hash: hash of file, which should be unpin(if needed)
 
-    :return: IPFS hash of file and file size in IPFS
+    :return: IPFS hash of the file and file size in IPFS
     """
 
     if "https://" in url:
@@ -527,7 +554,7 @@ def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.
     :param ipfs_hash: IPFS hash of file, which you want to store
     :param file_size: size of file in IPFS in bytes
 
-    :return: result of extrinsic
+    :return: the result of the extrinsic
     """
 
     seed: str = hass.data[DOMAIN][CONF_ADMIN_SEED]
@@ -576,7 +603,7 @@ async def _add_to_ipfs(
     :param last_file_hash: hash of file, which should be unpinned(if needed)
     :param last_file_name: name of file, which should be unpinned(if needed)
 
-    :return: IPFS hash of file and file size in IPFS
+    :return: IPFS hash of the file and file size in IPFS
     """
 
     pinata_ipfs_file_size, local_ipfs_file_size, custom_ipfs_file_size = 0, 0, 0

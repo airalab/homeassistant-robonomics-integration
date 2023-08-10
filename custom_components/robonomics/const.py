@@ -41,6 +41,8 @@ IPFS_API = "ipfs_api"
 HANDLE_TIME_CHANGE = "hadle_time_change"
 TIME_CHANGE_UNSUB = "time_change_unsub"
 HANDLE_IPFS_REQUEST = "handle_ipfs_request"
+STATE_CHANGE_UNSUB = "state_change_unsub"
+HANDLE_STATE_CHANGE = "handle_state_change"
 
 DATA_PATH = ".ha_robonomics_data"
 DATA_BACKUP_ENCRYPTED_NAME = "backup_remote_encrypted"
@@ -85,6 +87,12 @@ EXCLUDE_FROM_FULL_BACKUP = [
     "OZW_Log.txt",
 ]
 
+DELETE_ATTRIBUTES = [
+    "unit_of_measurement",
+    "linkquality",
+    "transition",
+    "supported_features",
+]
 ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
 MEDIA_ACC_H256 = "0x0000000000000000000000000000000000000000000000000000000000000001"
 MEDIA_ACC = "4CC7GkKuJJzFzswqz39m5qWbgXaQks9f36jCgsadpN2c1hnh"
