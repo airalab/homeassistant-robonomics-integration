@@ -46,6 +46,8 @@ from .const import (
     TWIN_ID,
     STATE_CHANGE_UNSUB,
     HANDLE_STATE_CHANGE,
+    GETTING_STATES_QUEUE,
+    GETTING_STATES,
 )
 from .get_states import get_and_send_data
 from .ipfs import create_folders, wait_ipfs_daemon
@@ -130,6 +132,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug(f"Sending interval: {conf[CONF_SENDING_TIMEOUT]} minutes")
     hass.data[DOMAIN][CONF_ADMIN_SEED] = conf[CONF_ADMIN_SEED]
     hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS] = conf[CONF_SUB_OWNER_ADDRESS]
+    hass.data[DOMAIN][GETTING_STATES_QUEUE] = 0
+    hass.data[DOMAIN][GETTING_STATES] = False
 
     sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
     _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
@@ -190,9 +194,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_state_changed(event):
         """Callback for state changing subscription.
-        It calls when switch entities change state to get and send telemtry.
+        It calls every timeout from config to get and send telemtry.
 
-        :param event: Info about state change
+        :param event: Current date & time
         """
 
         try:
