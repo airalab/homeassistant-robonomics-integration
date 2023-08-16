@@ -82,8 +82,6 @@ async def get_and_send_data(hass: HomeAssistant):
     try:
         data = await _get_states(hass)
         data = json.dumps(data)
-        with open("/home/homeassistant/ha_test_data", "w") as f:
-            f.write(data)
         _LOGGER.debug(f"Got states to send datalog")
         devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
         devices_list_with_admin.append(sender_acc.get_address())
