@@ -221,7 +221,7 @@ def check_if_hash_in_folder(ipfs_hash: str, folder: str) -> bool:
     :param ipfs_hash: IPFS hash of the file to check
     "param folder: the name of the folder
 
-    :return: True if file is in the folder, False othervise
+    :return: True if the file is in the folder, False othervise
     """
     with ipfshttpclient2.connect() as client:
         list_files = client.files.ls(folder)
@@ -242,7 +242,7 @@ def get_last_file_hash(path: str, prefix: str = None) -> (str, str):
     :param path: path to directory with files
     :param prefix: if not None, look for the last file with this prefix
 
-    :return: name of the last file, and the file hash
+    :return: name of the last file, and file hash
     """
     _LOGGER.debug(f"Getting last file hash from {path} with prefix {prefix}")
     try:
@@ -554,7 +554,7 @@ def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.
     :param ipfs_hash: IPFS hash of file, which you want to store
     :param file_size: size of file in IPFS in bytes
 
-    :return: the result of the extrinsic
+    :return: result of the extrinsic
     """
 
     seed: str = hass.data[DOMAIN][CONF_ADMIN_SEED]

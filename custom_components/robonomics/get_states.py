@@ -43,6 +43,8 @@ from .const import (
     DELETE_ATTRIBUTES,
     IPFS_MEDIA_PATH,
     CONF_SENDING_TIMEOUT,
+    GETTING_STATES,
+    GETTING_STATES_QUEUE,
 )
 from .utils import encrypt_for_devices, get_hash, delete_temp_file, encrypt_message, write_data_to_temp_file
 from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs, add_media_to_ipfs, check_if_hash_in_folder, get_last_file_hash, read_ipfs_local_file
@@ -55,6 +57,23 @@ async def get_and_send_data(hass: HomeAssistant):
     :param hass: HomeAssistant instance
     """
 
+    _LOGGER.debug(f"Get states request, another getting states: {hass.data[DOMAIN][GETTING_STATES]}")
+    if hass.data[DOMAIN][GETTING_STATES]:
+        _LOGGER.debug("Another states are sending. Wait...")
+        hass.data[DOMAIN][GETTING_STATES_QUEUE] += 1
+        on_queue = hass.data[DOMAIN][GETTING_STATES_QUEUE]
+        while hass.data[DOMAIN][GETTING_STATES]:
+            await asyncio.sleep(5)
+            if on_queue < hass.data[DOMAIN][GETTING_STATES_QUEUE]:
+                _LOGGER.debug("Stop waiting to send states")
+                return
+        hass.data[DOMAIN][GETTING_STATES] = True
+        hass.data[DOMAIN][GETTING_STATES_QUEUE] = 0
+        await asyncio.sleep(10)
+    else:
+        hass.data[DOMAIN][GETTING_STATES] = True
+        hass.data[DOMAIN][GETTING_STATES_QUEUE] = 0
+
     try:
         sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
         sender_kp = sender_acc.keypair
@@ -63,8 +82,6 @@ async def get_and_send_data(hass: HomeAssistant):
     try:
         data = await _get_states(hass)
         data = json.dumps(data)
-        with open("/home/homeassistant/ha_test_data", "w") as f:
-            f.write(data)
         _LOGGER.debug(f"Got states to send datalog")
         devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
         devices_list_with_admin.append(sender_acc.get_address())
@@ -74,6 +91,7 @@ async def get_and_send_data(hass: HomeAssistant):
         ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
         delete_temp_file(filename)
         await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
+        hass.data[DOMAIN][GETTING_STATES] = False
     except Exception as e:
         _LOGGER.error(f"Exception in get_and_send_data: {e}")
 
@@ -239,7 +257,10 @@ async def _get_states(
         entity_data = entity_registry.async_get(entity)
         entity_state = hass.states.get(entity)
         if entity_state != None:
-            units = str(entity_state.attributes.get("unit_of_measurement"))
+            try:
+                units = str(entity_state.attributes.get("unit_of_measurement"))
+            except:
+                units = "None"
             history = await _get_state_history(hass, entity_data.entity_id)
             entity_attributes = {}
             for attr in entity_state.attributes:
