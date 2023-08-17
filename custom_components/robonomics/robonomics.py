@@ -11,7 +11,7 @@ from threading import Thread
 import substrateinterface as substrate
 from aenum import extend_enum
 from homeassistant.core import HomeAssistant, callback
-from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber
+from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, Launch
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
 from tenacity import AsyncRetrying, Retrying, stop_after_attempt, wait_fixed
@@ -776,3 +776,20 @@ class Robonomics:
                 return
         except Exception as e:
             _LOGGER.error(f"Exception in looking for the last digital twin: {e}")
+
+    @to_thread
+    def send_launch(self, address: str, ipfs_hash: str) -> None:
+        for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
+            with attempt:
+                try:
+                    account = Account(seed=self.controller_seed, crypto_type=KeypairType.ED25519)
+                    _LOGGER.debug(f"Start creating launch for problem service")
+                    launch = Launch(account, rws_sub_owner=self.sub_owner_address)
+                    receipt = launch.launch(address, ipfs_hash)
+                except TimeoutError:
+                    self._change_current_wss()
+                    raise TimeoutError
+                except Exception as e:
+                    _LOGGER.warning(f"Launch sending exeption: {e}")
+                    return None
+        _LOGGER.debug(f"Launch created with hash: {receipt}")

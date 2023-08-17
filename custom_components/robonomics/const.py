@@ -99,3 +99,8 @@ MEDIA_ACC = "4CC7GkKuJJzFzswqz39m5qWbgXaQks9f36jCgsadpN2c1hnh"
 
 GETTING_STATES_QUEUE = "getting_states_queue"
 GETTING_STATES = "getting_states"
+
+PROBLEM_SERVICE_ROBONOMICS_ADDRESS = "4CC7GkKuJJzFzswqz39m5qWbgXaQks9f36jCgsadpN2c1hnh"
+LOG_FILE_NAME = "home-assistant.log"
+TRACES_FILE_NAME = ".storage/trace.saved_traces"
+IPFS_PROBLEM_REPORT_FOLDER = "/ha_problem_report"

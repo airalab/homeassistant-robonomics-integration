@@ -7,6 +7,7 @@ import tempfile
 import time
 import typing as tp
 from pathlib import Path
+import json
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -34,7 +35,7 @@ from .const import (
     TWIN_ID,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
-from .utils import delete_temp_file, encrypt_message
+from .utils import delete_temp_file, encrypt_message, create_temp_dir_and_copy_files, delete_temp_dir
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -155,3 +156,28 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
             _LOGGER.debug(f"Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")
+
+
+async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
+    try:
+        problem_text = call.data.get("description")
+        email = call.data.get("mail")
+        phone_number = call.data.get("phone_number")
+        json_text = {"description": problem_text, "e-mail": email, "phone_number": phone_number}
+        _LOGGER.debug(f"send problem service: {problem_text}")
+        hass_config_path = hass.config.path()
+        files = []
+        if os.path.isfile(f"{hass_config_path}/{LOG_FILE_NAME}"):
+            files.append(f"{hass_config_path}/{LOG_FILE_NAME}")
+        if os.path.isfile(f"{hass_config_path}/{TRACES_FILE_NAME}"):
+            files.append(f"{hass_config_path}/{TRACES_FILE_NAME}")
+        tempdir = create_temp_dir_and_copy_files(IPFS_PROBLEM_REPORT_FOLDER[1:], files)
+        _LOGGER.debug(f"Tempdir for problem report created: {tempdir}")
+        with open(f"{tempdir}/issue_description.json", "w") as f:
+            json.dump(json_text, f)
+        ipfs_hash = await add_problem_report_to_ipfs(hass, tempdir)
+        await hass.data[DOMAIN][ROBONOMICS].send_launch(PROBLEM_SERVICE_ROBONOMICS_ADDRESS, ipfs_hash)
+    except Exception as e:
+        _LOGGER.debug(f"Exception in send problem service: {e}")
+    finally:
+        delete_temp_dir(tempdir)

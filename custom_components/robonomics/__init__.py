@@ -48,12 +48,13 @@ from .const import (
     HANDLE_STATE_CHANGE,
     GETTING_STATES_QUEUE,
     GETTING_STATES,
+    PROBLEM_REPORT_SERVICE,
 )
 from .get_states import get_and_send_data
 from .ipfs import create_folders, wait_ipfs_daemon
 from .manage_users import manage_users
 from .robonomics import Robonomics, get_or_create_twin_id
-from .services import restore_from_backup_service_call, save_backup_service_call, save_video
+from .services import restore_from_backup_service_call, save_backup_service_call, save_video, send_problem_report
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -250,9 +251,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await get_or_create_twin_id(hass)
         await save_video(hass, target, path, duration, sub_admin_acc)
 
+    async def handle_problem_report(call: ServiceCall) -> None:
+        await send_problem_report(hass, call)
+
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
     hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
     hass.services.async_register(DOMAIN, RESTORE_BACKUP_SERVICE, handle_restore_from_backup)
+    hass.services.async_register(DOMAIN, PROBLEM_REPORT_SERVICE, handle_problem_report)
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(
         hass,
