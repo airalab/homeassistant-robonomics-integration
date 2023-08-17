@@ -14,6 +14,7 @@ import tempfile
 import time
 import typing as tp
 from typing import Union
+import shutil
 
 import ipfshttpclient2
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
@@ -197,8 +198,34 @@ def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, fi
             filepath = f"{dirname}/z2m-backup.zip"
             with open(filepath, "wb") as f:
                 f.write(data)
-
     return filepath
+
+
+def create_temp_dir_and_copy_files(dirname: str, files: tp.List[str]) -> str:
+    """
+    Create directory in tepmoral directory and copy there files
+
+    :param dirname: the name of the directory to create
+    :param files: list of file pathes to copy
+
+    :return: path to the created directory    
+    """
+    temp_dirname = tempfile.gettempdir()
+    dirpath = f"{temp_dirname}/{dirname}"
+    os.mkdir(dirpath)
+    for filepath in files:
+        filename = filepath.split("/")[-1]
+        shutil.copyfile(filepath, f"{dirpath}/{filename}")
+    return dirpath
+
+
+def delete_temp_dir(dirpath: str) -> None:
+    """
+    Delete temporary directory
+
+    :param dirpath: the path to the directory
+    """
+    shutil.rmtree(dirpath)
 
 
 def delete_temp_file(filename: str) -> None:

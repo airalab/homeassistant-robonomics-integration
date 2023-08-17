@@ -33,8 +33,12 @@ from .const import (
     IPFS_MEDIA_PATH,
     ROBONOMICS,
     TWIN_ID,
+    LOG_FILE_NAME,
+    TRACES_FILE_NAME,
+    IPFS_PROBLEM_REPORT_FOLDER,
+    PROBLEM_SERVICE_ROBONOMICS_ADDRESS,
 )
-from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
+from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data, add_problem_report_to_ipfs
 from .utils import delete_temp_file, encrypt_message, create_temp_dir_and_copy_files, delete_temp_dir
 
 _LOGGER = logging.getLogger(__name__)
