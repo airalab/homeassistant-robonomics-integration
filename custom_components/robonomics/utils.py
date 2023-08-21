@@ -212,6 +212,8 @@ def create_temp_dir_and_copy_files(dirname: str, files: tp.List[str]) -> str:
     """
     temp_dirname = tempfile.gettempdir()
     dirpath = f"{temp_dirname}/{dirname}"
+    if os.path.exists(dirpath):
+        dirpath += str(random.randint(1, 100))
     os.mkdir(dirpath)
     for filepath in files:
         filename = filepath.split("/")[-1]

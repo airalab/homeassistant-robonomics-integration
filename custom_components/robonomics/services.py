@@ -171,10 +171,11 @@ async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
         _LOGGER.debug(f"send problem service: {problem_text}")
         hass_config_path = hass.config.path()
         files = []
-        if os.path.isfile(f"{hass_config_path}/{LOG_FILE_NAME}"):
-            files.append(f"{hass_config_path}/{LOG_FILE_NAME}")
-        if os.path.isfile(f"{hass_config_path}/{TRACES_FILE_NAME}"):
-            files.append(f"{hass_config_path}/{TRACES_FILE_NAME}")
+        if call.data.get("attach_logs"):
+            if os.path.isfile(f"{hass_config_path}/{LOG_FILE_NAME}"):
+                files.append(f"{hass_config_path}/{LOG_FILE_NAME}")
+            if os.path.isfile(f"{hass_config_path}/{TRACES_FILE_NAME}"):
+                files.append(f"{hass_config_path}/{TRACES_FILE_NAME}")
         tempdir = create_temp_dir_and_copy_files(IPFS_PROBLEM_REPORT_FOLDER[1:], files)
         _LOGGER.debug(f"Tempdir for problem report created: {tempdir}")
         with open(f"{tempdir}/issue_description.json", "w") as f:

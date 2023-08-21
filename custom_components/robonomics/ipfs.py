@@ -163,6 +163,7 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
 
 
 async def add_problem_report_to_ipfs(hass: HomeAssistant, dirname: str) -> tp.Optional[str]:
+    _LOGGER.debug(f"Start adding problem report to ipfs, dirname: {dirname}")
     local_ipfs_hash, old_hash = await _add_folder_to_local_node(dirname)
     if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
         if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:
@@ -197,21 +198,21 @@ async def add_problem_report_to_ipfs(hass: HomeAssistant, dirname: str) -> tp.Op
 
 
 @to_thread
-def _add_folder_to_local_node(dirname: str) -> str:
+def _add_folder_to_local_node(dirname: str, ipfs_folder: str = IPFS_PROBLEM_REPORT_FOLDER) -> str:
     with ipfshttpclient2.connect() as client:
         folders = client.files.ls("/")
         folder_names = [folder["Name"] for folder in folders["Entries"]]
-        if IPFS_PROBLEM_REPORT_FOLDER[1:] in folder_names:
-            old_hash = client.files.stat(IPFS_PROBLEM_REPORT_FOLDER)["Hash"]
-            client.files.rm(IPFS_PROBLEM_REPORT_FOLDER, recursive=True)
+        if ipfs_folder[1:] in folder_names:
+            old_hash = client.files.stat(ipfs_folder)["Hash"]
+            client.files.rm(ipfs_folder, recursive=True)
         else: 
             old_hash = None
         res = client.add(dirname)
         for item in res:
-            if item["Name"] == IPFS_PROBLEM_REPORT_FOLDER[1:]:
+            if item["Name"] == dirname.split("/")[-1]:
                 ipfs_hash = item["Hash"]
                 break
-        client.files.cp(f"/ipfs/{ipfs_hash}", IPFS_PROBLEM_REPORT_FOLDER)
+        client.files.cp(f"/ipfs/{ipfs_hash}", ipfs_folder)
         _LOGGER.debug(f"Problem report added to local gateway with hash {ipfs_hash}")
     return ipfs_hash, old_hash
 
