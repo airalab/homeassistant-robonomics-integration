@@ -163,7 +163,7 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
 
 
 async def add_problem_report_to_ipfs(hass: HomeAssistant, dirname: str) -> tp.Optional[str]:
-    _LOGGER.debug(f"Start adding problem report to ipfs, dirname: {dirname}")
+    _LOGGER.debug(f"Start adding problem report to ipfs, dirnamr: {dirname}")
     local_ipfs_hash, old_hash = await _add_folder_to_local_node(dirname)
     if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
         if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:

@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant, callback
 from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, Launch
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
+from substrateinterface.exceptions import SubstrateRequestException
 from tenacity import AsyncRetrying, Retrying, stop_after_attempt, wait_fixed
 
 from .const import (
@@ -789,6 +790,11 @@ class Robonomics:
                 except TimeoutError:
                     self._change_current_wss()
                     raise TimeoutError
+                except SubstrateRequestException as e:
+                    if e.args[0]['code'] == 1014:
+                        _LOGGER.warning(f"Launch sending exception: {e}, retrying...")
+                        time.sleep(8)
+                        raise e
                 except Exception as e:
                     _LOGGER.warning(f"Launch sending exeption: {e}")
                     return None
