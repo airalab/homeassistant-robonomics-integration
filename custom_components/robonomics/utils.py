@@ -201,7 +201,7 @@ def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, fi
     return filepath
 
 
-def create_temp_dir_and_copy_files(dirname: str, files: tp.List[str]) -> str:
+def create_temp_dir_and_copy_files(dirname: str, files: tp.List[str], sender_seed: tp.Optional[str] = None, receiver_address: tp.Optional[str] = None) -> str:
     """
     Create directory in tepmoral directory and copy there files
 
@@ -210,15 +210,28 @@ def create_temp_dir_and_copy_files(dirname: str, files: tp.List[str]) -> str:
 
     :return: path to the created directory    
     """
-    temp_dirname = tempfile.gettempdir()
-    dirpath = f"{temp_dirname}/{dirname}"
-    if os.path.exists(dirpath):
-        dirpath += str(random.randint(1, 100))
-    os.mkdir(dirpath)
-    for filepath in files:
-        filename = filepath.split("/")[-1]
-        shutil.copyfile(filepath, f"{dirpath}/{filename}")
-    return dirpath
+    try:
+        temp_dirname = tempfile.gettempdir()
+        dirpath = f"{temp_dirname}/{dirname}"
+        if os.path.exists(dirpath):
+            dirpath += str(random.randint(1, 100))
+        os.mkdir(dirpath)
+        for filepath in files:
+            filename = filepath.split("/")[-1]
+            if sender_seed and receiver_address:
+                with open(filepath, "r") as f:
+                    data = f.read()
+                sender_acc = Account(seed=sender_seed, crypto_type=KeypairType.ED25519)
+                sender_kp = sender_acc.keypair
+                receiver_kp = Keypair(ss58_address=receiver_address, crypto_type=KeypairType.ED25519)
+                encrypted_data = encrypt_message(data, sender_kp, receiver_kp.public_key)
+                with open(f"{dirpath}/{filename}", "w") as f:
+                    f.write(encrypted_data)
+            else:
+                shutil.copyfile(filepath, f"{dirpath}/{filename}")
+        return dirpath
+    except Exception as e:
+        _LOGGER.error(f"Exception in create temp dir: {e}")
 
 
 def delete_temp_dir(dirpath: str) -> None:

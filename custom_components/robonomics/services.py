@@ -176,10 +176,14 @@ async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
                 files.append(f"{hass_config_path}/{LOG_FILE_NAME}")
             if os.path.isfile(f"{hass_config_path}/{TRACES_FILE_NAME}"):
                 files.append(f"{hass_config_path}/{TRACES_FILE_NAME}")
-        tempdir = create_temp_dir_and_copy_files(IPFS_PROBLEM_REPORT_FOLDER[1:], files)
+        tempdir = create_temp_dir_and_copy_files(IPFS_PROBLEM_REPORT_FOLDER[1:], files, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
         _LOGGER.debug(f"Tempdir for problem report created: {tempdir}")
+        sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+        sender_kp = sender_acc.keypair
+        receiver_kp = Keypair(ss58_address=PROBLEM_SERVICE_ROBONOMICS_ADDRESS, crypto_type=KeypairType.ED25519)
+        encrypted_json = encrypt_message(json.dumps(json_text), sender_kp, receiver_kp.public_key)
         with open(f"{tempdir}/issue_description.json", "w") as f:
-            json.dump(json_text, f)
+            f.write(encrypted_json)
         ipfs_hash = await add_problem_report_to_ipfs(hass, tempdir)
         await hass.data[DOMAIN][ROBONOMICS].send_launch(PROBLEM_SERVICE_ROBONOMICS_ADDRESS, ipfs_hash)
     except Exception as e:
