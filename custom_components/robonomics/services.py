@@ -166,7 +166,7 @@ async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
     try:
         problem_text = call.data.get("description")
         email = call.data.get("mail")
-        phone_number = call.data.get("phone_number")
+        phone_number = call.data.get("phone_number", "")
         json_text = {"description": problem_text, "e-mail": email, "phone_number": phone_number}
         _LOGGER.debug(f"send problem service: {problem_text}")
         hass_config_path = hass.config.path()
