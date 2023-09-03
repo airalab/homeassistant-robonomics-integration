@@ -89,3 +89,9 @@ send_problem_report:
       required: true
       selector:
         boolean:
+    picture:
+      description: You can attach the photo or screenshot to illustrate the problem
+      name: Picture
+      required: false
+      selector:
+        text:

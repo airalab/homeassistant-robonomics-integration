@@ -8,6 +8,7 @@ import time
 import typing as tp
 from pathlib import Path
 import json
+import base64
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -39,7 +40,7 @@ from .const import (
     PROBLEM_SERVICE_ROBONOMICS_ADDRESS,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data, add_problem_report_to_ipfs
-from .utils import delete_temp_file, encrypt_message, create_temp_dir_and_copy_files, delete_temp_dir
+from .utils import delete_temp_file, encrypt_message, create_temp_dir_and_copy_files, delete_temp_dir, create_encrypted_picture
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -164,6 +165,7 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
 
 async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
     try:
+        picture_data = call.data.get("picture")
         problem_text = call.data.get("description")
         email = call.data.get("mail")
         phone_number = call.data.get("phone_number", "")
@@ -177,6 +179,10 @@ async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
             if os.path.isfile(f"{hass_config_path}/{TRACES_FILE_NAME}"):
                 files.append(f"{hass_config_path}/{TRACES_FILE_NAME}")
         tempdir = create_temp_dir_and_copy_files(IPFS_PROBLEM_REPORT_FOLDER[1:], files, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
+        if picture_data is not None:
+            _LOGGER.debug(f"Picture: {picture_data}")
+            decoded_picture_data = base64.b64decode(picture_data.split(",")[1])
+            picture_path = create_encrypted_picture(decoded_picture_data, tempdir, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
         _LOGGER.debug(f"Tempdir for problem report created: {tempdir}")
         sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
         sender_kp = sender_acc.keypair
