@@ -167,12 +167,12 @@ def get_hash(filename: str) -> tp.Optional[str]:
     return ipfs_hash_local
 
 
-def create_encrypted_picture(data: bytes, dirname: str, sender_seed: tp.Optional[str] = None, receiver_address: tp.Optional[str] = None) -> str:
+def create_encrypted_picture(data: bytes, number_of_picture: int, dirname: str, sender_seed: tp.Optional[str] = None, receiver_address: tp.Optional[str] = None) -> str:
     sender_acc = Account(seed=sender_seed, crypto_type=KeypairType.ED25519)
     sender_kp = sender_acc.keypair
     receiver_kp = Keypair(ss58_address=receiver_address, crypto_type=KeypairType.ED25519)
     encrypted_data = encrypt_message(data, sender_kp, receiver_kp.public_key)
-    picture_path = f"{dirname}/picture.jpeg"
+    picture_path = f"{dirname}/picture{number_of_picture}"
     with open(picture_path, "w") as f:
         f.write(encrypted_data)
     _LOGGER.debug(f"Created encrypted picture: {picture_path}")

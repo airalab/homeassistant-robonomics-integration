@@ -163,38 +163,41 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
 
 
 async def add_problem_report_to_ipfs(hass: HomeAssistant, dirname: str) -> tp.Optional[str]:
-    _LOGGER.debug(f"Start adding problem report to ipfs, dirnamr: {dirname}")
-    local_ipfs_hash, old_hash = await _add_folder_to_local_node(dirname)
-    if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
-        if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:
-            seed = hass.data[DOMAIN][CONF_ADMIN_SEED]
+    try:
+        _LOGGER.debug(f"Start adding problem report to ipfs, dirnamr: {dirname}")
+        local_ipfs_hash, old_hash = await _add_folder_to_local_node(dirname)
+        if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
+            if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:
+                seed = hass.data[DOMAIN][CONF_ADMIN_SEED]
+            else:
+                seed = None
+            custom_hash, custom_ipfs_file_size = await _add_to_custom_gateway(
+                dirname,
+                hass.data[DOMAIN][CONF_IPFS_GATEWAY],
+                hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT],
+                False,
+                seed,
+                old_hash,
+            )
+            _LOGGER.debug(f"Problem report added to custom gateway with hash {custom_hash}")
         else:
-            seed = None
-        custom_hash, custom_ipfs_file_size = await _add_to_custom_gateway(
-            dirname,
-            hass.data[DOMAIN][CONF_IPFS_GATEWAY],
-            hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT],
-            False,
-            seed,
-            old_hash,
-        )
-        _LOGGER.debug(f"Problem report added to custom gateway with hash {custom_hash}")
-    else:
-        custom_hash = None
-    if hass.data[DOMAIN][PINATA] is not None:
-        pinata_hash, pinata_ipfs_file_size = await _add_to_pinata(
-            hass, dirname, hass.data[DOMAIN][PINATA], False, old_hash
-        )
-    else:
-        pinata_hash = None
-    if local_ipfs_hash is not None:
-        return local_ipfs_hash
-    elif custom_hash is not None:
-        return custom_hash
-    elif pinata_hash is not None:
-        return pinata_hash
-    else:
-        return None
+            custom_hash = None
+        if hass.data[DOMAIN][PINATA] is not None:
+            pinata_hash, pinata_ipfs_file_size = await _add_to_pinata(
+                hass, dirname, hass.data[DOMAIN][PINATA], False, old_hash
+            )
+        else:
+            pinata_hash = None
+        if local_ipfs_hash is not None:
+            return local_ipfs_hash
+        elif custom_hash is not None:
+            return custom_hash
+        elif pinata_hash is not None:
+            return pinata_hash
+        else:
+            return None
+    except Exception as e:
+        _LOGGER.error(f"Exception in add problem report to ipfs: {e}")
 
 
 @to_thread

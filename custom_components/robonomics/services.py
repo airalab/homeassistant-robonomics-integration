@@ -169,7 +169,7 @@ async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
         problem_text = call.data.get("description")
         email = call.data.get("mail")
         phone_number = call.data.get("phone_number", "")
-        json_text = {"description": problem_text, "e-mail": email, "phone_number": phone_number}
+        json_text = {"description": problem_text, "e-mail": email, "phone_number": phone_number, "pictures_count": len(picture_data)}
         _LOGGER.debug(f"send problem service: {problem_text}")
         hass_config_path = hass.config.path()
         files = []
@@ -179,10 +179,12 @@ async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
             if os.path.isfile(f"{hass_config_path}/{TRACES_FILE_NAME}"):
                 files.append(f"{hass_config_path}/{TRACES_FILE_NAME}")
         tempdir = create_temp_dir_and_copy_files(IPFS_PROBLEM_REPORT_FOLDER[1:], files, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
-        if picture_data is not None:
-            _LOGGER.debug(f"Picture: {picture_data}")
-            decoded_picture_data = base64.b64decode(picture_data.split(",")[1])
-            picture_path = create_encrypted_picture(decoded_picture_data, tempdir, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
+        if len(picture_data) != 0:
+            i = 1
+            for picture in picture_data:
+                decoded_picture_data = base64.b64decode(picture.split(",")[1])
+                picture_path = create_encrypted_picture(decoded_picture_data, i, tempdir, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
+                i += 1
         _LOGGER.debug(f"Tempdir for problem report created: {tempdir}")
         sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
         sender_kp = sender_acc.keypair
