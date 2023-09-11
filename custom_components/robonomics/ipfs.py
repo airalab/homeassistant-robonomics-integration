@@ -201,6 +201,20 @@ async def add_problem_report_to_ipfs(hass: HomeAssistant, dirname: str) -> tp.Op
 
 
 @to_thread
+def delete_folder_from_local_node(dirname: str) -> None:
+    try:
+        _LOGGER.debug(f"Start deleting ipfs folder {dirname}")
+        with ipfshttpclient2.connect() as client:
+            folders = client.files.ls("/")
+            folder_names = [folder["Name"] for folder in folders["Entries"]]
+            if dirname[1:] in folder_names:
+                client.files.rm(dirname, recursive=True)
+                _LOGGER.debug(f"Ipfs folder {dirname} was deleted")
+    except Exception as e:
+        _LOGGER.error(f"Exception in deleting folder {dirname}: {e}")
+
+
+@to_thread
 def _add_folder_to_local_node(dirname: str, ipfs_folder: str = IPFS_PROBLEM_REPORT_FOLDER) -> str:
     with ipfshttpclient2.connect() as client:
         folders = client.files.ls("/")

@@ -49,9 +49,10 @@ from .const import (
     GETTING_STATES_QUEUE,
     GETTING_STATES,
     PROBLEM_REPORT_SERVICE,
+    IPFS_CONFIG_PATH,
 )
 from .get_states import get_and_send_data
-from .ipfs import create_folders, wait_ipfs_daemon
+from .ipfs import create_folders, wait_ipfs_daemon, delete_folder_from_local_node
 from .manage_users import manage_users
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import restore_from_backup_service_call, save_backup_service_call, save_video, send_problem_report
@@ -294,9 +295,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
-    hass.data[DOMAIN][STATE_CHANGE_UNSUB]()
+    hass.data[DOMAIN][STATE_CHANGE_UNSUB].async_remove()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
+    await delete_folder_from_local_node(IPFS_CONFIG_PATH)
     hass.data.pop(DOMAIN)
-    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, PLATFORMS)
-    _LOGGER.debug(f"Robonomics integration was unloaded: {unload_ok}")
-    return unload_ok
+    await asyncio.gather(
+        *(
+            hass.config_entries.async_forward_entry_unload(entry, component)
+            for component in PLATFORMS
+        )
+    )
+    _LOGGER.debug(f"Robonomics integration was unloaded")
+    return True

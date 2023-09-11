@@ -581,7 +581,11 @@ class Robonomics:
 
     async def _monitore_subscription(self) -> None:
         """Check if thread with subscription is alive every 15 seconds"""
+        if DOMAIN not in self.hass.data:
+            return
         while self.is_subscription_alive():
+            if DOMAIN not in self.hass.data:
+                return
             await asyncio.sleep(15)
         self._change_current_wss()
         await self.resubscribe()
