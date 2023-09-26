@@ -256,14 +256,14 @@ class Robonomics:
                 if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
                     service_data = {
                         "message": f"""Your subscription is ending. You can use it for another {rws_days_left} days, 
-                                        after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).""",
+                                        after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).""",
                         "title": "Robonomics Subscription Expires",
                     }
                     await create_notification(self.hass, service_data)
             else:
                 self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", 0)
                 service_data = {
-                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/subscription).",
+                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).",
                     "title": "Robonomics Subscription Expires",
                 }
                 await create_notification(self.hass, service_data)
