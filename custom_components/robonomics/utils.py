@@ -14,6 +14,7 @@ import tempfile
 import time
 import typing as tp
 from typing import Union
+import shutil
 
 import ipfshttpclient2
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
@@ -166,6 +167,18 @@ def get_hash(filename: str) -> tp.Optional[str]:
     return ipfs_hash_local
 
 
+def create_encrypted_picture(data: bytes, number_of_picture: int, dirname: str, sender_seed: tp.Optional[str] = None, receiver_address: tp.Optional[str] = None) -> str:
+    sender_acc = Account(seed=sender_seed, crypto_type=KeypairType.ED25519)
+    sender_kp = sender_acc.keypair
+    receiver_kp = Keypair(ss58_address=receiver_address, crypto_type=KeypairType.ED25519)
+    encrypted_data = encrypt_message(data, sender_kp, receiver_kp.public_key)
+    picture_path = f"{dirname}/picture{number_of_picture}"
+    with open(picture_path, "w") as f:
+        f.write(encrypted_data)
+    _LOGGER.debug(f"Created encrypted picture: {picture_path}")
+    return picture_path
+
+
 def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, filename: str = None) -> str:
     """
     Create file and store data in it
@@ -197,8 +210,49 @@ def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, fi
             filepath = f"{dirname}/z2m-backup.zip"
             with open(filepath, "wb") as f:
                 f.write(data)
-
     return filepath
+
+
+def create_temp_dir_and_copy_files(dirname: str, files: tp.List[str], sender_seed: tp.Optional[str] = None, receiver_address: tp.Optional[str] = None) -> str:
+    """
+    Create directory in tepmoral directory and copy there files
+
+    :param dirname: the name of the directory to create
+    :param files: list of file pathes to copy
+
+    :return: path to the created directory    
+    """
+    try:
+        temp_dirname = tempfile.gettempdir()
+        dirpath = f"{temp_dirname}/{dirname}"
+        if os.path.exists(dirpath):
+            dirpath += str(random.randint(1, 100))
+        os.mkdir(dirpath)
+        for filepath in files:
+            filename = filepath.split("/")[-1]
+            if sender_seed and receiver_address:
+                with open(filepath, "r") as f:
+                    data = f.read()
+                sender_acc = Account(seed=sender_seed, crypto_type=KeypairType.ED25519)
+                sender_kp = sender_acc.keypair
+                receiver_kp = Keypair(ss58_address=receiver_address, crypto_type=KeypairType.ED25519)
+                encrypted_data = encrypt_message(data, sender_kp, receiver_kp.public_key)
+                with open(f"{dirpath}/{filename}", "w") as f:
+                    f.write(encrypted_data)
+            else:
+                shutil.copyfile(filepath, f"{dirpath}/{filename}")
+        return dirpath
+    except Exception as e:
+        _LOGGER.error(f"Exception in create temp dir: {e}")
+
+
+def delete_temp_dir(dirpath: str) -> None:
+    """
+    Delete temporary directory
+
+    :param dirpath: the path to the directory
+    """
+    shutil.rmtree(dirpath)
 
 
 def delete_temp_file(filename: str) -> None:

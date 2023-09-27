@@ -7,6 +7,8 @@ import tempfile
 import time
 import typing as tp
 from pathlib import Path
+import json
+import base64
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -32,9 +34,13 @@ from .const import (
     IPFS_MEDIA_PATH,
     ROBONOMICS,
     TWIN_ID,
+    LOG_FILE_NAME,
+    TRACES_FILE_NAME,
+    IPFS_PROBLEM_REPORT_FOLDER,
+    PROBLEM_SERVICE_ROBONOMICS_ADDRESS,
 )
-from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
-from .utils import delete_temp_file, encrypt_message
+from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data, add_problem_report_to_ipfs
+from .utils import delete_temp_file, encrypt_message, create_temp_dir_and_copy_files, delete_temp_dir, create_encrypted_picture
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -155,3 +161,40 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
             _LOGGER.debug(f"Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")
+
+
+async def send_problem_report(hass: HomeAssistant, call: ServiceCall) -> None:
+    try:
+        picture_data = call.data.get("picture")
+        problem_text = call.data.get("description")
+        email = call.data.get("mail")
+        phone_number = call.data.get("phone_number", "")
+        json_text = {"description": problem_text, "e-mail": email, "phone_number": phone_number, "pictures_count": len(picture_data)}
+        _LOGGER.debug(f"send problem service: {problem_text}")
+        hass_config_path = hass.config.path()
+        files = []
+        if call.data.get("attach_logs"):
+            if os.path.isfile(f"{hass_config_path}/{LOG_FILE_NAME}"):
+                files.append(f"{hass_config_path}/{LOG_FILE_NAME}")
+            if os.path.isfile(f"{hass_config_path}/{TRACES_FILE_NAME}"):
+                files.append(f"{hass_config_path}/{TRACES_FILE_NAME}")
+        tempdir = create_temp_dir_and_copy_files(IPFS_PROBLEM_REPORT_FOLDER[1:], files, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
+        if len(picture_data) != 0:
+            i = 1
+            for picture in picture_data:
+                decoded_picture_data = base64.b64decode(picture.split(",")[1])
+                picture_path = create_encrypted_picture(decoded_picture_data, i, tempdir, hass.data[DOMAIN][CONF_ADMIN_SEED], PROBLEM_SERVICE_ROBONOMICS_ADDRESS)
+                i += 1
+        _LOGGER.debug(f"Tempdir for problem report created: {tempdir}")
+        sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+        sender_kp = sender_acc.keypair
+        receiver_kp = Keypair(ss58_address=PROBLEM_SERVICE_ROBONOMICS_ADDRESS, crypto_type=KeypairType.ED25519)
+        encrypted_json = encrypt_message(json.dumps(json_text), sender_kp, receiver_kp.public_key)
+        with open(f"{tempdir}/issue_description.json", "w") as f:
+            f.write(encrypted_json)
+        ipfs_hash = await add_problem_report_to_ipfs(hass, tempdir)
+        await hass.data[DOMAIN][ROBONOMICS].send_launch(PROBLEM_SERVICE_ROBONOMICS_ADDRESS, ipfs_hash)
+    except Exception as e:
+        _LOGGER.debug(f"Exception in send problem service: {e}")
+    finally:
+        delete_temp_dir(tempdir)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pickle import NONE
 import typing as tp
 from datetime import datetime, timedelta
 
@@ -46,6 +47,7 @@ from .const import (
     PINATA,
     PINATA_GATEWAY,
     SECONDS_IN_DAY,
+    IPFS_PROBLEM_REPORT_FOLDER,
 )
 from .utils import get_hash, to_thread
 
@@ -159,6 +161,77 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
 
     return ipfs_hash
 
+
+async def add_problem_report_to_ipfs(hass: HomeAssistant, dirname: str) -> tp.Optional[str]:
+    try:
+        _LOGGER.debug(f"Start adding problem report to ipfs, dirnamr: {dirname}")
+        local_ipfs_hash, old_hash = await _add_folder_to_local_node(dirname)
+        if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
+            if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:
+                seed = hass.data[DOMAIN][CONF_ADMIN_SEED]
+            else:
+                seed = None
+            custom_hash, custom_ipfs_file_size = await _add_to_custom_gateway(
+                dirname,
+                hass.data[DOMAIN][CONF_IPFS_GATEWAY],
+                hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT],
+                False,
+                seed,
+                old_hash,
+            )
+            _LOGGER.debug(f"Problem report added to custom gateway with hash {custom_hash}")
+        else:
+            custom_hash = None
+        if hass.data[DOMAIN][PINATA] is not None:
+            pinata_hash, pinata_ipfs_file_size = await _add_to_pinata(
+                hass, dirname, hass.data[DOMAIN][PINATA], False, old_hash
+            )
+        else:
+            pinata_hash = None
+        if local_ipfs_hash is not None:
+            return local_ipfs_hash
+        elif custom_hash is not None:
+            return custom_hash
+        elif pinata_hash is not None:
+            return pinata_hash
+        else:
+            return None
+    except Exception as e:
+        _LOGGER.error(f"Exception in add problem report to ipfs: {e}")
+
+
+@to_thread
+def delete_folder_from_local_node(dirname: str) -> None:
+    try:
+        _LOGGER.debug(f"Start deleting ipfs folder {dirname}")
+        with ipfshttpclient2.connect() as client:
+            folders = client.files.ls("/")
+            folder_names = [folder["Name"] for folder in folders["Entries"]]
+            if dirname[1:] in folder_names:
+                client.files.rm(dirname, recursive=True)
+                _LOGGER.debug(f"Ipfs folder {dirname} was deleted")
+    except Exception as e:
+        _LOGGER.error(f"Exception in deleting folder {dirname}: {e}")
+
+
+@to_thread
+def _add_folder_to_local_node(dirname: str, ipfs_folder: str = IPFS_PROBLEM_REPORT_FOLDER) -> str:
+    with ipfshttpclient2.connect() as client:
+        folders = client.files.ls("/")
+        folder_names = [folder["Name"] for folder in folders["Entries"]]
+        if ipfs_folder[1:] in folder_names:
+            old_hash = client.files.stat(ipfs_folder)["Hash"]
+            client.files.rm(ipfs_folder, recursive=True)
+        else: 
+            old_hash = None
+        res = client.add(dirname)
+        for item in res:
+            if item["Name"] == dirname.split("/")[-1]:
+                ipfs_hash = item["Hash"]
+                break
+        client.files.cp(f"/ipfs/{ipfs_hash}", ipfs_folder)
+        _LOGGER.debug(f"Problem report added to local gateway with hash {ipfs_hash}")
+    return ipfs_hash, old_hash
 
 @to_thread
 def get_folder_hash(ipfs_folder: str) -> str:
@@ -466,7 +539,8 @@ def _add_to_pinata(
 
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
     try:
-        res = pinata.pin_file_to_ipfs(filename)
+        RES = None
+        res = pinata.pin_file_to_ipfs(filename, save_absolute_paths=False)
         ipfs_hash: tp.Optional[str] = res["IpfsHash"]
         ipfs_file_size: tp.Optional[int] = int(res["PinSize"])
         _LOGGER.debug(f"File {filename} was added to Pinata with cid: {ipfs_hash}")
@@ -519,12 +593,16 @@ def _add_to_custom_gateway(
             usr, pwd = web_3_auth(seed)
             with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)) as client:
                 result = client.add(filename)
+                if type(result) == list:
+                    result = result[-1]
                 ipfs_hash: tp.Optional[str] = result["Hash"]
                 ipfs_file_size: tp.Optional[int] = int(result["Size"])
                 _LOGGER.debug(f"File {filename} was added to {url} with cid: {ipfs_hash}")
         else:
             with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https") as client:
                 result = client.add(filename)
+                if type(result) == list:
+                    result = result[-1]
                 ipfs_hash: tp.Optional[str] = result["Hash"]
                 ipfs_file_size: tp.Optional[int] = int(result["Size"])
                 _LOGGER.debug(f"File {filename} was added to {url} with cid: {ipfs_hash}")

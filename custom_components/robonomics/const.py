@@ -8,6 +8,7 @@ PLATFORMS = [Platform.BUTTON]
 CREATE_BACKUP_SERVICE = "save_backup_to_robonomics"
 RESTORE_BACKUP_SERVICE = "restore_from_robonomics_backup"
 SAVE_VIDEO_SERVICE = "save_video_to_robonomics"
+PROBLEM_REPORT_SERVICE = "send_problem_report"
 
 CONF_ADMIN_SEED = "admin_seed_secret"
 CONF_SUB_OWNER_ADDRESS = "sub_owner_address"
@@ -99,3 +100,8 @@ MEDIA_ACC = "4CC7GkKuJJzFzswqz39m5qWbgXaQks9f36jCgsadpN2c1hnh"
 
 GETTING_STATES_QUEUE = "getting_states_queue"
 GETTING_STATES = "getting_states"
+
+PROBLEM_SERVICE_ROBONOMICS_ADDRESS = "4HifM6Cny7bHAdLb5jw3hHV2KabuzRZV8gmHG1eh4PxJakwi"
+LOG_FILE_NAME = "home-assistant.log"
+TRACES_FILE_NAME = ".storage/trace.saved_traces"
+IPFS_PROBLEM_REPORT_FOLDER = "/ha_problem_report"
