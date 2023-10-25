@@ -1,4 +1,4 @@
-# Control Home Assistant with Robonomics
+# Connect your Home Assistant devices to web3 infrastructure 
 
 Integration gives you the remote access to your local smart home through encrypted transactions in Robonomics blockchain. It allows:
 
