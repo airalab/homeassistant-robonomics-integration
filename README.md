@@ -2,7 +2,7 @@
 
 Integration gives you the remote access to your local smart home through encrypted transactions in Robonomics blockchain. It allows:
 
-* Whatch current states
+* Watch current states
 * Call services
 * Manage Home Assistant users with subscription devices
 * Create backups
@@ -36,7 +36,7 @@ Open it and press `Download this repository with HACS` in the end of the page.
 
 1.2) Manually
 
-Clone the [repository](https://github.com/airalab/homeassistant-robonomics-integration) and copy `custop_components` folder to your Home Assistant config
+Clone the [repository](https://github.com/airalab/homeassistant-robonomics-integration) and copy `custom_components` folder to your Home Assistant config
 
 **2. Restart HA to load the integration into HA.**
 
