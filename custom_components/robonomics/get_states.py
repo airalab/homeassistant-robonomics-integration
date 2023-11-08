@@ -64,6 +64,9 @@ async def get_and_send_data(hass: HomeAssistant):
         on_queue = hass.data[DOMAIN][GETTING_STATES_QUEUE]
         while hass.data[DOMAIN][GETTING_STATES]:
             await asyncio.sleep(5)
+            if on_queue > 3:
+                _LOGGER.debug("Another states are sending too long. Start getting states...")
+                break
             if on_queue < hass.data[DOMAIN][GETTING_STATES_QUEUE]:
                 _LOGGER.debug("Stop waiting to send states")
                 return
@@ -186,7 +189,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                         filename = f"{hass.config.path()}/www/{image_path[2]}"
                         ipfs_hash_media = await get_hash(filename)
                         card["image"] = ipfs_hash_media
-                        if not await check_if_hash_in_folder(ipfs_hash_media, IPFS_MEDIA_PATH):
+                        if not await check_if_hash_in_folder(hass, ipfs_hash_media, IPFS_MEDIA_PATH):
                             await add_media_to_ipfs(hass, filename)
     try:
         dashboard = hass.data[LOVELACE_DOMAIN]["dashboards"].get(None)
@@ -195,8 +198,8 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         _LOGGER.warning(f"Exception in get dashboard: {e}")
         config_dashboard = None
 
-    last_config, _ = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
-    current_config = await read_ipfs_local_file(last_config, IPFS_CONFIG_PATH)
+    last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
+    current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
     if current_config is None:
         current_config = {}
     try:
@@ -225,7 +228,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 delete_temp_file(filename)
             else:
                 _LOGGER.debug("Config wasn't changed")
-                _, last_config_hash = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
+                _, last_config_hash = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = last_config_hash
             _LOGGER.debug(f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}")
             await hass.data[DOMAIN][ROBONOMICS].set_config_topic(

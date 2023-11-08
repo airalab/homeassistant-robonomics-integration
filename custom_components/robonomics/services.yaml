@@ -60,38 +60,3 @@ save_video_to_robonomics:
         number:
           min: 1
           max: 90
-
-send_problem_report:
-  name: Send problem report
-  description: Send a report about any problem with your smarhome
-  fields:
-    description:
-      description: Describe your problem
-      name: Description
-      required: true
-      selector:
-        text:
-    mail:
-      description: E-mail address to contact you
-      name: E-mail 
-      required: true
-      selector:
-        text:
-    phone_number:
-      description: Phone number to contact you (Optional)
-      name: Phone Number
-      required: false
-      selector: 
-        text:
-    attach_logs:
-      description: Attach logs to the report or not (Recomended)
-      name: Attach logs
-      required: true
-      selector:
-        boolean:
-    picture:
-      description: You can attach the photo or screenshot to illustrate the problem
-      name: Picture
-      required: false
-      selector:
-        text:

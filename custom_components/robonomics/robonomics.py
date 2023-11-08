@@ -46,8 +46,8 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant instance
     """
     try:
-        config_name, _ = await get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
-        current_config = await read_ipfs_local_file(config_name, IPFS_CONFIG_PATH)
+        config_name, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
+        current_config = await read_ipfs_local_file(hass, config_name, IPFS_CONFIG_PATH)
         _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
         hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
     except Exception as e:
@@ -781,25 +781,3 @@ class Robonomics:
                 return
         except Exception as e:
             _LOGGER.error(f"Exception in looking for the last digital twin: {e}")
-
-    @to_thread
-    def send_launch(self, address: str, ipfs_hash: str) -> None:
-        for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
-            with attempt:
-                try:
-                    account = Account(seed=self.controller_seed, crypto_type=KeypairType.ED25519)
-                    _LOGGER.debug(f"Start creating launch for problem service")
-                    launch = Launch(account, rws_sub_owner=self.sub_owner_address)
-                    receipt = launch.launch(address, ipfs_hash)
-                except TimeoutError:
-                    self._change_current_wss()
-                    raise TimeoutError
-                except SubstrateRequestException as e:
-                    if e.args[0]['code'] == 1014:
-                        _LOGGER.warning(f"Launch sending exception: {e}, retrying...")
-                        time.sleep(8)
-                        raise e
-                except Exception as e:
-                    _LOGGER.warning(f"Launch sending exeption: {e}")
-                    return None
-        _LOGGER.debug(f"Launch created with hash: {receipt}")
