@@ -13,7 +13,7 @@ from platform import platform
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.event import async_track_time_interval, TrackStates, async_track_state_change
+from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_filtered, TrackStates, async_track_state_change
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
 from robonomicsinterface import Account
@@ -66,10 +66,6 @@ async def init_integration(hass: HomeAssistant) -> None:
 
     try:
         await asyncio.sleep(60)
-        track_states = TrackStates(False, set(), SWITCH_DOMAIN)
-        # hass.data[DOMAIN][STATE_CHANGE_UNSUB] = async_track_state_change_filtered(
-        #     hass, track_states, hass.data[DOMAIN][HANDLE_STATE_CHANGE]
-        # )
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
@@ -260,7 +256,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
 
-    # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True
 

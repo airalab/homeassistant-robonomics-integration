@@ -174,7 +174,7 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
     :return: IPFS hash of the file
     """
 
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_BACKUP_PATH, True, None, None)
+    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_MEDIA_PATH, True, None, None)
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash

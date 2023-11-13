@@ -11,6 +11,7 @@ import logging
 import tempfile
 import time
 import typing as tp
+from copy import deepcopy
 from datetime import datetime, timedelta
 
 import homeassistant.util.dt as dt_util
@@ -83,6 +84,8 @@ async def get_and_send_data(hass: HomeAssistant):
     except Exception as e:
         _LOGGER.error(f"Exception in create keypair during get and senf data: {e}")
     try:
+        if TWIN_ID in hass.data[DOMAIN]:
+            await _get_dashboard_and_services(hass)
         data = await _get_states(hass)
         data = json.dumps(data)
         _LOGGER.debug(f"Got states to send datalog")
@@ -104,7 +107,7 @@ def _state_changes_during_period(
     start: datetime.datetime,
     end: datetime.datetime,
     entity_id: str,
-) -> list[State]:
+):
     """Save states of the given entity within 24hrs.
 
     :param hass: HomeAssistant instance
@@ -175,7 +178,8 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         _LOGGER.error(f"Exception in get services list: {e}")
     try:
         dashboard = hass.data[LOVELACE_DOMAIN]["dashboards"].get(None)
-        config_dashboard = await dashboard.async_load(False)
+        config_dashboard_real = await dashboard.async_load(False)
+        config_dashboard = deepcopy(config_dashboard_real)
     except Exception as e:
         _LOGGER.warning(f"Exception in get dashboard: {e}")
         config_dashboard = None
@@ -239,7 +243,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
 
 
 async def _get_states(
-    hass: HomeAssistant,
+    hass: HomeAssistant, with_history: bool=True
 ) -> tp.Dict[str, tp.Dict[str, tp.Union[str, tp.Dict[str, tp.Dict[str, tp.Union[str, float]]]]],]:
     """Get info about all entities within 24hrs
 
@@ -248,8 +252,6 @@ async def _get_states(
     :return: Dict with the history within 24hrs
     """
 
-    if TWIN_ID in hass.data[DOMAIN]:
-        await _get_dashboard_and_services(hass)
     registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
     devices_data = {}
@@ -264,7 +266,6 @@ async def _get_states(
                 units = str(entity_state.attributes.get("unit_of_measurement"))
             except:
                 units = "None"
-            history = await _get_state_history(hass, entity_data.entity_id)
             entity_attributes = {}
             for attr in entity_state.attributes:
                 if attr not in DELETE_ATTRIBUTES:
@@ -276,8 +277,10 @@ async def _get_states(
                 "units": units,
                 "state": str(entity_state.state),
                 "attributes": entity_attributes,
-                "history": history,
             }
+            if with_history:
+                history = await _get_state_history(hass, entity_data.entity_id)
+                entity_info["history"] = history
             if entity_data.device_id != None:
                 if entity_data.device_id not in devices_data:
                     device = registry.async_get(entity_data.device_id)
