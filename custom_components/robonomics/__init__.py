@@ -1,4 +1,4 @@
-""""
+"""
 Entry point for integration.
 """
 from __future__ import annotations
