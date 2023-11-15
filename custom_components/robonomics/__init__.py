@@ -1,4 +1,4 @@
-"""
+""""
 Entry point for integration.
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ from platform import platform
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.const import MATCH_ALL
 from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_filtered, TrackStates, async_track_state_change
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
@@ -44,18 +45,24 @@ from .const import (
     TIME_CHANGE_COUNT,
     TIME_CHANGE_UNSUB,
     TWIN_ID,
+    STATE_CHANGE_UNSUB,
+    HANDLE_STATE_CHANGE,
     GETTING_STATES_QUEUE,
     GETTING_STATES,
     IPFS_CONFIG_PATH,
     IPFS_DAEMON_OK,
+    WEBSOCKET,
+    LIBP2P_UNSUB,
     IPFS_STATUS_ENTITY,
     IPFS_DAEMON_STATUS_STATE_CHANGE,
+    HANDLE_LIBP2P_STATE_CHANGED,
 )
-from .get_states import get_and_send_data
+from .get_states import get_and_send_data, _get_states, get_states_libp2p
 from .ipfs import create_folders, wait_ipfs_daemon, delete_folder_from_local_node, handle_ipfs_status_change
 from .manage_users import manage_users
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import restore_from_backup_service_call, save_backup_service_call, save_video
+from .libp2p import connect_to_websocket
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -66,9 +73,18 @@ async def init_integration(hass: HomeAssistant) -> None:
 
     try:
         await asyncio.sleep(60)
+        track_states = TrackStates(False, set(), SWITCH_DOMAIN)
+        # hass.data[DOMAIN][STATE_CHANGE_UNSUB] = async_track_state_change_filtered(
+        #     hass, track_states, hass.data[DOMAIN][HANDLE_STATE_CHANGE]
+        # )
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
+        asyncio.ensure_future(connect_to_websocket(hass))
+    
+        hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
+            hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
+        )
     except Exception as e:
         _LOGGER.error(f"Exception in fist check devices {e}")
 
@@ -192,6 +208,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
 
+    async def libp2p_state_changed(changed_entity: str, old_state, new_state):
+        """Callback for state changing listener.
+        It calls every timeout from config to get and send telemtry.
+        """
+
+        try:
+            if old_state.state == new_state.state:
+                return
+            _LOGGER.info(f"Libp2p-state-changed: Changed entity: {changed_entity}, old state: {old_state}, new state: {new_state}")
+            msg = await get_states_libp2p(hass)
+            await hass.data[DOMAIN][WEBSOCKET].send(msg)
+                
+        except Exception as e:
+            _LOGGER.error(f"Exception in libp2p_state_changed: {e}")
+    
+    hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED] = libp2p_state_changed
+
     async def ipfs_daemon_state_changed(changed_entity: str, old_state, new_state):
         _LOGGER.debug(f"IPFS Status entity changed state from {old_state} to {new_state}")
         if old_state.state != new_state.state:
@@ -238,6 +271,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await get_or_create_twin_id(hass)
         await save_video(hass, target, path, duration, sub_admin_acc)
 
+
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
     hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
     hass.services.async_register(DOMAIN, RESTORE_BACKUP_SERVICE, handle_restore_from_backup)
@@ -256,6 +290,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
 
+    # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True
 
@@ -276,6 +311,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
+    await hass.data[DOMAIN][WEBSOCKET].close()
+    # hass.data[DOMAIN][STATE_CHANGE_UNSUB].async_remove()
+    hass.data[DOMAIN][LIBP2P_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     await delete_folder_from_local_node(hass, IPFS_CONFIG_PATH)
     hass.data.pop(DOMAIN)
@@ -287,4 +325,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     _LOGGER.debug(f"Robonomics integration was unloaded")
     return True
-            

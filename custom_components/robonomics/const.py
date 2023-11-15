@@ -8,7 +8,6 @@ PLATFORMS = [Platform.BUTTON]
 CREATE_BACKUP_SERVICE = "save_backup_to_robonomics"
 RESTORE_BACKUP_SERVICE = "restore_from_robonomics_backup"
 SAVE_VIDEO_SERVICE = "save_video_to_robonomics"
-PROBLEM_REPORT_SERVICE = "send_problem_report"
 
 CONF_ADMIN_SEED = "admin_seed_secret"
 CONF_SUB_OWNER_ADDRESS = "sub_owner_address"
@@ -31,6 +30,7 @@ PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 ROBONOMICS_WSS = [
     "wss://kusama.rpc.robonomics.network/",
     "wss://robonomics.leemo.me/",
+    "wss://robonomics.api.onfinality.io/public-ws/",
     "wss://robonomics.0xsamsara.com/"
 ]
 
@@ -103,3 +103,8 @@ GETTING_STATES = "getting_states"
 
 IPFS_STATUS_ENTITY = "ipfs_status"
 IPFS_DAEMON_STATUS_STATE_CHANGE = "ipfs_status_state_change_handler"
+
+WEBSOCKET = "websocket"
+LIBP2P_UNSUB = "libp2p"
+HANDLE_LIBP2P_STATE_CHANGED = "libp2p_state_changed"
+LIBP2P_WS_SERVER = "ws://127.0.0.1:8888"

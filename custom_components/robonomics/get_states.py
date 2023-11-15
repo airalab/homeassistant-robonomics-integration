@@ -63,6 +63,7 @@ async def get_and_send_data(hass: HomeAssistant):
         _LOGGER.debug("Another states are sending. Wait...")
         hass.data[DOMAIN][GETTING_STATES_QUEUE] += 1
         on_queue = hass.data[DOMAIN][GETTING_STATES_QUEUE]
+        counter = 0
         while hass.data[DOMAIN][GETTING_STATES]:
             await asyncio.sleep(5)
             if on_queue > 3:
@@ -82,7 +83,7 @@ async def get_and_send_data(hass: HomeAssistant):
         sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
         sender_kp = sender_acc.keypair
     except Exception as e:
-        _LOGGER.error(f"Exception in create keypair during get and senf data: {e}")
+        _LOGGER.error(f"Exception in create keypair during get and send data: {e}")
     try:
         if TWIN_ID in hass.data[DOMAIN]:
             await _get_dashboard_and_services(hass)
@@ -102,12 +103,23 @@ async def get_and_send_data(hass: HomeAssistant):
         _LOGGER.error(f"Exception in get_and_send_data: {e}")
 
 
+async def get_states_libp2p(hass: HomeAssistant) -> str:
+    states_json = await _get_states(hass, False)
+    states_string = json.dumps(states_json)
+    sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+    sender_kp = sender_acc.keypair
+    devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
+    devices_list_with_admin.append(sender_acc.get_address())
+    encrypted_string = encrypt_for_devices(states_string, sender_kp, devices_list_with_admin)
+    return encrypted_string
+
+
 def _state_changes_during_period(
     hass: HomeAssistant,
     start: datetime.datetime,
     end: datetime.datetime,
     entity_id: str,
-):
+) -> list[State]:
     """Save states of the given entity within 24hrs.
 
     :param hass: HomeAssistant instance

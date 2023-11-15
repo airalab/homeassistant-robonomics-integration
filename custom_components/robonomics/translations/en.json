@@ -24,8 +24,8 @@
             },
             "conf": {
                 "data": {
-                    "pinata_pub": "Pinata public key (optional)",
-                    "pinata_secret": "Pinata secret (optional)",
+                    "pinata_pub": "Pinata API Key (optional)",
+                    "pinata_secret": "Pinata API Secret (optional)",
                     "admin_seed_secret": "Robonomics controller account seed",
                     "sub_owner_address": "Robonomics subscription owner address",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
@@ -41,8 +41,8 @@
         "step": {
             "init": {
                 "data": {
-                    "pinata_pub": "Pinata public key (optional)",
-                    "pinata_secret": "Pinata secret (optional)",
+                    "pinata_pub": "Pinata API Key (optional)",
+                    "pinata_secret": "Pinata API Secret (optional)",
                     "sending_timeout": "Timeout for sending data to Robonomics (min)",
                     "user_ipfs_gateway": "Custom IPFS gateway (optional)",
                     "user_ipfs_gateway_auth": "Use controller seed gateway authentication (optional)",
