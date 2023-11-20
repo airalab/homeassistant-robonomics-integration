@@ -108,3 +108,5 @@ WEBSOCKET = "websocket"
 LIBP2P_UNSUB = "libp2p"
 HANDLE_LIBP2P_STATE_CHANGED = "libp2p_state_changed"
 LIBP2P_WS_SERVER = "ws://127.0.0.1:8888"
+
+PEER_ID_LOCAL = "peer_id_local"
