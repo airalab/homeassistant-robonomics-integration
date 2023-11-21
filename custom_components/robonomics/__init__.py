@@ -72,7 +72,6 @@ async def init_integration(hass: HomeAssistant) -> None:
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
-        asyncio.ensure_future(connect_to_websocket(hass))
         hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
             hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
         )
@@ -278,6 +277,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.data[DOMAIN][ROBONOMICS].subscribe()
     await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
+    asyncio.ensure_future(connect_to_websocket(hass))
     if TWIN_ID not in hass.data[DOMAIN]:
         await get_or_create_twin_id(hass)
 
