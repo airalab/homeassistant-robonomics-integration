@@ -9,7 +9,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def connect_to_websocket(hass: HomeAssistant):
     try:
-        async with websockets.connect(LIBP2P_WS_SERVER) as websocket:
+        async with websockets.connect(LIBP2P_WS_SERVER, ping_timeout=None) as websocket:
             _LOGGER.debug(f"Connected to WebSocket server at {LIBP2P_WS_SERVER}")
             await websocket.send("Hello, WebSocket Server!")
             hass.data[DOMAIN][WEBSOCKET] = websocket
@@ -19,7 +19,7 @@ async def connect_to_websocket(hass: HomeAssistant):
                 message = json.loads(response)
                 if "peerId" in message:
                     hass.data[DOMAIN][PEER_ID_LOCAL] = message["peerId"]
-                    return
+                    continue
                 message_entity_id = message["params"]["entity_id"]
                 params = message["params"].copy()
                 del params["entity_id"]

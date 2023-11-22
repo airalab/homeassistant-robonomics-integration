@@ -1,4 +1,4 @@
-"""
+""""
 Entry point for integration.
 """
 from __future__ import annotations
@@ -153,10 +153,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][CONF_PINATA_SECRET] = conf[CONF_PINATA_SECRET]
         hass.data[DOMAIN][PINATA] = PinataPy(hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET])
         _LOGGER.debug("Use Pinata to pin files")
-    else: 
-        hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
-            hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
-        )
+    else:
         hass.data[DOMAIN][PINATA] = None
         _LOGGER.debug("Use local node to pin files")
     data_path = f"{os.path.expanduser('~')}/{DATA_PATH}"
@@ -306,7 +303,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
     await hass.data[DOMAIN][WEBSOCKET].close()
-    # hass.data[DOMAIN][STATE_CHANGE_UNSUB].async_remove()
     hass.data[DOMAIN][LIBP2P_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     await delete_folder_from_local_node(hass, IPFS_CONFIG_PATH)
