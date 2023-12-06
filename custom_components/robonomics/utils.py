@@ -13,14 +13,16 @@ import shutil
 import json
 
 import ipfshttpclient2
-from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
-from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
+from homeassistant.components.persistent_notification import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.json import JSONEncoder
 from homeassistant.helpers.storage import Store
 
+from .const import DOMAIN
+
 _LOGGER = logging.getLogger(__name__)
 VERSION_STORAGE = 6
+SERVICE_PERSISTENT_NOTIFICATION = "create"
 
 async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, str]) -> None:
     """Create HomeAssistant notification.
@@ -28,7 +30,7 @@ async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, st
     :param hass: HomeAssistant instance
     :param service_data: Message for notification
     """
-
+    service_data["notification_id"] =  DOMAIN
     await hass.services.async_call(
         domain=NOTIFY_DOMAIN,
         service=SERVICE_PERSISTENT_NOTIFICATION,

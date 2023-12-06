@@ -103,3 +103,5 @@ GETTING_STATES = "getting_states"
 
 IPFS_STATUS_ENTITY = "ipfs_status"
 IPFS_DAEMON_STATUS_STATE_CHANGE = "ipfs_status_state_change_handler"
+
+WAIT_IPFS_DAEMON = "wait_ipfs_daemon"

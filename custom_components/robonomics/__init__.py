@@ -50,6 +50,7 @@ from .const import (
     IPFS_DAEMON_OK,
     IPFS_STATUS_ENTITY,
     IPFS_DAEMON_STATUS_STATE_CHANGE,
+    WAIT_IPFS_DAEMON,
 )
 from .get_states import get_and_send_data
 from .ipfs import create_folders, wait_ipfs_daemon, delete_folder_from_local_node, handle_ipfs_status_change
@@ -133,6 +134,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][GETTING_STATES_QUEUE] = 0
     hass.data[DOMAIN][GETTING_STATES] = False
     hass.data[DOMAIN][IPFS_DAEMON_OK] = True
+    hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
     sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
     _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
