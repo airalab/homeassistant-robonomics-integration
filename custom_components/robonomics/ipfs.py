@@ -49,8 +49,8 @@ from .const import (
     PINATA,
     PINATA_GATEWAY,
     SECONDS_IN_DAY,
-    IPFS_DAEMON_OK,
     IPFS_STATUS_ENTITY,
+    WAIT_IPFS_DAEMON,
 )
 from .utils import get_hash, to_thread, create_notification
 
@@ -69,13 +69,23 @@ async def handle_ipfs_status_change(hass: HomeAssistant, ipfs_daemon_ok: bool):
         }
         await create_notification(hass, service_data)
         await wait_ipfs_daemon(hass)
+    else:
+        service_data = {
+            "message": f"IPFS Daemon now works well.",
+            "title": "IPFS OK",
+        }
+        await create_notification(hass, service_data)
 
 
 async def wait_ipfs_daemon(hass: HomeAssistant) -> None:
+    if hass.data[DOMAIN][WAIT_IPFS_DAEMON]:
+        return
+    hass.data[DOMAIN][WAIT_IPFS_DAEMON] = True
     _LOGGER.debug("Wait for IPFS local node connection...")
     while not await _check_connection(hass):
         await asyncio.sleep(10)
     hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+    hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
 
 async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
@@ -730,8 +740,8 @@ def _get_from_local_node_by_hash(hass: HomeAssistant, ipfs_hash: str) -> tp.Opti
             res = client.cat(ipfs_hash)
             res_str = res.decode()
             _LOGGER.debug(f"Got data {ipfs_hash} from local gateway")
+            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
             return res_str
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
         _LOGGER.error(f"Exception in getting file from local node by hash: {e}")
@@ -748,6 +758,11 @@ def _check_connection(hass: HomeAssistant) -> bool:
         with ipfshttpclient2.connect() as client:
             test_hash = client.add_str("Test string")
             _LOGGER.debug(f"Added test string to the local node: {test_hash}")
+            time.sleep(0.5)
+            files = [fileinfo["Name"] for fileinfo in client.files.ls("/")["Entries"]]
+            if "test_file" in files:
+                client.files.rm("/test_file")
+                _LOGGER.debug(f"Deleted test string from the local node MFS")
             time.sleep(0.5)
             client.files.cp(f"/ipfs/{test_hash}", "/test_file")
             _LOGGER.debug(f"Added test string to the local node MFS")

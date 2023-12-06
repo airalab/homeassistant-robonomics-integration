@@ -9,6 +9,7 @@ import os
 import shutil
 from datetime import timedelta
 from platform import platform
+import json
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -52,13 +53,14 @@ from .const import (
     IPFS_STATUS_ENTITY,
     IPFS_DAEMON_STATUS_STATE_CHANGE,
     HANDLE_LIBP2P_STATE_CHANGED,
+    WAIT_IPFS_DAEMON,
 )
 from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import create_folders, wait_ipfs_daemon, delete_folder_from_local_node, handle_ipfs_status_change
 from .manage_users import manage_users
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import restore_from_backup_service_call, save_backup_service_call, save_video
-from .libp2p import connect_to_websocket
+from .libp2p import connect_to_websocket, send_message_to_websocket
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -69,6 +71,8 @@ async def init_integration(hass: HomeAssistant) -> None:
 
     try:
         await asyncio.sleep(60)
+        msg = await get_states_libp2p(hass)
+        await send_message_to_websocket(hass, msg)
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
@@ -76,7 +80,7 @@ async def init_integration(hass: HomeAssistant) -> None:
             hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
         )
     except Exception as e:
-        _LOGGER.error(f"Exception in fist check devices {e}")
+        _LOGGER.error(f"Exception in first check devices {e}")
 
     await get_and_send_data(hass)
 
@@ -139,6 +143,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][GETTING_STATES_QUEUE] = 0
     hass.data[DOMAIN][GETTING_STATES] = False
     hass.data[DOMAIN][IPFS_DAEMON_OK] = True
+    hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
     sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
     _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
@@ -204,11 +209,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """
 
         try:
+            if old_state is None or new_state is None:
+                return
             if old_state.state == new_state.state:
                 return
             _LOGGER.info(f"Libp2p-state-changed: Changed entity: {changed_entity}, old state: {old_state}, new state: {new_state}")
             msg = await get_states_libp2p(hass)
-            await hass.data[DOMAIN][WEBSOCKET].send(msg)
+            await send_message_to_websocket(hass, msg)
                 
         except Exception as e:
             _LOGGER.error(f"Exception in libp2p_state_changed: {e}")
