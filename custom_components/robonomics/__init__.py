@@ -69,10 +69,13 @@ async def init_integration(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant instance
     """
 
+    await asyncio.sleep(60)
     try:
-        await asyncio.sleep(60)
         msg = await get_states_libp2p(hass)
         await send_message_to_websocket(hass, msg)
+    except Exception as e:
+        _LOGGER.error(f"Exception in first send libp2p states {e}")
+    try:
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
