@@ -266,11 +266,11 @@ def check_if_hash_in_folder(hass: HomeAssistant, ipfs_hash: str, folder: str) ->
                 return False
             for fileinfo in list_files["Entries"]:
                 stat = client.files.stat(f"{folder}/{fileinfo['Name']}")
+                hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
                 if ipfs_hash == stat["Hash"]:
                     return True
             else:
                 return False
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         _LOGGER.error(f"Exception in check if hash in folder: {e}")
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
@@ -301,10 +301,10 @@ def get_last_file_hash(hass: HomeAssistant, path: str, prefix: str = None) -> (s
                     last_file = files["Entries"][-1]["Name"]
                     last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
                 _LOGGER.debug(f"Last {path} file {last_file}, with hash {last_hash}")
+                hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
                 return last_file, last_hash
             else:
                 return None, None
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         _LOGGER.error(f"Exception in get_last_file_hash: {e}")
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")

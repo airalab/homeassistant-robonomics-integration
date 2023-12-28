@@ -69,7 +69,7 @@ async def init_integration(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant instance
     """
 
-    await asyncio.sleep(60)
+    await asyncio.sleep(20)
     try:
         msg = await get_states_libp2p(hass)
         await send_message_to_websocket(hass, msg)

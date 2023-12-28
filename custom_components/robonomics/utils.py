@@ -233,6 +233,7 @@ async def async_save_to_store(hass, key, data) -> bool:
     If the data has not changed this will generate one executor job
     """
     current = await async_load_from_store(hass, key)
+    _LOGGER.debug(f"Content to store in {key}: {data}. Current content: {current}")
     if current is None or current != data:
         await _get_store_for_key(hass, key).async_save(data)
         return

@@ -1,6 +1,7 @@
 """This module contain methods to communicate with Robonomics blockchain"""
 
 import asyncio
+from hmac import new
 import json
 import logging
 import time
@@ -11,7 +12,7 @@ from threading import Thread
 import substrateinterface as substrate
 from aenum import extend_enum
 from homeassistant.core import HomeAssistant, callback
-from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, Launch
+from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, Launch, ServiceFunctions
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
 from substrateinterface.exceptions import SubstrateRequestException
@@ -637,9 +638,13 @@ class Robonomics:
             elif type(data[1]) == int and data[0] in self.devices_list:  ## Datalog to change password
                 self.hass.async_create_task(change_password(self.hass, data))
             elif type(data[1]) == list and data[0] == self.sub_owner_address:  ## New Device in subscription
+                self.update_devices_list(data[1])
                 self.hass.async_create_task(manage_users(self.hass, data))
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
+
+    def update_devices_list(self, new_devices_list: list) -> None:
+        self.devices_list = new_devices_list.copy()
 
     @to_thread
     def send_datalog(self, data: str, seed: str, subscription: bool) -> str:
@@ -723,6 +728,14 @@ class Robonomics:
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
+
+
+    def get_identity_display_name(self, address: str) -> tp.Optional[str]:
+        service_functions = ServiceFunctions(Account())
+        identity = service_functions.chainstate_query("Identity", "IdentityOf", address)
+        if identity is not None:
+            key = list(identity['info']['display'].keys())[0]
+            return identity['info']['display'][key]
 
     @to_thread
     def get_last_digital_twin(self, account: str = None) -> tp.Optional[int]:
