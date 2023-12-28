@@ -30,7 +30,6 @@ PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 
 ROBONOMICS_WSS = [
     "wss://kusama.rpc.robonomics.network/",
-    "wss://robonomics.leemo.me/",
     "wss://robonomics.0xsamsara.com/"
 ]
 
@@ -105,3 +104,4 @@ IPFS_STATUS_ENTITY = "ipfs_status"
 IPFS_DAEMON_STATUS_STATE_CHANGE = "ipfs_status_state_change_handler"
 
 WAIT_IPFS_DAEMON = "wait_ipfs_daemon"
+STORE_USERS = "users"

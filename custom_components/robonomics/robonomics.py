@@ -11,7 +11,7 @@ from threading import Thread
 import substrateinterface as substrate
 from aenum import extend_enum
 from homeassistant.core import HomeAssistant, callback
-from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, Launch
+from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, ServiceFunctions
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
 from substrateinterface.exceptions import SubstrateRequestException
@@ -723,6 +723,13 @@ class Robonomics:
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
+
+    def get_identity_display_name(self, address: str) -> tp.Optional[str]:
+        service_functions = ServiceFunctions(Account())
+        identity = service_functions.chainstate_query("Identity", "IdentityOf", address)
+        if identity is not None:
+            key = list(identity['info']['display'].keys())[0]
+            return identity['info']['display'][key]
 
     @to_thread
     def get_last_digital_twin(self, account: str = None) -> tp.Optional[int]:
