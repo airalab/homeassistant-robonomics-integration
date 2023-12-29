@@ -30,7 +30,6 @@ PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 
 ROBONOMICS_WSS = [
     "wss://kusama.rpc.robonomics.network/",
-    "wss://robonomics.leemo.me/",
     "wss://robonomics.0xsamsara.com/"
 ]
 
@@ -56,6 +55,7 @@ CONFIG_ENCRYPTED_PREFIX = "config_encrypted"
 BACKUP_PREFIX = "backup-"
 BACKUP_ENCRYPTED_PREFIX = "backup_encrypted"
 TWIN_ID = "twin_id"
+IPFS_DAEMON_OK = "ipfs_daemon_ok"
 
 Z2M_CONFIG_NAME = "z2m_data.zip"
 Z2M_BACKUP_TOPIC_REQUEST = "zigbee2mqtt/bridge/request/backup"
@@ -100,7 +100,8 @@ MEDIA_ACC = "4CC7GkKuJJzFzswqz39m5qWbgXaQks9f36jCgsadpN2c1hnh"
 GETTING_STATES_QUEUE = "getting_states_queue"
 GETTING_STATES = "getting_states"
 
-PROBLEM_SERVICE_ROBONOMICS_ADDRESS = "4HifM6Cny7bHAdLb5jw3hHV2KabuzRZV8gmHG1eh4PxJakwi"
-LOG_FILE_NAME = "home-assistant.log"
-TRACES_FILE_NAME = ".storage/trace.saved_traces"
-IPFS_PROBLEM_REPORT_FOLDER = "/ha_problem_report"
+IPFS_STATUS_ENTITY = "ipfs_status"
+IPFS_DAEMON_STATUS_STATE_CHANGE = "ipfs_status_state_change_handler"
+
+WAIT_IPFS_DAEMON = "wait_ipfs_daemon"
+STORE_USERS = "users"

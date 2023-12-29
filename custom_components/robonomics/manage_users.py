@@ -18,8 +18,8 @@ from homeassistant.core import HomeAssistant
 from robonomicsinterface import Account
 from substrateinterface import Keypair, KeypairType
 
-from .const import CONF_ADMIN_SEED, CONF_SUB_OWNER_ADDRESS, DOMAIN, ROBONOMICS
-from .utils import decrypt_message
+from .const import CONF_ADMIN_SEED, CONF_SUB_OWNER_ADDRESS, DOMAIN, ROBONOMICS, STORE_USERS
+from .utils import decrypt_message, to_thread, async_load_from_store, async_save_to_store
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,7 +43,9 @@ async def manage_users(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
     provider = await _get_provider(hass)
     users = provider.data.users
     _LOGGER.debug(f"Begining users: {users}")
-    usernames_hass = [user["username"] for user in users if len(user["username"]) == 48 and user["username"][0] == "4"]
+    old_users = await async_load_from_store(hass, STORE_USERS)
+    if old_users is None:
+        old_users = {}
     devices = data[1]
     if devices is None:
         devices = []
@@ -55,33 +57,30 @@ async def manage_users(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
             devices.remove(hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS])
     except Exception as e:
         _LOGGER.error(f"Exception in deleting sub admin and sub owner from devices: {e}")
-    hass.data[DOMAIN][ROBONOMICS].devices_list = devices.copy()
-    devices = [device.lower() for device in devices]
-    users_to_add = list(set(devices) - set(usernames_hass))
-    _LOGGER.debug(f"New users: {users_to_add}")
-    users_to_delete = list(set(usernames_hass) - set(devices))
+    users_to_add = list(set(devices) - set(old_users.keys()))
+    _LOGGER.debug(f"New users: {users_to_add}, devices: {devices}, old users: {set(old_users.keys())}")
+    users_to_delete = list(set(old_users.keys()) - set(devices))
     _LOGGER.debug(f"Following users will be deleted: {users_to_delete}")
     rec_kp = Keypair.create_from_mnemonic(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
     created_users = 0
-    for user in users_to_add:
-        for device in hass.data[DOMAIN][ROBONOMICS].devices_list:
-            if device.lower() == user:
-                sender_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
-                encrypted_password = await hass.data[DOMAIN][ROBONOMICS].find_password(device)
-                if encrypted_password != None:
-                    try:
-                        password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
-                        password = password[2:-1]
-                        await _create_user(hass, provider, user, password)
-                        created_users += 1
-                        break
-                    except Exception as e:
-                        _LOGGER.warning(f"Can't decrypt password for {device}")
-                else:
-                    _LOGGER.debug(f"Password for user {user} wasn't found")
+    for user_address in users_to_add:
+        sender_kp = Keypair(ss58_address=user_address, crypto_type=KeypairType.ED25519)
+        encrypted_password = await hass.data[DOMAIN][ROBONOMICS].find_password(user_address)
+        if encrypted_password != None:
+            try:
+                password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
+                password = password[2:-1]
+                await _delete_user_for_address_if_exists(hass, provider, user_address)
+                await _create_user_for_address(hass, provider, user_address, password)
+                created_users += 1
+                break
+            except Exception as e:
+                _LOGGER.warning(f"Can't decrypt password for {user_address}")
+        else:
+            _LOGGER.debug(f"Password for user {user_address} wasn't found")
 
-    for user in users_to_delete:
-        await _delete_user(hass, provider, user)
+    for user_address in users_to_delete:
+        await _delete_user_for_address_if_exists(hass, provider, user_address)
 
     if len(users_to_delete) > 0 or created_users > 0:
         await provider.data.async_save()
@@ -127,12 +126,8 @@ async def change_password(hass: HomeAssistant, data: tp.Tuple[tp.Union[str, tp.L
             _LOGGER.error(f"Exception in change password decrypt: {e}")
             return
         try:
-            username = data[0].lower()
-            users = await hass.auth.async_get_users()
-            for user in users:
-                if user.name == username:
-                    await _delete_user(hass, provider, username)
-            await _create_user(hass, provider, username, password)
+            await _delete_user_for_address_if_exists(hass, provider, data[0])
+            await _create_user_for_address(hass, provider, data[0], password)
 
         except Exception as e:
             _LOGGER.error(f"Exception in change password: {e}")
@@ -142,6 +137,43 @@ async def change_password(hass: HomeAssistant, data: tp.Tuple[tp.Union[str, tp.L
         await hass.services.async_call("homeassistant", "restart")
     else:
         _LOGGER.warning(f"Message for setting password for {data[0]} is in wrong format")
+
+async def _create_user_for_address(hass: HomeAssistant, provider, address: str, password: str):
+    _LOGGER.debug(f"Start creating user for address {address}")
+    username = await _get_username(hass, address)
+    _LOGGER.debug(f"The username for address {address} is {username}")
+    if await _create_user(hass, provider, username, password):
+        _LOGGER.debug(f"Start saving to store user {username}")
+        storage_data = await async_load_from_store(hass, STORE_USERS)
+        if storage_data is None:
+            storage_data = {}
+        storage_data[address] = username
+        await async_save_to_store(hass, STORE_USERS, storage_data)
+
+async def _get_old_username(hass: HomeAssistant, address: str) -> tp.Optional[str]:
+    storage_data = await async_load_from_store(hass, STORE_USERS)
+    return storage_data.get(address)
+
+async def _delete_user_for_address_if_exists(hass: HomeAssistant, provider, address: str):
+    users = await hass.auth.async_get_users()
+    old_username = await _get_old_username(hass, address)
+    if old_username is None:
+        old_username = address.lower()
+    for user in users:
+        if user.name == old_username:
+            await _delete_user(hass, provider, old_username)
+    storage_data = await async_load_from_store(hass, STORE_USERS)
+    storage_data.pop(address, None)
+    await async_save_to_store(hass, STORE_USERS, storage_data)
+
+@to_thread
+def _get_username(hass: HomeAssistant, address: str) -> str:
+    identity_name = hass.data[DOMAIN][ROBONOMICS].get_identity_display_name(address)
+    if identity_name is not None:
+        username = identity_name
+    else:
+        username = address
+    return username.lower()
 
 
 async def _get_provider(hass: HomeAssistant) -> AuthProvider:
@@ -158,7 +190,7 @@ async def _get_provider(hass: HomeAssistant) -> AuthProvider:
     return provider
 
 
-async def _create_user(hass: HomeAssistant, provider, username: str, password: str) -> None:
+async def _create_user(hass: HomeAssistant, provider, username: str, password: str) -> bool:
     """Create user in Home Assistant
 
     :param hass: Home Assistant instance
@@ -175,8 +207,10 @@ async def _create_user(hass: HomeAssistant, provider, username: str, password: s
         await provider.data.async_save()
         await hass.auth.async_link_user(created_user, credentials)
         _LOGGER.debug(f"User was created: {username}, password: {password}")
+        return True
     except Exception as e:
         _LOGGER.error(f"Exception in create user: {e}")
+        return False
 
 
 async def _delete_user(hass: HomeAssistant, provider, username: str) -> None:

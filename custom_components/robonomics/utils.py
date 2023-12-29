@@ -1,11 +1,7 @@
 from substrateinterface import Keypair, KeypairType
 from robonomicsinterface import Account
-from typing import Union
-import random, string
 import functools
-import typing as tp
 import asyncio
-import functools
 import logging
 import os
 import random
@@ -13,18 +9,20 @@ import string
 import tempfile
 import time
 import typing as tp
-from typing import Union
 import shutil
-
-import ipfshttpclient2
-from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
-from homeassistant.components.notify.const import SERVICE_PERSISTENT_NOTIFICATION
-from homeassistant.core import HomeAssistant
-import time
 import json
 
-_LOGGER = logging.getLogger(__name__)
+import ipfshttpclient2
+from homeassistant.components.persistent_notification import DOMAIN as NOTIFY_DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.json import JSONEncoder
+from homeassistant.helpers.storage import Store
 
+from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
+VERSION_STORAGE = 6
+SERVICE_PERSISTENT_NOTIFICATION = "create"
 
 async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, str]) -> None:
     """Create HomeAssistant notification.
@@ -32,7 +30,7 @@ async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, st
     :param hass: HomeAssistant instance
     :param service_data: Message for notification
     """
-
+    service_data["notification_id"] =  DOMAIN
     await hass.services.async_call(
         domain=NOTIFY_DOMAIN,
         service=SERVICE_PERSISTENT_NOTIFICATION,
@@ -40,7 +38,7 @@ async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, st
     )
 
 
-def encrypt_message(message: Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
+def encrypt_message(message: tp.Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
     """Encrypt message with sender private key and recipient public key
 
     :param message: Message to encrypt
@@ -124,11 +122,6 @@ def decrypt_message_devices(data: str, sender_public_key: bytes, recipient_keypa
         _LOGGER.error(f"Exception in decrypt for devices: {e}")
 
 
-
-def str2bool(v):
-    return v.lower() in ("on", "true", "t", "1", "y", "yes", "yeah")
-
-
 def generate_pass(length: int) -> str:
     """Generate random low letter string with the given length
 
@@ -167,18 +160,6 @@ def get_hash(filename: str) -> tp.Optional[str]:
     return ipfs_hash_local
 
 
-def create_encrypted_picture(data: bytes, number_of_picture: int, dirname: str, sender_seed: tp.Optional[str] = None, receiver_address: tp.Optional[str] = None) -> str:
-    sender_acc = Account(seed=sender_seed, crypto_type=KeypairType.ED25519)
-    sender_kp = sender_acc.keypair
-    receiver_kp = Keypair(ss58_address=receiver_address, crypto_type=KeypairType.ED25519)
-    encrypted_data = encrypt_message(data, sender_kp, receiver_kp.public_key)
-    picture_path = f"{dirname}/picture{number_of_picture}"
-    with open(picture_path, "w") as f:
-        f.write(encrypted_data)
-    _LOGGER.debug(f"Created encrypted picture: {picture_path}")
-    return picture_path
-
-
 def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, filename: str = None) -> str:
     """
     Create file and store data in it
@@ -213,39 +194,6 @@ def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, fi
     return filepath
 
 
-def create_temp_dir_and_copy_files(dirname: str, files: tp.List[str], sender_seed: tp.Optional[str] = None, receiver_address: tp.Optional[str] = None) -> str:
-    """
-    Create directory in tepmoral directory and copy there files
-
-    :param dirname: the name of the directory to create
-    :param files: list of file pathes to copy
-
-    :return: path to the created directory    
-    """
-    try:
-        temp_dirname = tempfile.gettempdir()
-        dirpath = f"{temp_dirname}/{dirname}"
-        if os.path.exists(dirpath):
-            dirpath += str(random.randint(1, 100))
-        os.mkdir(dirpath)
-        for filepath in files:
-            filename = filepath.split("/")[-1]
-            if sender_seed and receiver_address:
-                with open(filepath, "r") as f:
-                    data = f.read()
-                sender_acc = Account(seed=sender_seed, crypto_type=KeypairType.ED25519)
-                sender_kp = sender_acc.keypair
-                receiver_kp = Keypair(ss58_address=receiver_address, crypto_type=KeypairType.ED25519)
-                encrypted_data = encrypt_message(data, sender_kp, receiver_kp.public_key)
-                with open(f"{dirpath}/{filename}", "w") as f:
-                    f.write(encrypted_data)
-            else:
-                shutil.copyfile(filepath, f"{dirpath}/{filename}")
-        return dirpath
-    except Exception as e:
-        _LOGGER.error(f"Exception in create temp dir: {e}")
-
-
 def delete_temp_dir(dirpath: str) -> None:
     """
     Delete temporary directory
@@ -262,3 +210,30 @@ def delete_temp_file(filename: str) -> None:
     :param filename: the name of the file to delete
     """
     os.remove(filename)
+
+
+def _get_store_for_key(hass: HomeAssistant, key: str):
+    """Create a Store object for the key."""
+    return Store(hass, VERSION_STORAGE, f"robonomics.{key}", encoder=JSONEncoder, atomic_writes=True)
+
+
+async def async_load_from_store(hass, key):
+    """Load the retained data from store and return de-serialized data."""
+    return await _get_store_for_key(hass, key).async_load() or {}
+
+
+async def async_save_to_store(hass, key, data) -> bool:
+    """Generate dynamic data to store and save it to the filesystem.
+
+    The data is only written if the content on the disk has changed
+    by reading the existing content and comparing it.
+
+    If the data has changed this will generate two executor jobs
+
+    If the data has not changed this will generate one executor job
+    """
+    current = await async_load_from_store(hass, key)
+    if current is None or current != data:
+        await _get_store_for_key(hass, key).async_save(data)
+        return
+    _LOGGER.debug(f"Content in .storage/robonomics.{key} was't changed")
