@@ -70,12 +70,13 @@ async def manage_users(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
             try:
                 password = str(decrypt_message(encrypted_password, sender_kp.public_key, rec_kp))
                 password = password[2:-1]
-                await _delete_user_for_address_if_exists(hass, provider, user_address)
-                await _create_user_for_address(hass, provider, user_address, password)
-                created_users += 1
-                break
             except Exception as e:
                 _LOGGER.warning(f"Can't decrypt password for {user_address}")
+                continue
+            await _delete_user_for_address_if_exists(hass, provider, user_address)
+            await _create_user_for_address(hass, provider, user_address, password)
+            created_users += 1
+            break
         else:
             _LOGGER.debug(f"Password for user {user_address} wasn't found")
 
@@ -155,16 +156,20 @@ async def _get_old_username(hass: HomeAssistant, address: str) -> tp.Optional[st
     return storage_data.get(address)
 
 async def _delete_user_for_address_if_exists(hass: HomeAssistant, provider, address: str):
-    users = await hass.auth.async_get_users()
-    old_username = await _get_old_username(hass, address)
-    if old_username is None:
-        old_username = address.lower()
-    for user in users:
-        if user.name == old_username:
-            await _delete_user(hass, provider, old_username)
-    storage_data = await async_load_from_store(hass, STORE_USERS)
-    storage_data.pop(address, None)
-    await async_save_to_store(hass, STORE_USERS, storage_data)
+    try:
+        _LOGGER.debug(f"Start deleting user for address {address}")
+        users = await hass.auth.async_get_users()
+        old_username = await _get_old_username(hass, address)
+        if old_username is None:
+            old_username = address.lower()
+        for user in users:
+            if user.name == old_username:
+                await _delete_user(hass, provider, old_username)
+        storage_data = await async_load_from_store(hass, STORE_USERS)
+        storage_data.pop(address, None)
+        await async_save_to_store(hass, STORE_USERS, storage_data)
+    except Exception as e:
+        _LOGGER.error(f"Exception in delete user for address: {e}")
 
 @to_thread
 def _get_username(hass: HomeAssistant, address: str) -> str:
