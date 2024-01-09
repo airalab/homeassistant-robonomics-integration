@@ -229,8 +229,11 @@ def create_folders(hass: HomeAssistant) -> None:
     """Function creates IPFS folders to store Robonomics telemetry, configuration and backup files"""
     try:
         with ipfshttpclient2.connect() as client:
-            folders = client.files.ls("/")
-            folder_names = [folder_info['Name'] for folder_info in folders['Entries']]
+            folders = client.files.ls("/")['Entries']
+            if folders is not None:
+                folder_names = [folder_info['Name'] for folder_info in folders]
+            else:
+                folder_names = []
             _LOGGER.debug(f"IPFS folders: {folder_names}")
             if IPFS_MEDIA_PATH[1:] not in folder_names:
                 client.files.mkdir(IPFS_MEDIA_PATH)
