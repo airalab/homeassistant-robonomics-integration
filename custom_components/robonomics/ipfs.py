@@ -740,8 +740,8 @@ def _get_from_local_node_by_hash(hass: HomeAssistant, ipfs_hash: str) -> tp.Opti
             res = client.cat(ipfs_hash)
             res_str = res.decode()
             _LOGGER.debug(f"Got data {ipfs_hash} from local gateway")
+            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
             return res_str
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
         _LOGGER.error(f"Exception in getting file from local node by hash: {e}")
@@ -759,10 +759,12 @@ def _check_connection(hass: HomeAssistant) -> bool:
             test_hash = client.add_str("Test string")
             _LOGGER.debug(f"Added test string to the local node: {test_hash}")
             time.sleep(0.5)
-            files = [fileinfo["Name"] for fileinfo in client.files.ls("/")["Entries"]]
-            if "test_file" in files:
-                client.files.rm("/test_file")
-                _LOGGER.debug(f"Deleted test string from the local node MFS")
+            files_info = client.files.ls("/")["Entries"]
+            if files_info is not None:
+                files = [fileinfo["Name"] for fileinfo in files_info]
+                if "test_file" in files:
+                    client.files.rm("/test_file")
+                    _LOGGER.debug(f"Deleted test string from the local node MFS")
             time.sleep(0.5)
             client.files.cp(f"/ipfs/{test_hash}", "/test_file")
             _LOGGER.debug(f"Added test string to the local node MFS")
