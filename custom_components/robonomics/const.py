@@ -29,6 +29,8 @@ PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 
 ROBONOMICS_WSS = [
     "wss://kusama.rpc.robonomics.network/",
+    "wss://robonomics.leemo.me/",
+    "wss://robonomics.api.onfinality.io/public-ws/",
     "wss://robonomics.0xsamsara.com/"
 ]
 
@@ -107,9 +109,10 @@ LIBP2P_UNSUB = "libp2p"
 HANDLE_LIBP2P_STATE_CHANGED = "libp2p_state_changed"
 LIBP2P_WS_SERVER = "ws://127.0.0.1:8888"
 LIBP2P_LISTEN_PROTOCOL = "/call"
-LIBP2P_SEND_PROTOCOL = "/update"
+LIBP2P_SEND_STATES_PROTOCOL = "/update"
 
 PEER_ID_LOCAL = "peer_id_local"
 WAIT_IPFS_DAEMON = "wait_ipfs_daemon"
 
 STORE_USERS = "users"
+LIBP2P = "libp2p"

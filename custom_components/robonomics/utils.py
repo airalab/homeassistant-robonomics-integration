@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import string
+import socket
 import tempfile
 import time
 import typing as tp
@@ -15,6 +16,7 @@ import json
 import ipfshttpclient2
 from homeassistant.components.persistent_notification import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.json import JSONEncoder
 from homeassistant.helpers.storage import Store
 
@@ -221,6 +223,10 @@ async def async_load_from_store(hass, key):
     """Load the retained data from store and return de-serialized data."""
     return await _get_store_for_key(hass, key).async_load() or {}
 
+async def async_remove_store(hass: HomeAssistant, key: str):
+    """Remove data from store for given key"""
+    await _get_store_for_key(hass, key).async_remove()
+
 
 async def async_save_to_store(hass, key, data) -> bool:
     """Generate dynamic data to store and save it to the filesystem.
@@ -233,8 +239,41 @@ async def async_save_to_store(hass, key, data) -> bool:
     If the data has not changed this will generate one executor job
     """
     current = await async_load_from_store(hass, key)
-    _LOGGER.debug(f"Content to store in {key}: {data}. Current content: {current}")
     if current is None or current != data:
         await _get_store_for_key(hass, key).async_save(data)
         return
     _LOGGER.debug(f"Content in .storage/robonomics.{key} was't changed")
+
+async def add_or_change_store(
+    hass: HomeAssistant, store_key: str, data_key: str, data_value: str
+) -> None:
+    current_data = await async_load_from_store(hass, store_key)
+    if current_data is None:
+        current_data = {}
+    current_data[data_key] = data_value
+    await async_save_to_store(hass, store_key, current_data)
+
+
+async def remove_from_store(hass: HomeAssistant, store_key: str, data_key: str) -> None:
+    current_data = await async_load_from_store(hass, store_key)
+    if current_data is not None:
+        if current_data.pop(data_key, None):
+            await async_save_to_store(hass, store_key, current_data)
+
+async def async_post_request(hass: HomeAssistant, url: str, headers: dict, data: str) -> tp.Optional[dict]:
+    _LOGGER.debug(f"Request to {url} with data: {data}")
+    websession = async_create_clientsession(hass)  
+    resp = await websession.post(url, headers=headers, data=data)
+    if resp.status == 200:
+        return await resp.json()
+    else:
+        _LOGGER.error(f"Post request faild with response {resp.status}")
+
+def get_ip_address():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 1))
+        ip_address = s.getsockname()[0]
+        return ip_address
+    except socket.error:
+        return None

@@ -208,12 +208,6 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                         card["image"] = ipfs_hash_media
                         if not await check_if_hash_in_folder(hass, ipfs_hash_media, IPFS_MEDIA_PATH):
                             await add_media_to_ipfs(hass, filename)
-    try:
-        dashboard = hass.data[LOVELACE_DOMAIN]["dashboards"].get(None)
-        config_dashboard = await dashboard.async_load(False)
-    except Exception as e:
-        _LOGGER.warning(f"Exception in get dashboard: {e}")
-        config_dashboard = None
     peer_id = hass.data[DOMAIN].get(PEER_ID_LOCAL, "")
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)

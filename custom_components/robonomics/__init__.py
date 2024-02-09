@@ -10,6 +10,7 @@ import shutil
 from datetime import timedelta
 from platform import platform
 import json
+import random
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -54,13 +55,14 @@ from .const import (
     IPFS_DAEMON_STATUS_STATE_CHANGE,
     HANDLE_LIBP2P_STATE_CHANGED,
     WAIT_IPFS_DAEMON,
+    LIBP2P,
 )
 from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import create_folders, wait_ipfs_daemon, delete_folder_from_local_node, handle_ipfs_status_change
-from .manage_users import manage_users
+from .manage_users import UserManager
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import restore_from_backup_service_call, save_backup_service_call, save_video
-from .libp2p import connect_to_websocket, send_message_to_websocket
+from .libp2p import LibP2P
 
 
 async def init_integration(hass: HomeAssistant) -> None:
@@ -69,16 +71,16 @@ async def init_integration(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant instance
     """
 
-    await asyncio.sleep(20)
+    await asyncio.sleep(60)
     try:
         msg = await get_states_libp2p(hass)
-        await send_message_to_websocket(hass, msg)
+        await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
     except Exception as e:
         _LOGGER.error(f"Exception in first send libp2p states {e}")
     try:
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
-        hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
+        hass.async_create_task(UserManager(hass).update_users(start_devices_list))
         hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
             hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
         )
@@ -217,10 +219,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return
             if old_state.state == new_state.state:
                 return
-            _LOGGER.info(f"Libp2p-state-changed: Changed entity: {changed_entity}, old state: {old_state}, new state: {new_state}")
+            # _LOGGER.info(f"Libp2p-state-changed: Changed entity: {changed_entity}, old state: {old_state}, new state: {new_state}")
             msg = await get_states_libp2p(hass)
-            await send_message_to_websocket(hass, msg)
-                
+            await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
         except Exception as e:
             _LOGGER.error(f"Exception in libp2p_state_changed: {e}")
     
@@ -285,7 +286,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.data[DOMAIN][ROBONOMICS].subscribe()
     await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
-    asyncio.ensure_future(connect_to_websocket(hass))
+    hass.data[DOMAIN][LIBP2P] = LibP2P(hass)
+    await hass.data[DOMAIN][LIBP2P].connect_to_websocket()
     if TWIN_ID not in hass.data[DOMAIN]:
         await get_or_create_twin_id(hass)
 
@@ -313,7 +315,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
-    await hass.data[DOMAIN][WEBSOCKET].close()
+    await hass.data[DOMAIN][LIBP2P].close_connection()
     hass.data[DOMAIN][LIBP2P_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     await delete_folder_from_local_node(hass, IPFS_CONFIG_PATH)

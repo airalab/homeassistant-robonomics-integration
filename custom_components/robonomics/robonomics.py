@@ -1,7 +1,6 @@
 """This module contain methods to communicate with Robonomics blockchain"""
 
 import asyncio
-from hmac import new
 import json
 import logging
 import time
@@ -12,7 +11,7 @@ from threading import Thread
 import substrateinterface as substrate
 from aenum import extend_enum
 from homeassistant.core import HomeAssistant, callback
-from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, Launch, ServiceFunctions
+from robonomicsinterface import RWS, Account, Datalog, DigitalTwin, SubEvent, Subscriber, Launch
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
 from substrateinterface.exceptions import SubstrateRequestException
@@ -34,8 +33,8 @@ from .const import (
 )
 from .get_states import get_and_send_data
 from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file
-from .manage_users import change_password, manage_users
-from .utils import create_notification, decrypt_message, to_thread, decrypt_message_devices
+from .manage_users import UserManager
+from .utils import create_notification, decrypt_message, to_thread, decrypt_message_devices, encrypt_message
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -166,7 +165,7 @@ async def _handle_launch(hass: HomeAssistant, data: tp.Tuple[str]) -> None:
         )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
         _LOGGER.debug(f"Result: {result}")
         _run_launch_command(hass, result, data[0])
-        #await get_and_send_data(hass)
+        await get_and_send_data(hass)
     except Exception as e:
         _LOGGER.error(f"Exception in launch handler command: {e}")
         return
@@ -219,6 +218,26 @@ class Robonomics:
             pass
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
+
+    def encrypt_message(self, data: str, recepient_address: str = None) -> str:
+        if recepient_address is None:
+            recepient_address = self.controller_address
+        recepient_public_key = Keypair(
+            ss58_address=recepient_address, crypto_type=KeypairType.ED25519
+        ).public_key
+        return encrypt_message(
+            data, self.controller_account.keypair, recepient_public_key
+        )
+
+    def decrypt_message(self, encrypted_data: str, sender_address: str = None) -> str:
+        if sender_address is None:
+            sender_address = self.controller_address
+        sender_public_key = Keypair(
+            ss58_address=sender_address, crypto_type=KeypairType.ED25519
+        ).public_key
+        return decrypt_message(
+            encrypted_data, sender_public_key, self.controller_account.keypair
+        ).decode()
 
     def _change_current_wss(self) -> None:
         """Set next current wss"""
@@ -519,11 +538,11 @@ class Robonomics:
 
     @to_thread
     def find_password(self, address: str) -> tp.Optional[str]:
-        """Look for encrypted password in the datalog of the given account
+        """Look for encrypted password in the datalog of the given account and decrypt it
 
         :param address: The address of the account
 
-        :return: Encrypted password or None if password wasn't found
+        :return: Decrypted password or None if password wasn't found
         """
 
         _LOGGER.debug(f"Start look for password for {address}")
@@ -543,7 +562,8 @@ class Robonomics:
             data = json.loads(last_datalog)
             if "admin" in data:
                 if data["subscription"] == self.sub_owner_address and data["ha"] == self.controller_address:
-                    return data["admin"]
+                    password = self.decrypt_message(data["admin"], address)
+                    return password
         except:
             pass
         for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))):
@@ -570,7 +590,8 @@ class Robonomics:
                 data = json.loads(datalog_data)
                 if "admin" in data:
                     if data["subscription"] == self.sub_owner_address and data["ha"] == self.controller_address:
-                        return data["admin"]
+                        password = self.decrypt_message(data["admin"], address)
+                        return password
             except Exception as e:
                 # _LOGGER.error(f"Exception in find password {e}")
                 continue
@@ -636,15 +657,11 @@ class Robonomics:
                     ):  ## Change backup topic in Digital Twin
                         self.hass.async_create_task(_handle_backup_change(self.hass))
             elif type(data[1]) == int and data[0] in self.devices_list:  ## Datalog to change password
-                self.hass.async_create_task(change_password(self.hass, data))
+                self.hass.async_create_task(UserManager(self.hass).create_or_update_user(data))
             elif type(data[1]) == list and data[0] == self.sub_owner_address:  ## New Device in subscription
-                self.update_devices_list(data[1])
-                self.hass.async_create_task(manage_users(self.hass, data))
+                self.hass.async_create_task(UserManager(self.hass).update_users(data[1]))
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
-
-    def update_devices_list(self, new_devices_list: list) -> None:
-        self.devices_list = new_devices_list.copy()
 
     @to_thread
     def send_datalog(self, data: str, seed: str, subscription: bool) -> str:
@@ -728,14 +745,6 @@ class Robonomics:
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
-
-
-    def get_identity_display_name(self, address: str) -> tp.Optional[str]:
-        service_functions = ServiceFunctions(Account())
-        identity = service_functions.chainstate_query("Identity", "IdentityOf", address)
-        if identity is not None:
-            key = list(identity['info']['display'].keys())[0]
-            return identity['info']['display'][key]
 
     @to_thread
     def get_last_digital_twin(self, account: str = None) -> tp.Optional[int]:
