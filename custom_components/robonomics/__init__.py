@@ -1,24 +1,25 @@
-"""
+""""
 Entry point for integration.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import shutil
 from datetime import timedelta
 from platform import platform
+import json
+import random
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_filtered, TrackStates, async_track_state_change
+from homeassistant.const import MATCH_ALL
+from homeassistant.helpers.event import async_track_time_interval, async_track_state_change
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
 from robonomicsinterface import Account
 from substrateinterface import KeypairType
-from homeassistant.components.switch.const import DOMAIN as SWITCH_DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ from .const import (
 )
 from .get_states import get_and_send_data
 from .ipfs import create_folders, wait_ipfs_daemon, delete_folder_from_local_node, handle_ipfs_status_change
-from .manage_users import manage_users
+from .manage_users import UserManager
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import restore_from_backup_service_call, save_backup_service_call, save_video
 
@@ -65,13 +66,13 @@ async def init_integration(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant instance
     """
 
+    await asyncio.sleep(60)
     try:
-        await asyncio.sleep(60)
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
-        hass.async_create_task(manage_users(hass, ("0", start_devices_list)))
+        hass.async_create_task(UserManager(hass).update_users(start_devices_list))
     except Exception as e:
-        _LOGGER.error(f"Exception in fist check devices {e}")
+        _LOGGER.error(f"Exception in first check devices {e}")
 
     await get_and_send_data(hass)
 
@@ -137,8 +138,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
     sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
-    _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
-    _LOGGER.debug(f"sub owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
+    _LOGGER.debug(f"Controller: {sub_admin_acc.get_address()}")
+    _LOGGER.debug(f"Owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
     hass.data[DOMAIN][ROBONOMICS]: Robonomics = Robonomics(
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
@@ -240,6 +241,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await get_or_create_twin_id(hass)
         await save_video(hass, target, path, duration, sub_admin_acc)
 
+
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
     hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
     hass.services.async_register(DOMAIN, RESTORE_BACKUP_SERVICE, handle_restore_from_backup)
@@ -258,6 +260,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
 
+    # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True
 
@@ -289,4 +292,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     _LOGGER.debug(f"Robonomics integration was unloaded")
     return True
-            

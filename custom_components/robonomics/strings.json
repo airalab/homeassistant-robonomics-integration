@@ -5,8 +5,8 @@
         "data": {
           "admin_seed_secret": "Robonomics admin account seed",
           "sub_owner_address": "Robonomics subscription owner address",
-          "pinata_pub": "Pinata public key",
-          "pinata_secret": "Pinata secret",
+          "pinata_pub": "Pinata API Key",
+          "pinata_secret": "Pinata API Secret",
           "sending_timeout": "Timeout for sending data to Robonomics (min)"
         },
         "description": "Add your Robonomics accounts seed phrases. You can also add credentials for your Pinata account, without it data files will be pinned to IPFS only from your local node."
