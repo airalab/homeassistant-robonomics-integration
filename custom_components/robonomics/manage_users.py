@@ -76,6 +76,7 @@ class UserManager:
 
     async def _create_users(self, users_list: tp.List) -> int:
         created_users = 0
+        _LOGGER.debug(f"Start creating users: {users_list}")
         for user_address in users_list:
             password = await self.hass.data[DOMAIN][ROBONOMICS].find_password(
                 user_address
@@ -84,7 +85,6 @@ class UserManager:
                 await self._delete_user_for_address_if_exists(user_address)
                 await self._create_user_for_address(user_address, password)
                 created_users += 1
-                break
             else:
                 _LOGGER.debug(f"Password for user {user_address} wasn't found")
         return created_users
