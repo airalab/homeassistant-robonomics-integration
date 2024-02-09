@@ -24,8 +24,8 @@
             },
             "conf": {
                 "data": {
-                    "pinata_pub": "Публичный ключ от Pinata (необязательно)",
-                    "pinata_secret": "Приватный ключ от Pinata (необязательно)",
+                    "pinata_pub": "Pinata API Key (необязательно)",
+                    "pinata_secret": "Pinata API Secret (необязательно)",
                     "admin_seed_secret": "Seed-фраза аккаунта контроллера в Робономике",
                     "sub_owner_address": "Адрес аккаунта владельца подписки в Робономике",
                     "sending_timeout": "Интервал отправки данных (мин)",
@@ -41,8 +41,8 @@
         "step": {
             "init": {
                 "data": {
-                    "pinata_pub": "Публичный ключ от Pinata (необязательно)",
-                    "pinata_secret": "Приватный ключ от Pinata (необязательно)",
+                    "pinata_pub": "Pinata API Key (необязательно)",
+                    "pinata_secret": "Pinata API Secret (необязательно)",
                     "sending_timeout": "Интервал отправки данных (мин)",
                     "user_ipfs_gateway": "IPFS gateway (необязательно)",
                     "user_ipfs_gateway_auth": "Использовать seed-фразу аккаунта контроллера для аутентификации IPFS (необязательно)",

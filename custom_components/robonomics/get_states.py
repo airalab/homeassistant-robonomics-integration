@@ -46,6 +46,7 @@ from .const import (
     CONF_SENDING_TIMEOUT,
     GETTING_STATES,
     GETTING_STATES_QUEUE,
+    PEER_ID_LOCAL,
 )
 from .utils import encrypt_for_devices, get_hash, delete_temp_file, encrypt_message, write_data_to_temp_file
 from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs, add_media_to_ipfs, check_if_hash_in_folder, get_last_file_hash, read_ipfs_local_file
@@ -82,7 +83,7 @@ async def get_and_send_data(hass: HomeAssistant):
         sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
         sender_kp = sender_acc.keypair
     except Exception as e:
-        _LOGGER.error(f"Exception in create keypair during get and senf data: {e}")
+        _LOGGER.error(f"Exception in create keypair during get and send data: {e}")
     try:
         if TWIN_ID in hass.data[DOMAIN]:
             await _get_dashboard_and_services(hass)
@@ -107,7 +108,7 @@ def _state_changes_during_period(
     start: datetime.datetime,
     end: datetime.datetime,
     entity_id: str,
-):
+) -> list[State]:
     """Save states of the given entity within 24hrs.
 
     :param hass: HomeAssistant instance
@@ -195,13 +196,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                         card["image"] = ipfs_hash_media
                         if not await check_if_hash_in_folder(hass, ipfs_hash_media, IPFS_MEDIA_PATH):
                             await add_media_to_ipfs(hass, filename)
-    try:
-        dashboard = hass.data[LOVELACE_DOMAIN]["dashboards"].get(None)
-        config_dashboard = await dashboard.async_load(False)
-    except Exception as e:
-        _LOGGER.warning(f"Exception in get dashboard: {e}")
-        config_dashboard = None
-
+    peer_id = hass.data[DOMAIN].get(PEER_ID_LOCAL, "")
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
     if current_config is None:
@@ -211,7 +206,8 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             "services": services_list,
             "dashboard": config_dashboard,
             "twin_id": hass.data[DOMAIN][TWIN_ID],
-            "sending_timeout": hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds
+            "sending_timeout": hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds,
+            "peer_id": peer_id
         }
         if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
             if current_config != new_config:

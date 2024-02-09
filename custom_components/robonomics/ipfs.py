@@ -49,8 +49,8 @@ from .const import (
     PINATA,
     PINATA_GATEWAY,
     SECONDS_IN_DAY,
-    WAIT_IPFS_DAEMON,
     IPFS_STATUS_ENTITY,
+    WAIT_IPFS_DAEMON,
 )
 from .utils import get_hash, to_thread, create_notification
 
@@ -229,11 +229,8 @@ def create_folders(hass: HomeAssistant) -> None:
     """Function creates IPFS folders to store Robonomics telemetry, configuration and backup files"""
     try:
         with ipfshttpclient2.connect() as client:
-            folders = client.files.ls("/")['Entries']
-            if folders is not None:
-                folder_names = [folder_info['Name'] for folder_info in folders]
-            else:
-                folder_names = []
+            folders = client.files.ls("/")
+            folder_names = [folder_info['Name'] for folder_info in folders['Entries']]
             _LOGGER.debug(f"IPFS folders: {folder_names}")
             if IPFS_MEDIA_PATH[1:] not in folder_names:
                 client.files.mkdir(IPFS_MEDIA_PATH)
@@ -269,11 +266,11 @@ def check_if_hash_in_folder(hass: HomeAssistant, ipfs_hash: str, folder: str) ->
                 return False
             for fileinfo in list_files["Entries"]:
                 stat = client.files.stat(f"{folder}/{fileinfo['Name']}")
-                hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
                 if ipfs_hash == stat["Hash"]:
                     return True
             else:
                 return False
+            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         _LOGGER.error(f"Exception in check if hash in folder: {e}")
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
@@ -292,7 +289,7 @@ def get_last_file_hash(hass: HomeAssistant, path: str, prefix: str = None) -> (s
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(path)
-            if len(files["Entries"]) > 0:
+            if files["Entries"] is not None:
                 if prefix is not None:
                     last_file = None
                     last_hash = None
@@ -762,12 +759,10 @@ def _check_connection(hass: HomeAssistant) -> bool:
             test_hash = client.add_str("Test string")
             _LOGGER.debug(f"Added test string to the local node: {test_hash}")
             time.sleep(0.5)
-            files_info = client.files.ls("/")["Entries"]
-            if files_info is not None:
-                files = [fileinfo["Name"] for fileinfo in files_info]
-                if "test_file" in files:
-                    client.files.rm("/test_file")
-                    _LOGGER.debug(f"Deleted test string from the local node MFS")
+            files = [fileinfo["Name"] for fileinfo in client.files.ls("/")["Entries"]]
+            if "test_file" in files:
+                client.files.rm("/test_file")
+                _LOGGER.debug(f"Deleted test string from the local node MFS")
             time.sleep(0.5)
             client.files.cp(f"/ipfs/{test_hash}", "/test_file")
             _LOGGER.debug(f"Added test string to the local node MFS")
