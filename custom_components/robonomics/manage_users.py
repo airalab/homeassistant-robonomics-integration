@@ -95,7 +95,7 @@ class UserManager:
         for user_address in users_list:
             await self._delete_user_for_address_if_exists(user_address)
 
-    async def update_users(self, hass: HomeAssistant, rws_devices_list: tp.Tuple[str]) -> None:
+    async def update_users(self, rws_devices_list: tp.Tuple[str]) -> None:
         """Compare users and data from transaction
 
         Compare current users of Home Assistant and Robonomics subscription device list. Decide what users must be
@@ -106,7 +106,7 @@ class UserManager:
         """
         hass_users = await self._get_hass_users()
         _LOGGER.debug(f"Begining users: {hass_users}")
-        old_users = await async_load_from_store(hass, STORE_USERS)
+        old_users = await async_load_from_store(self.hass, STORE_USERS)
         if old_users is None:
             old_users = {}
         if rws_devices_list is None:

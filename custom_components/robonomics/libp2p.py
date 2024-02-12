@@ -7,7 +7,6 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     LIBP2P_WS_SERVER,
-    WEBSOCKET,
     DOMAIN,
     PEER_ID_LOCAL,
     LIBP2P_LISTEN_PROTOCOL,
@@ -22,8 +21,9 @@ class LibP2PProxyMessage:
         if type(message) is str:
             message = json.loads(message)
         self.protocol: tp.Optional[str] = message.get("protocol")
-        message.pop("protocol", None)
-        self.data: dict = message
+        message_copy = message.copy()
+        message_copy.pop("protocol", None)
+        self.data: dict = message_copy
 
 
 class LibP2P:
@@ -67,7 +67,7 @@ class LibP2PProxy:
     def __init__(
         self, proxy_server_url: str, peer_id_callback: tp.Optional[tp.Callable] = None
     ):
-        self.webscoket = None
+        self.websocket = None
         self.callbacks = {}
         self.proxy_server_url: str = proxy_server_url
         self.peer_id: str = None
@@ -80,7 +80,8 @@ class LibP2PProxy:
         try:
             async with websockets.connect(
                 self.proxy_server_url, ping_timeout=None
-            ) as self.websocket:
+            ) as websocket:
+                self.websocket = websocket
                 _LOGGER.debug(
                     f"Connected to WebSocket server at {self.proxy_server_url}"
                 )
@@ -94,8 +95,9 @@ class LibP2PProxy:
                             self.peer_id_callback(message["peerId"])
                         continue
                     if message.get("protocol") in self.callbacks:
+                        # _LOGGER.debug(f"Protocol: {message.get('protocol')}, callbacks: {self.callbacks}, callback: {self.callbacks[message.get('protocol')]}")
                         libp2p_message = LibP2PProxyMessage(message)
-                        self.callbacks[message["protocol"]](libp2p_message)
+                        self.callbacks[message.get('protocol')](libp2p_message)
         except websockets.exceptions.ConnectionClosedOK:
             _LOGGER.debug(f"Websockets connection closed")
         except Exception as e:
@@ -105,13 +107,13 @@ class LibP2PProxy:
 
     async def _send_ws_message(self, data: str) -> None:
         if self.websocket is not None:
-            await self.webscoket.send(data)
+            await self.websocket.send(data)
         else:
             async with websockets.connect(
                 self.proxy_server_url, ping_timeout=None
             ) as websocket:
                 await websocket.send(data)
-        _LOGGER.debug(f"Sent message to libp2p {data}")
+        _LOGGER.debug(f"Sent message to libp2p")
 
     async def send_message_to_libp2p(
         self,
@@ -131,11 +133,12 @@ class LibP2PProxy:
         await self._send_ws_message(msg_to_ws)
 
     async def subscribe_to_protocol(self, protocol: str, callback: tp.Callable) -> None:
-        if self.webscoket is None:
+        if self.websocket is None:
             asyncio.ensure_future(self.connect())
-            while self.webscoket is None:
+            while self.websocket is None:
                 await asyncio.sleep(0.1)
         await self._send_ws_message(json.dumps({"protocols_to_listen": [protocol]}))
+        self.callbacks[protocol] = callback
 
     async def close_connection(self) -> None:
         if self.websocket is not None:

@@ -212,7 +212,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Callback for state changing listener.
         It calls every timeout from config to get and send telemtry.
         """
-        if WEBSOCKET not in hass.data[DOMAIN]:
+        if LIBP2P not in hass.data[DOMAIN]:
             return
         try:
             if old_state is None or new_state is None:

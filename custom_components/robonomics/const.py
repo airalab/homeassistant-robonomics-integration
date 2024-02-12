@@ -105,7 +105,7 @@ IPFS_STATUS_ENTITY = "ipfs_status"
 IPFS_DAEMON_STATUS_STATE_CHANGE = "ipfs_status_state_change_handler"
 
 WEBSOCKET = "websocket"
-LIBP2P_UNSUB = "libp2p"
+LIBP2P_UNSUB = "libp2p_unsub"
 HANDLE_LIBP2P_STATE_CHANGED = "libp2p_state_changed"
 LIBP2P_WS_SERVER = "ws://127.0.0.1:8888"
 LIBP2P_LISTEN_PROTOCOL = "/call"
