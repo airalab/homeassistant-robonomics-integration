@@ -51,6 +51,7 @@ from .const import (
     SECONDS_IN_DAY,
     IPFS_STATUS_ENTITY,
     WAIT_IPFS_DAEMON,
+    IPFS_USERS_PATH,
 )
 from .utils import get_hash, to_thread, create_notification
 
@@ -99,17 +100,23 @@ async def add_telemetry_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
 
     pin = await _check_save_previous_pin(hass, filename)
     if not pin:
-        last_file_name, last_file_hash = await get_last_file_hash(hass, IPFS_TELEMETRY_PATH)
+        last_file_name, last_file_hash = await get_last_file_hash(
+            hass, IPFS_TELEMETRY_PATH
+        )
     else:
         last_file_hash = None
         last_file_name = None
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_TELEMETRY_PATH, pin, last_file_hash, last_file_name)
+    ipfs_hash, size = await _add_to_ipfs(
+        hass, filename, IPFS_TELEMETRY_PATH, pin, last_file_hash, last_file_name
+    )
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash
 
 
-async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encrypted: str) -> tp.Optional[str]:
+async def add_config_to_ipfs(
+    hass: HomeAssistant, filename: str, filename_encrypted: str
+) -> tp.Optional[str]:
     """Send configuration file to IPFS
 
     :param hass: Home Assistant instance
@@ -119,14 +126,18 @@ async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
     :return: IPFS hash of the file
     """
 
-    last_file_name, last_file_hash = await get_last_file_hash(hass, IPFS_CONFIG_PATH, prefix=CONFIG_PREFIX)
+    last_file_name, last_file_hash = await get_last_file_hash(
+        hass, IPFS_CONFIG_PATH, prefix=CONFIG_PREFIX
+    )
     last_file_encrypted_name, last_file_encrypted_hash = await get_last_file_hash(
         hass, IPFS_CONFIG_PATH, prefix=CONFIG_ENCRYPTED_PREFIX
     )
     new_hash = await get_hash(filename)
     new_hash_encrypted = await get_hash(filename_encrypted)
     if new_hash == last_file_hash:
-        _LOGGER.debug(f"Last config hash and the current are the same: {last_file_hash}")
+        _LOGGER.debug(
+            f"Last config hash and the current are the same: {last_file_hash}"
+        )
         return last_file_encrypted_hash
     await _add_to_local_node(hass, filename, False, IPFS_CONFIG_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
@@ -142,7 +153,9 @@ async def add_config_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
     return ipfs_hash
 
 
-async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encrypted: str) -> tp.Optional[str]:
+async def add_backup_to_ipfs(
+    hass: HomeAssistant, filename: str, filename_encrypted: str
+) -> tp.Optional[str]:
     """Send backup file to IPFS
 
     :param hass: Home Assistant instance
@@ -152,14 +165,18 @@ async def add_backup_to_ipfs(hass: HomeAssistant, filename: str, filename_encryp
     :return: IPFS hash of the file
     """
 
-    last_file_name, last_file_hash = await get_last_file_hash(hass, IPFS_BACKUP_PATH, prefix=BACKUP_PREFIX)
+    last_file_name, last_file_hash = await get_last_file_hash(
+        hass, IPFS_BACKUP_PATH, prefix=BACKUP_PREFIX
+    )
     last_file_encrypted_name, last_file_encrypted_hash = await get_last_file_hash(
         hass, IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX
     )
     new_hash = await get_hash(filename)
     new_hash_encrypted = await get_hash(filename_encrypted)
     if new_hash == last_file_hash:
-        _LOGGER.debug(f"Last backup hash and the current are the same: {last_file_hash}")
+        _LOGGER.debug(
+            f"Last backup hash and the current are the same: {last_file_hash}"
+        )
         return last_file_encrypted_hash
     await _add_to_local_node(hass, filename, False, IPFS_BACKUP_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
@@ -184,7 +201,31 @@ async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[s
     :return: IPFS hash of the file
     """
 
-    ipfs_hash, size = await _add_to_ipfs(hass, filename, IPFS_MEDIA_PATH, True, None, None)
+    ipfs_hash, size = await _add_to_ipfs(
+        hass, filename, IPFS_MEDIA_PATH, True, None, None
+    )
+    await _upload_to_crust(hass, ipfs_hash, size)
+
+    return ipfs_hash
+
+
+async def add_user_info_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
+    """Send user info encrypted file to IPFS
+
+    :param hass: Home Assistant instance
+    :param filename: file with media.
+
+    :return: IPFS hash of the file
+    """
+
+    address = filename.split("/")[-1]
+    last_file_name, last_file_hash = await get_last_file_hash(
+        hass, IPFS_USERS_PATH, prefix=address
+    )
+
+    ipfs_hash, size = await _add_to_ipfs(
+        hass, filename, IPFS_USERS_PATH, False, last_file_hash, last_file_name
+    )
     await _upload_to_crust(hass, ipfs_hash, size)
 
     return ipfs_hash
@@ -204,7 +245,7 @@ def delete_folder_from_local_node(hass: HomeAssistant, dirname: str) -> None:
     except Exception as e:
         _LOGGER.error(f"Exception in deleting folder {dirname}: {e}")
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
-        
+
 
 @to_thread
 def get_folder_hash(hass: HomeAssistant, ipfs_folder: str) -> str:
@@ -230,7 +271,7 @@ def create_folders(hass: HomeAssistant) -> None:
     try:
         with ipfshttpclient2.connect() as client:
             folders = client.files.ls("/")
-            folder_names = [folder_info['Name'] for folder_info in folders['Entries']]
+            folder_names = [folder_info["Name"] for folder_info in folders["Entries"]]
             _LOGGER.debug(f"IPFS folders: {folder_names}")
             if IPFS_MEDIA_PATH[1:] not in folder_names:
                 client.files.mkdir(IPFS_MEDIA_PATH)
@@ -244,6 +285,9 @@ def create_folders(hass: HomeAssistant) -> None:
             if IPFS_CONFIG_PATH[1:] not in folder_names:
                 client.files.mkdir(IPFS_CONFIG_PATH)
                 _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} created")
+            if IPFS_USERS_PATH[1:] not in folder_names:
+                client.files.mkdir(IPFS_USERS_PATH)
+                _LOGGER.debug(f"IPFS folder {IPFS_USERS_PATH} created")
             hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         _LOGGER.error(f"Exception in creating ipfs folders: {e}")
@@ -277,7 +321,9 @@ def check_if_hash_in_folder(hass: HomeAssistant, ipfs_hash: str, folder: str) ->
 
 
 @to_thread
-def get_last_file_hash(hass: HomeAssistant, path: str, prefix: str = None) -> (str, str):
+def get_last_file_hash(
+    hass: HomeAssistant, path: str, prefix: str = None
+) -> (str, str):
     """function return name and hash of the last telemetry, configuration and backup
 
     :param path: path to directory with files
@@ -312,7 +358,9 @@ def get_last_file_hash(hass: HomeAssistant, path: str, prefix: str = None) -> (s
 
 
 @to_thread
-def read_ipfs_local_file(hass: HomeAssistant, filename: str, path: str) -> tp.Union[str, dict]:
+def read_ipfs_local_file(
+    hass: HomeAssistant, filename: str, path: str
+) -> tp.Union[str, dict]:
     """Read data from file pinned in local node
 
     :param filename: name of the file
@@ -442,7 +490,9 @@ def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
             if len(files["Entries"]) > 0:
                 last_file = files["Entries"][-2]["Name"]
                 last_file_time = datetime.fromtimestamp(float(last_file.split("-")[-1]))
-                current_file_time = datetime.fromtimestamp(float(filename.split("-")[-1]))
+                current_file_time = datetime.fromtimestamp(
+                    float(filename.split("-")[-1])
+                )
                 delta = current_file_time - last_file_time
                 _LOGGER.debug(f"Time from the last pin: {delta}")
                 if delta > timedelta(seconds=SECONDS_IN_DAY):
@@ -484,7 +534,9 @@ def _add_to_local_node(
             result = client.add(filename, pin=False)
             ipfs_hash: tp.Optional[str] = result["Hash"]
             ipfs_file_size: tp.Optional[int] = int(result["Size"])
-            _LOGGER.debug(f"File {filename} was added to local node with cid: {ipfs_hash}")
+            _LOGGER.debug(
+                f"File {filename} was added to local node with cid: {ipfs_hash}"
+            )
             filename = filename.split("/")[-1]
             client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{filename}")
             if not pin:
@@ -573,29 +625,41 @@ def _add_to_custom_gateway(
     try:
         if seed is not None:
             usr, pwd = web_3_auth(seed)
-            with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)) as client:
+            with ipfshttpclient2.connect(
+                addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
+            ) as client:
                 result = client.add(filename)
                 if type(result) == list:
                     result = result[-1]
                 ipfs_hash: tp.Optional[str] = result["Hash"]
                 ipfs_file_size: tp.Optional[int] = int(result["Size"])
-                _LOGGER.debug(f"File {filename} was added to {url} with cid: {ipfs_hash}")
+                _LOGGER.debug(
+                    f"File {filename} was added to {url} with cid: {ipfs_hash}"
+                )
         else:
-            with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https") as client:
+            with ipfshttpclient2.connect(
+                addr=f"/dns4/{url}/tcp/{port}/https"
+            ) as client:
                 result = client.add(filename)
                 if type(result) == list:
                     result = result[-1]
                 ipfs_hash: tp.Optional[str] = result["Hash"]
                 ipfs_file_size: tp.Optional[int] = int(result["Size"])
-                _LOGGER.debug(f"File {filename} was added to {url} with cid: {ipfs_hash}")
+                _LOGGER.debug(
+                    f"File {filename} was added to {url} with cid: {ipfs_hash}"
+                )
         if not pin:
             if seed is not None:
                 usr, pwd = web_3_auth(seed)
-                with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)) as client:
+                with ipfshttpclient2.connect(
+                    addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
+                ) as client:
                     client.pin.rm(last_file_hash)
                     _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
             else:
-                with ipfshttpclient2.connect(addr=f"/dns4/{url}/tcp/{port}/https") as client:
+                with ipfshttpclient2.connect(
+                    addr=f"/dns4/{url}/tcp/{port}/https"
+                ) as client:
                     client.pin.rm(last_file_hash)
                     _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
     except Exception as e:
@@ -607,7 +671,9 @@ def _add_to_custom_gateway(
 
 
 @to_thread
-def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.Optional[tp.Tuple[str, str]]:
+def _upload_to_crust(
+    hass: HomeAssistant, ipfs_hash: str, file_size: int
+) -> tp.Optional[tp.Tuple[str, str]]:
     """Call extrinsic "Place an order" in Crust network
 
     :param hass: home Assistant instance
@@ -633,7 +699,9 @@ def _upload_to_crust(hass: HomeAssistant, ipfs_hash: str, file_size: int) -> tp.
         return None
 
     if price >= balance:
-        _LOGGER.warning(f"Not enough account balance to store the file in Crust Network")
+        _LOGGER.warning(
+            f"Not enough account balance to store the file in Crust Network"
+        )
         return None
 
     try:
@@ -674,7 +742,9 @@ async def _add_to_ipfs(
         )
     else:
         pinata_hash = None
-    local_hash, local_ipfs_file_size = await _add_to_local_node(hass, filename, pin, path, last_file_name)
+    local_hash, local_ipfs_file_size = await _add_to_local_node(
+        hass, filename, pin, path, last_file_name
+    )
     if CONF_IPFS_GATEWAY in hass.data[DOMAIN]:
         if hass.data[DOMAIN][CONF_IPFS_GATEWAY_AUTH]:
             seed = hass.data[DOMAIN][CONF_ADMIN_SEED]
@@ -734,7 +804,9 @@ async def _get_request(
 
 
 @to_thread
-def _get_from_local_node_by_hash(hass: HomeAssistant, ipfs_hash: str) -> tp.Optional[str]:
+def _get_from_local_node_by_hash(
+    hass: HomeAssistant, ipfs_hash: str
+) -> tp.Optional[str]:
     try:
         with ipfshttpclient2.connect() as client:
             res = client.cat(ipfs_hash)

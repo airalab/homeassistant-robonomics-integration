@@ -72,6 +72,8 @@ async def init_integration(hass: HomeAssistant) -> None:
     """
 
     await asyncio.sleep(60)
+    if DOMAIN not in hass.data:
+        return
     try:
         msg = await get_states_libp2p(hass)
         await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
@@ -316,7 +318,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
     await hass.data[DOMAIN][LIBP2P].close_connection()
-    hass.data[DOMAIN][LIBP2P_UNSUB]()
+    if LIBP2P_UNSUB in hass.data[DOMAIN]:
+        hass.data[DOMAIN][LIBP2P_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
     await delete_folder_from_local_node(hass, IPFS_CONFIG_PATH)
     hass.data.pop(DOMAIN)

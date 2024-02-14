@@ -2,6 +2,7 @@ import asyncio
 import websockets
 import logging
 import json
+import os
 import typing as tp
 from homeassistant.core import HomeAssistant
 
@@ -9,8 +10,10 @@ from .const import (
     LIBP2P_WS_SERVER,
     DOMAIN,
     PEER_ID_LOCAL,
-    LIBP2P_LISTEN_PROTOCOL,
+    LIBP2P_LISTEN_COMMANDS_PROTOCOL,
     LIBP2P_SEND_STATES_PROTOCOL,
+    LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL,
+    LIBP2P_SEND_TOKEN_PROTOCOL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,7 +36,10 @@ class LibP2P:
 
     async def connect_to_websocket(self):
         await self.libp2p_proxy.subscribe_to_protocol(
-            LIBP2P_LISTEN_PROTOCOL, self._run_command
+            LIBP2P_LISTEN_COMMANDS_PROTOCOL, self._run_command
+        )
+        await self.libp2p_proxy.subscribe_to_protocol(
+            LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL, self._run_command
         )
 
     def _run_command(self, data: LibP2PProxyMessage) -> None:
@@ -59,6 +65,11 @@ class LibP2P:
             data, LIBP2P_SEND_STATES_PROTOCOL, save_data=True
         )
 
+    async def send_token_to_libp2p(self, data: tp.Dict[str, str]) -> None:
+        await self.libp2p_proxy.send_message_to_libp2p(
+            json.dumps(data), LIBP2P_SEND_TOKEN_PROTOCOL, save_data=False
+        )
+
     async def close_connection(self) -> None:
         await self.libp2p_proxy.close_connection()
 
@@ -72,12 +83,14 @@ class LibP2PProxy:
         self.proxy_server_url: str = proxy_server_url
         self.peer_id: str = None
         self.peer_id_callback = peer_id_callback
+        self.in_connect = False
 
     async def connect(self) -> None:
-        #################################################################
-        ######### Check if "protocol" field in received message #########
-        #################################################################
         try:
+            _LOGGER.debug(f"In connect: {self.in_connect}")
+            if self.in_connect:
+               return
+            self.in_connect = True
             async with websockets.connect(
                 self.proxy_server_url, ping_timeout=None
             ) as websocket:
@@ -95,15 +108,29 @@ class LibP2PProxy:
                             self.peer_id_callback(message["peerId"])
                         continue
                     if message.get("protocol") in self.callbacks:
-                        # _LOGGER.debug(f"Protocol: {message.get('protocol')}, callbacks: {self.callbacks}, callback: {self.callbacks[message.get('protocol')]}")
                         libp2p_message = LibP2PProxyMessage(message)
                         self.callbacks[message.get('protocol')](libp2p_message)
         except websockets.exceptions.ConnectionClosedOK:
+            self.in_connect = False
             _LOGGER.debug(f"Websockets connection closed")
         except Exception as e:
+            self.in_connect = False
             _LOGGER.error(f"Websocket exception: {e}")
             await asyncio.sleep(5)
-            asyncio.ensure_future(self.connect())
+            await self._reconnect()
+
+    async def _reconnect(self) -> None:
+        _LOGGER.debug("Reconnect to websocket server")
+        self.websocket = None
+        asyncio.ensure_future(self.connect())
+        while self.websocket is None:
+            await asyncio.sleep(0.1)
+            if not self.in_connect:
+                return
+        _LOGGER.debug(f"Callbacks to resubscribe: {self.callbacks}")
+        for protocol in self.callbacks:
+            _LOGGER.debug(f"Start resubscribing to protocol {protocol}")
+            await self.subscribe_to_protocol(protocol, self.callbacks[protocol])
 
     async def _send_ws_message(self, data: str) -> None:
         if self.websocket is not None:
@@ -113,7 +140,7 @@ class LibP2PProxy:
                 self.proxy_server_url, ping_timeout=None
             ) as websocket:
                 await websocket.send(data)
-        _LOGGER.debug(f"Sent message to libp2p")
+        _LOGGER.debug(f"Sent message to libp2p: {data[0:200]}")
 
     async def send_message_to_libp2p(
         self,
@@ -137,9 +164,11 @@ class LibP2PProxy:
             asyncio.ensure_future(self.connect())
             while self.websocket is None:
                 await asyncio.sleep(0.1)
-        await self._send_ws_message(json.dumps({"protocols_to_listen": [protocol]}))
         self.callbacks[protocol] = callback
+        protocols = list(self.callbacks.keys())
+        await self._send_ws_message(json.dumps({"protocols_to_listen": protocols}))
 
     async def close_connection(self) -> None:
         if self.websocket is not None:
+            await self._send_ws_message(json.dumps({"protocols_to_listen": []}))
             await self.websocket.close()

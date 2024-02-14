@@ -124,15 +124,15 @@ def decrypt_message_devices(data: str, sender_public_key: bytes, recipient_keypa
         _LOGGER.error(f"Exception in decrypt for devices: {e}")
 
 
-def generate_pass(length: int) -> str:
-    """Generate random low letter string with the given length
+def generate_password(length: int = 10) -> str:
+    """Generate random string with the given length
 
     :param lenght: Password length
 
     :return: Generated password
     """
 
-    letters = string.ascii_lowercase
+    letters = string.ascii_letters + string.digits
     return "".join(random.choice(letters) for i in range(length))
 
 
