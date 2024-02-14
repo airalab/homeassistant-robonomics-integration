@@ -86,7 +86,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
         random_acc = Account(random_seed, crypto_type=KeypairType.ED25519)
         encrypted_data = encrypt_message(str(data), sender_kp, random_acc.keypair.public_key)
         encrypted_keys = {}
-        _LOGGER.debug(f"Encrypt states for following devices: {devices}")
+        # _LOGGER.debug(f"Encrypt states for following devices: {devices}")
         for device in devices:
             try:
                 receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
@@ -124,15 +124,15 @@ def decrypt_message_devices(data: str, sender_public_key: bytes, recipient_keypa
         _LOGGER.error(f"Exception in decrypt for devices: {e}")
 
 
-def generate_pass(length: int) -> str:
-    """Generate random low letter string with the given length
+def generate_password(length: int = 10) -> str:
+    """Generate random string with the given length
 
     :param lenght: Password length
 
     :return: Generated password
     """
 
-    letters = string.ascii_lowercase
+    letters = string.ascii_letters + string.digits
     return "".join(random.choice(letters) for i in range(length))
 
 
@@ -259,3 +259,21 @@ async def remove_from_store(hass: HomeAssistant, store_key: str, data_key: str) 
     if current_data is not None:
         if current_data.pop(data_key, None):
             await async_save_to_store(hass, store_key, current_data)
+
+async def async_post_request(hass: HomeAssistant, url: str, headers: dict, data: str) -> tp.Optional[dict]:
+    _LOGGER.debug(f"Request to {url} with data: {data}")
+    websession = async_create_clientsession(hass)  
+    resp = await websession.post(url, headers=headers, data=data)
+    if resp.status == 200:
+        return await resp.json()
+    else:
+        _LOGGER.error(f"Post request faild with response {resp.status}")
+
+def get_ip_address():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 1))
+        ip_address = s.getsockname()[0]
+        return ip_address
+    except socket.error:
+        return None
