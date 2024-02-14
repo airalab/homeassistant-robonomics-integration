@@ -22,7 +22,6 @@ from robonomicsinterface import (
 )
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
-from substrateinterface.exceptions import SubstrateRequestException
 from tenacity import AsyncRetrying, Retrying, stop_after_attempt, wait_fixed
 
 from .const import (
@@ -345,8 +344,8 @@ class Robonomics:
                 )
                 if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
                     service_data = {
-                        "message": f"""Your subscription is ending. You can use it for another {rws_days_left} days, 
-                                        after that it should be renewed. You can do in in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).""",
+                        "message": f"""Your subscription will end soon. You can use it for another {rws_days_left} days, 
+                                        after that it should be renewed. You can do it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).""",
                         "title": "Robonomics Subscription Expires",
                     }
                     await create_notification(self.hass, service_data)

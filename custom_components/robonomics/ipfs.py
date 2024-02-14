@@ -246,7 +246,6 @@ def delete_folder_from_local_node(hass: HomeAssistant, dirname: str) -> None:
         _LOGGER.error(f"Exception in deleting folder {dirname}: {e}")
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
 
-
 @to_thread
 def get_folder_hash(hass: HomeAssistant, ipfs_folder: str) -> str:
     """Get IPFS hash of the given folder in MFS
@@ -335,7 +334,7 @@ def get_last_file_hash(
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(path)
-            if len(files["Entries"]) > 0:
+            if files["Entries"] is not None:
                 if prefix is not None:
                     last_file = None
                     last_hash = None
@@ -485,6 +484,7 @@ def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(IPFS_TELEMETRY_PATH)
+            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
             if len(files["Entries"]) > IPFS_MAX_FILE_NUMBER:
                 _delete_ipfs_telemetry_files(hass)
             if len(files["Entries"]) > 0:
@@ -503,7 +503,6 @@ def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
                     return False
             else:
                 return True
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         _LOGGER.error(f"Exception in check_if_need_pin: {e}")
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")

@@ -153,8 +153,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
     sub_admin_acc = Account(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
-    _LOGGER.debug(f"sub admin: {sub_admin_acc.get_address()}")
-    _LOGGER.debug(f"sub owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
+    _LOGGER.debug(f"Controller: {sub_admin_acc.get_address()}")
+    _LOGGER.debug(f"Owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
     hass.data[DOMAIN][ROBONOMICS]: Robonomics = Robonomics(
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
