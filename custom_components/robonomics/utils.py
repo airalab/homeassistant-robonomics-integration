@@ -86,7 +86,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
         random_acc = Account(random_seed, crypto_type=KeypairType.ED25519)
         encrypted_data = encrypt_message(str(data), sender_kp, random_acc.keypair.public_key)
         encrypted_keys = {}
-        _LOGGER.debug(f"Encrypt states for following devices: {devices}")
+        # _LOGGER.debug(f"Encrypt states for following devices: {devices}")
         for device in devices:
             try:
                 receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)

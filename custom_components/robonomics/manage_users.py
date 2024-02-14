@@ -195,7 +195,7 @@ class UserManager:
                 json.dumps({"password": password}), [address]
             )
             filename = write_data_to_temp_file(encrypted_data, filename=address)
-            ipfs_hash = add_user_info_to_ipfs(self.hass, filename)
+            ipfs_hash = await add_user_info_to_ipfs(self.hass, filename)
             await self.hass.data[DOMAIN][ROBONOMICS].set_twin_topic_with_remove_old(
                 ipfs_hash, self.hass.data[DOMAIN][TWIN_ID], address
             )

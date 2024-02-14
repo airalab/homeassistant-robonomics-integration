@@ -140,7 +140,7 @@ class LibP2PProxy:
                 self.proxy_server_url, ping_timeout=None
             ) as websocket:
                 await websocket.send(data)
-        _LOGGER.debug(f"Sent message to libp2p: {data[0:200]}")
+        # _LOGGER.debug(f"Sent message to libp2p: {data[0:200]}")
 
     async def send_message_to_libp2p(
         self,

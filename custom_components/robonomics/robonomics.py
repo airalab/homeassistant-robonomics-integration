@@ -18,7 +18,7 @@ from robonomicsinterface import (
     DigitalTwin,
     SubEvent,
     Subscriber,
-    Launch,
+    ServiceFunctions,
 )
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
 from substrateinterface import Keypair, KeypairType
@@ -413,6 +413,14 @@ class Robonomics:
             f"Digital twin number {dt_it} was created with transaction hash {tr_hash}"
         )
         return dt_it
+
+    @to_thread
+    def get_identity_display_name(self, address: str) -> tp.Optional[str]:
+        service_functions = ServiceFunctions(Account())
+        identity = service_functions.chainstate_query("Identity", "IdentityOf", address)
+        if identity is not None:
+            key = list(identity["info"]["display"].keys())[0]
+            return identity["info"]["display"][key]
 
     async def get_backup_hash(self, twin_number: int) -> tp.Optional[str]:
         """Getting hash for backup file from Datalog.
