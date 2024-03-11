@@ -273,6 +273,8 @@ def create_folders(hass: HomeAssistant) -> None:
             if folders is not None:
                 folder_names = [folder_info["Name"] for folder_info in folders]
                 _LOGGER.debug(f"IPFS folders: {folder_names}")
+            else:
+                folder_names = []
             if IPFS_MEDIA_PATH[1:] not in folder_names:
                 client.files.mkdir(IPFS_MEDIA_PATH)
                 _LOGGER.debug(f"IPFS folder {IPFS_MEDIA_PATH} created")
