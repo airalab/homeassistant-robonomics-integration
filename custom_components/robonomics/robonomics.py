@@ -504,7 +504,7 @@ class Robonomics:
                         _LOGGER.debug(f"Topic for address {address} with this ipfs hash exists")
                         return
                 if topic[1] == address:
-                    await self._set_twin_topic(bytes_hash, twin_number, ZERO_ACC)
+                    await self._set_twin_topic(topic[0], twin_number, ZERO_ACC)
         await self._set_twin_topic(bytes_hash, twin_number, address)
     
 
