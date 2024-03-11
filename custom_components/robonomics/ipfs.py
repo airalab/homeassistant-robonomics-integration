@@ -830,11 +830,13 @@ def _check_connection(hass: HomeAssistant) -> bool:
             test_hash = client.add_str("Test string")
             _LOGGER.debug(f"Added test string to the local node: {test_hash}")
             time.sleep(0.5)
-            files = [fileinfo["Name"] for fileinfo in client.files.ls("/")["Entries"]]
-            if "test_file" in files:
-                client.files.rm("/test_file")
-                _LOGGER.debug(f"Deleted test string from the local node MFS")
-            time.sleep(0.5)
+            files_info = client.files.ls("/")["Entries"]
+            if files_info is not None:
+                files = [fileinfo["Name"] for fileinfo in files_info]
+                if "test_file" in files:
+                    client.files.rm("/test_file")
+                    _LOGGER.debug(f"Deleted test string from the local node MFS")
+                time.sleep(0.5)
             client.files.cp(f"/ipfs/{test_hash}", "/test_file")
             _LOGGER.debug(f"Added test string to the local node MFS")
             time.sleep(0.5)
