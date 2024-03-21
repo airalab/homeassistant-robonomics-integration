@@ -671,7 +671,7 @@ class Robonomics:
             # _LOGGER.debug(f"Data from subscription callback: {data}")
             if type(data[1]) == str and data[1] == self.controller_address:  ## Launch
                 if data[0] in self.devices_list or data[0] == self.controller_address:
-                    self.hass.async_create_task(self._handle_launch(self.hass, data))
+                    self.hass.async_create_task(self._handle_launch(data))
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
             elif type(data[1]) == int and len(data) == 4:
