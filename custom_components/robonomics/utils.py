@@ -101,7 +101,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
         _LOGGER.error(f"Exception in encrypt for devices: {e}")
 
 
-def decrypt_message_devices(data: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+def decrypt_message_devices(data: tp.Union[str, dict], sender_public_key: bytes, recipient_keypair: Keypair) -> str:
     """Decrypt message that was encrypted fo devices
     
     :param data: Ancrypted data
@@ -112,11 +112,14 @@ def decrypt_message_devices(data: str, sender_public_key: bytes, recipient_keypa
     """
     try:
         _LOGGER.debug(f"Start decrypt for device {recipient_keypair.ss58_address}")
-        data_json = json.loads(data)
+        if type(data) == str:
+            data_json = json.loads(data)
+        else:
+            data_json = data
         if recipient_keypair.ss58_address in data_json:
-            decrypted_seed = decrypt_message(data_json[recipient_keypair.ss58_address], sender_public_key, recipient_keypair)
-            decrypted_acc = Account(decrypted_seed.decode("utf-8"), crypto_type=KeypairType.ED25519)
-            decrypted_data = decrypt_message(data_json["data"], sender_public_key, decrypted_acc.keypair)
+            decrypted_seed = decrypt_message(data_json[recipient_keypair.ss58_address], sender_public_key, recipient_keypair).decode("utf-8")
+            decrypted_acc = Account(decrypted_seed, crypto_type=KeypairType.ED25519)
+            decrypted_data = decrypt_message(data_json["data"], sender_public_key, decrypted_acc.keypair).decode("utf-8")
             return decrypted_data
         else:
             _LOGGER.error(f"Error in decrypt for devices: account is not in devices")
@@ -277,6 +280,14 @@ def get_ip_address():
         return ip_address
     except socket.error:
         return None
+
+def verify_sign(signature: str, address: str) -> bool:
+    try:
+        signature_bytes = bytes.fromhex(signature)
+        keypair = Keypair(ss58_address=address, crypto_type=KeypairType.ED25519)
+        return keypair.verify(address, signature_bytes)
+    except Exception as e:
+        _LOGGER.error(f"Exception during sign virification: {e}")
 
 def format_libp2p_node_multiaddress(peer_id: str) -> tp.Optional[str]:
     """Format libp2p node local multiaddress from ip and peer id.

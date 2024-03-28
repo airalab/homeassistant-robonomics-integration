@@ -231,13 +231,20 @@ async def add_user_info_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
     return ipfs_hash
 
 
+async def get_encrypted_user_info_for_address(hass: HomeAssistant, address: str) -> tp.Optional[str]:
+    encrypted_user_info = await read_ipfs_local_file(hass, address, IPFS_USERS_PATH)
+    return encrypted_user_info
+
 @to_thread
 def delete_folder_from_local_node(hass: HomeAssistant, dirname: str) -> None:
     try:
         _LOGGER.debug(f"Start deleting ipfs folder {dirname}")
         with ipfshttpclient2.connect() as client:
-            folders = client.files.ls("/")
-            folder_names = [folder["Name"] for folder in folders["Entries"]]
+            folders = client.files.ls("/")["Entries"]
+            if folders is not None:
+                folder_names = [folder["Name"] for folder in folders]
+            else:
+                folder_names = []
             if dirname[1:] in folder_names:
                 client.files.rm(dirname, recursive=True)
                 hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
@@ -371,22 +378,22 @@ def read_ipfs_local_file(
     :return: dict with the data in json, string data otherwise
     """
 
-    with ipfshttpclient2.connect() as client:
-        try:
+    try:
+        with ipfshttpclient2.connect() as client:
             _LOGGER.debug(f"Read data from local file: {path}/{filename}")
             data = client.files.read(f"{path}/{filename}")
             hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
-        except Exception as e:
-            _LOGGER.warning(f"Exception in reading ipfs local file: {e}")
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
-            return None
-        try:
-            data_json = json.loads(data)
-            return data_json
-        except Exception as e:
-            _LOGGER.debug(f"Data is not json: {e}")
-        data = data.decode("utf-8")
-        return data
+    except Exception as e:
+        _LOGGER.warning(f"Exception in reading ipfs local file: {e}")
+        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        return None
+    try:
+        data_json = json.loads(data)
+        return data_json
+    except Exception as e:
+        _LOGGER.debug(f"Data is not json: {e}")
+    data = data.decode("utf-8")
+    return data
 
 
 async def get_ipfs_data(
@@ -533,6 +540,10 @@ def _add_to_local_node(
     try:
         _LOGGER.debug(f"Start adding {filename} to local node, pin: {pin}")
         with ipfshttpclient2.connect() as client:
+            if not pin:
+                if last_file_name is not None:
+                    client.files.rm(f"{path}/{last_file_name}")
+                    _LOGGER.debug(f"File {last_file_name} with was unpinned")
             result = client.add(filename, pin=False)
             ipfs_hash: tp.Optional[str] = result["Hash"]
             ipfs_file_size: tp.Optional[int] = int(result["Size"])
@@ -541,10 +552,6 @@ def _add_to_local_node(
             )
             filename = filename.split("/")[-1]
             client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{filename}")
-            if not pin:
-                if last_file_name is not None:
-                    client.files.rm(f"{path}/{last_file_name}")
-                    _LOGGER.debug(f"File {last_file_name} with was unpinned")
         hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
     except Exception as e:
         _LOGGER.error(f"Exception in add to local node: {e}")

@@ -70,7 +70,8 @@ async def init_integration(hass: HomeAssistant) -> None:
 
     :param hass: HomeAssistant instance
     """
-
+    start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
+    _LOGGER.debug(f"Start devices list is {start_devices_list}")
     await asyncio.sleep(60)
     if DOMAIN not in hass.data:
         return
@@ -80,8 +81,6 @@ async def init_integration(hass: HomeAssistant) -> None:
     except Exception as e:
         _LOGGER.error(f"Exception in first send libp2p states {e}")
     try:
-        start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
-        _LOGGER.debug(f"Start devices list is {start_devices_list}")
         hass.async_create_task(UserManager(hass).update_users(start_devices_list))
         hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
             hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
