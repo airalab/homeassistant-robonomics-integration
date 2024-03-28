@@ -1,0 +1,7 @@
+{
+    "services": {
+        "save_backup_to_robonomics": "mdi:cloud-upload",
+        "restore_from_robonomics_backup": "mdi:backup-restore",
+        "save_video_to_robonomics": "mdi:file-video"
+    }
+}
