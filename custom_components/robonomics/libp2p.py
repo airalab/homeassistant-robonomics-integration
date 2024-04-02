@@ -38,7 +38,7 @@ class LibP2P:
             try:
                 data = json.loads(received_data)
             except Exception as e:
-                decrypted_data = self.hass.data[DOMAIN][ROBONOMICS].decrypt(received_data)
+                decrypted_data = self.hass.data[DOMAIN][ROBONOMICS].decrypt_message(received_data)
                 data = json.loads(decrypted_data)
         message_entity_id = data["params"]["entity_id"]
         params = data["params"].copy()
