@@ -3,7 +3,7 @@
 from homeassistant.const import Platform
 
 DOMAIN = "robonomics"
-PLATFORMS = [Platform.BUTTON]
+PLATFORMS = [Platform.BUTTON, Platform.SENSOR]
 
 CREATE_BACKUP_SERVICE = "save_backup_to_robonomics"
 RESTORE_BACKUP_SERVICE = "restore_from_robonomics_backup"
@@ -56,6 +56,7 @@ BACKUP_PREFIX = "backup-"
 BACKUP_ENCRYPTED_PREFIX = "backup_encrypted"
 TWIN_ID = "twin_id"
 IPFS_DAEMON_OK = "ipfs_daemon_ok"
+IPFS_STATUS = "ipfs_status"
 
 Z2M_CONFIG_NAME = "z2m_data.zip"
 Z2M_BACKUP_TOPIC_REQUEST = "zigbee2mqtt/bridge/request/backup"
@@ -119,3 +120,4 @@ STORE_USERS = "users"
 LIBP2P = "libp2p"
 
 LAUNCH_REGISTRATION_COMMAND = "0x000000000000000000000000000000002f68615f726567697374726174696f6e"
+SUBSCRIPTION_LEFT_DAYS = "subscription_left_days"

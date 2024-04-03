@@ -35,6 +35,7 @@ from .const import (
     ROBONOMICS,
     ROBONOMICS_WSS,
     RWS_DAYS_LEFT_NOTIFY,
+    SUBSCRIPTION_LEFT_DAYS,
     TWIN_ID,
     ZERO_ACC,
     LAUNCH_REGISTRATION_COMMAND,
@@ -343,24 +344,22 @@ class Robonomics:
                         raise TimeoutError
             _LOGGER.debug(f"Left {rws_days_left} days of subscription")
             if rws_days_left == -1:
-                self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", 100000)
+                self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = 100000
                 _LOGGER.debug("Subscription is endless")
                 return
             if rws_days_left:
-                self.hass.states.async_set(
-                    f"{DOMAIN}.subscription_left_days", rws_days_left
-                )
+                self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = rws_days_left
                 if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
                     service_data = {
                         "message": f"""Your subscription will end soon. You can use it for another {rws_days_left} days, 
-                                        after that it should be renewed. You can do it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).""",
+                                        after that it should be renewed. You can do it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-buy).""",
                         "title": "Robonomics Subscription Expires",
                     }
                     await create_notification(self.hass, service_data)
             else:
-                self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", 0)
+                self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = 0
                 service_data = {
-                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).",
+                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-buy).",
                     "title": "Robonomics Subscription Expires",
                 }
                 await create_notification(self.hass, service_data)

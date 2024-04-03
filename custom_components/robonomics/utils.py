@@ -283,11 +283,13 @@ def get_ip_address():
 
 def verify_sign(signature: str, address: str) -> bool:
     try:
+        if signature.startswith("0x"):
+            signature = signature[2:]
         signature_bytes = bytes.fromhex(signature)
         keypair = Keypair(ss58_address=address, crypto_type=KeypairType.ED25519)
         return keypair.verify(address, signature_bytes)
     except Exception as e:
-        _LOGGER.error(f"Exception during sign virification: {e}")
+        _LOGGER.error(f"Exception during signature verification: {e}")
 
 def format_libp2p_node_multiaddress(peer_id: str) -> tp.Optional[str]:
     """Format libp2p node local multiaddress from ip and peer id.

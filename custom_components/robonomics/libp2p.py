@@ -55,7 +55,6 @@ class LibP2P:
         )
 
     async def _send_token(self, data: tp.Union[str, dict]) -> None:
-        _LOGGER.debug(f"Token request: {data}")
         if type(data) == str:
             data = json.loads(data)
         if verify_sign(data["sign"], data["address"]):

@@ -37,6 +37,7 @@ from .const import (
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     HANDLE_TIME_CHANGE,
+    IPFS_STATUS,
     PINATA,
     PLATFORMS,
     RESTORE_BACKUP_SERVICE,
@@ -49,7 +50,6 @@ from .const import (
     GETTING_STATES,
     IPFS_CONFIG_PATH,
     IPFS_DAEMON_OK,
-    WEBSOCKET,
     LIBP2P_UNSUB,
     IPFS_STATUS_ENTITY,
     IPFS_DAEMON_STATUS_STATE_CHANGE,
@@ -177,7 +177,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as e:
         _LOGGER.error(f"Exception in create ipfs folders: {e}")
         await wait_ipfs_daemon(hass)
-    hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+    hass.data[DOMAIN][IPFS_STATUS] = "OK"
+    hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
 
     hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = False
     entry.async_on_unload(entry.add_update_listener(update_listener))
@@ -234,7 +235,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await handle_ipfs_status_change(hass, new_state.state == "OK")
 
     hass.data[DOMAIN][IPFS_DAEMON_STATUS_STATE_CHANGE] = async_track_state_change(
-        hass, f"{DOMAIN}.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
+        hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
     )
 
     async def handle_save_backup(call: ServiceCall) -> None:
@@ -295,7 +296,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     asyncio.ensure_future(init_integration(hass))
 
-    # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True
 
