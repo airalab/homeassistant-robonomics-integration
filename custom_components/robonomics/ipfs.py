@@ -484,6 +484,8 @@ def _delete_ipfs_telemetry_files(hass: HomeAssistant):
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(IPFS_TELEMETRY_PATH)["Entries"]
+            if files is None:
+                files = []
             num_files_to_delete = len(files) - IPFS_MAX_FILE_NUMBER
             if num_files_to_delete > 0:
                 for i in range(num_files_to_delete):
