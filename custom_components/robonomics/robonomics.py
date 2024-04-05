@@ -35,6 +35,7 @@ from .const import (
     ROBONOMICS,
     ROBONOMICS_WSS,
     RWS_DAYS_LEFT_NOTIFY,
+    SUBSCRIPTION_LEFT_DAYS,
     TWIN_ID,
     ZERO_ACC,
     LAUNCH_REGISTRATION_COMMAND,
@@ -239,12 +240,20 @@ class Robonomics:
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
 
-    def encrypt_for_devices(self, data: str, devices: tp.List[str] = None) -> str:
+    def encrypt_for_devices(self, data: tp.Union[str, dict], devices: tp.List[str] = None) -> str:
         if devices is None:
             devices = self.devices_list.copy()
         if self.controller_address not in devices:
             devices.append(self.controller_address)
         return encrypt_for_devices(data, self.controller_account.keypair, devices)
+
+    def decrypt_message_for_devices(self, data: str, sender_address: str = None) -> str:
+        if sender_address is None:
+            sender_address = self.controller_address
+        sender_public_key = Keypair(
+            ss58_address=sender_address, crypto_type=KeypairType.ED25519
+        ).public_key
+        return decrypt_message_devices(data, sender_public_key, self.controller_account.keypair)
 
     def encrypt_message(self, data: str, recepient_address: str = None) -> str:
         if recepient_address is None:
@@ -308,7 +317,7 @@ class Robonomics:
                 json_result = json.loads(self.decrypt_message(result, data[0]))
             if "password" in json_result:
                 _LOGGER.debug(f"Got registration command with password from {data[0]}")
-                await UserManager(self.hass).create_user(data[0], result)
+                await UserManager(self.hass).create_user(data[0], json_result["password"])
             elif "platform" in json_result:
                 _LOGGER.debug(f"Got call service command {json_result}")
                 _run_launch_command(self.hass, result, data[0])
@@ -335,24 +344,22 @@ class Robonomics:
                         raise TimeoutError
             _LOGGER.debug(f"Left {rws_days_left} days of subscription")
             if rws_days_left == -1:
-                self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", 100000)
+                self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = 100000
                 _LOGGER.debug("Subscription is endless")
                 return
             if rws_days_left:
-                self.hass.states.async_set(
-                    f"{DOMAIN}.subscription_left_days", rws_days_left
-                )
+                self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = rws_days_left
                 if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
                     service_data = {
                         "message": f"""Your subscription will end soon. You can use it for another {rws_days_left} days, 
-                                        after that it should be renewed. You can do it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).""",
+                                        after that it should be renewed. You can do it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-buy).""",
                         "title": "Robonomics Subscription Expires",
                     }
                     await create_notification(self.hass, service_data)
             else:
-                self.hass.states.async_set(f"{DOMAIN}.subscription_left_days", 0)
+                self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = 0
                 service_data = {
-                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-activate).",
+                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://dapp.robonomics.network/#/rws-buy).",
                     "title": "Robonomics Subscription Expires",
                 }
                 await create_notification(self.hass, service_data)
@@ -690,6 +697,7 @@ class Robonomics:
             elif (
                 type(data[1]) == list and data[0] == self.sub_owner_address
             ):  ## New Device in subscription
+                self._update_devices_list(data[1])
                 self.hass.async_create_task(
                     UserManager(self.hass).update_users(data[1])
                 )
@@ -758,6 +766,13 @@ class Robonomics:
         receipt = await self.send_datalog(data, self.controller_seed, True)
         self.sending_states = False
         return receipt
+
+    def _update_devices_list(self, devices_list: tp.List[str]) -> None:
+        new_devices = devices_list.copy()
+        if self.controller_address in new_devices:
+            new_devices.remove(self.controller_address)
+        _LOGGER.debug(f"New devices list: {new_devices}")
+        self.devices_list = new_devices
 
     @to_thread
     def get_devices_list(self):

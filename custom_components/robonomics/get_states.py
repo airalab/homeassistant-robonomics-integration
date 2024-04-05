@@ -197,7 +197,8 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         _LOGGER.warning(f"Exception in get dashboard: {e}")
         config_dashboard = None
     if config_dashboard is not None:
-        for view in config_dashboard["views"]:
+        # _LOGGER.debug(f"Config dashboard: {config_dashboard}")
+        for view in config_dashboard.get("views", []):
             for card in view["cards"]:
                 if "image" in card:
                     image_path = card["image"]
@@ -294,11 +295,12 @@ async def _get_states(
             if entity_data.device_id != None:
                 if entity_data.device_id not in devices_data:
                     device = registry.async_get(entity_data.device_id)
-                    device_name = str(device.name_by_user) if device.name_by_user != None else str(device.name)
-                    devices_data[entity_data.device_id] = {
-                        "name": device_name,
-                        "entities": [entity_data.entity_id],
-                    }
+                    if device is not None:
+                        device_name = str(device.name_by_user) if device.name_by_user != None else str(device.name)
+                        devices_data[entity_data.device_id] = {
+                            "name": device_name,
+                            "entities": [entity_data.entity_id],
+                        }
                 else:
                     devices_data[entity_data.device_id]["entities"].append(entity_data.entity_id)
             entities_data[entity_data.entity_id] = entity_info

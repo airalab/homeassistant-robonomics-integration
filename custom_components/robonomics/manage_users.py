@@ -16,7 +16,7 @@ from homeassistant.auth.providers import homeassistant as auth_ha
 from homeassistant.auth import AuthProvider
 from homeassistant.core import HomeAssistant
 
-from .ipfs import add_user_info_to_ipfs
+from .ipfs import add_user_info_to_ipfs, get_encrypted_user_info_for_address
 
 from .const import (
     CONF_SUB_OWNER_ADDRESS,
@@ -184,21 +184,24 @@ class UserManager:
 
     async def _create_user_for_address(self, address: str, password: str):
         _LOGGER.debug(f"Start creating user for address {address}")
-        username = await self._get_username(address)
+        username = await self._get_username_for_address(address)
         _LOGGER.debug(f"The username for address {address} is {username}")
         if await self._create_hass_user(username, password):
             _LOGGER.debug(f"Start saving to store user {username}")
             await add_or_change_store(
                 self.hass, STORE_USERS, address, {"username": username}
             )
-            encrypted_data = self.hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(
-                json.dumps({"password": password}), [address]
-            )
-            filename = write_data_to_temp_file(encrypted_data, filename=address)
-            ipfs_hash = await add_user_info_to_ipfs(self.hass, filename)
-            await self.hass.data[DOMAIN][ROBONOMICS].set_twin_topic_with_remove_old(
-                ipfs_hash, self.hass.data[DOMAIN][TWIN_ID], address
-            )
+            await self._add_user_info_to_twin_id(address, password)
+
+    async def _add_user_info_to_twin_id(self, address: str, password: str) -> None:
+        encrypted_data = self.hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(
+            json.dumps({"password": password}), [address]
+        )
+        filename = write_data_to_temp_file(encrypted_data, filename=address)
+        ipfs_hash = await add_user_info_to_ipfs(self.hass, filename)
+        await self.hass.data[DOMAIN][ROBONOMICS].set_twin_topic_with_remove_old(
+            ipfs_hash, self.hass.data[DOMAIN][TWIN_ID], address
+        )
 
     async def _get_old_username(self, address: str) -> tp.Optional[str]:
         storage_data = await async_load_from_store(self.hass, STORE_USERS)
@@ -224,31 +227,78 @@ class UserManager:
         except Exception as e:
             _LOGGER.error(f"Exception in delete user for address: {e}")
 
-    async def get_access_token_for_user(self, username: str, password: str):
-        ip_addres = get_ip_address()
-        ha_url = f"http://{ip_addres}:8123"
-        client_id = f"http://{ip_addres}:8123/"
-        headers = {
+    async def get_access_token_for_address(self, address: str) -> str:
+        username = await self._get_username_for_address(address)
+        password = await self._get_password_for_address(address)
+        access_token = await self._get_access_token_for_user(username, password)
+        _LOGGER.debug(f"Access token for address {address}: {access_token}")
+        return access_token
+
+    async def _get_password_for_address(self, address: str) -> str:
+        encrypted_user_info = await get_encrypted_user_info_for_address(self.hass, address)
+        user_info = self.hass.data[DOMAIN][ROBONOMICS].decrypt_message_for_devices(encrypted_user_info)
+        user_info_json = json.loads(user_info)
+        return user_info_json["password"]
+
+    async def _get_access_token_for_user(self, username: str, password: str):
+        ip_address = get_ip_address()
+        headers = self._make_headers()
+        login_flow_request_data = self._make_get_login_flow_request_data(ip_address)
+        flow_id = await self._make_login_flow_request(
+            ip_address, headers, login_flow_request_data
+        )
+        access_token_request_data = self._make_access_token_request_data(
+            ip_address, username, password
+        )
+        access_token = await self._make_access_token_request(
+            ip_address, headers, access_token_request_data, flow_id
+        )
+        return access_token
+
+    def _make_headers(self) -> tp.Dict:
+        return {
             "accept": "*/*",
             "accept-language": "en",
             "content-type": "text/plain;charset=UTF-8",
         }
+
+    def _make_get_login_flow_request_data(self, ip_address: str) -> str:
+        ha_url = f"http://{ip_address}:8123"
+        client_id = f"http://{ip_address}:8123/"
         data = {
             "client_id": client_id,
             "handler": ["homeassistant", "null"],
             "redirect_uri": f"{ha_url}?auth_callback=1",
         }
-        data = json.dumps(data).replace('"null"', "null")
+        return json.dumps(data).replace('"null"', "null")
+
+    async def _make_login_flow_request(
+        self, ip_address: str, headers: tp.Dict, data: str
+    ) -> int:
         flow_id_resp = await async_post_request(
-            self.hass, f"{ha_url}/auth/login_flow", headers=headers, data=data
+            self.hass,
+            f"http://{ip_address}:8123/auth/login_flow",
+            headers=headers,
+            data=data,
         )
-        flow_id = flow_id_resp["flow_id"]
-        data = {"username": username, "password": password, "client_id": client_id}
+        return flow_id_resp["flow_id"]
+
+    def _make_access_token_request_data(
+        self, ip_address: str, username: str, password: str
+    ) -> str:
+        client_id = f"http://{ip_address}:8123/"
+        return json.dumps(
+            {"username": username, "password": password, "client_id": client_id}
+        )
+
+    async def _make_access_token_request(
+        self, ip_address: str, headers: tp.Dict, data: str, flow_id: int
+    ) -> str:
         token_resp = await async_post_request(
             self.hass,
-            f"{ha_url}/auth/login_flow/{flow_id}",
+            f"http://{ip_address}:8123/auth/login_flow/{flow_id}",
             headers=headers,
-            data=json.dumps(data),
+            data=data,
         )
         return token_resp["result"]
 
@@ -267,7 +317,7 @@ class UserManager:
     #     result = await self.hass.auth.login_flow.async_configure(flow_id, data)
     #     return result["result"].id
 
-    async def _get_username(self, address: str) -> str:
+    async def _get_username_for_address(self, address: str) -> str:
         identity_name = await self.hass.data[DOMAIN][
             ROBONOMICS
         ].get_identity_display_name(address)

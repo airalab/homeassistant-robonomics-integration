@@ -43,6 +43,7 @@ from .const import (
     IPFS_GATEWAY,
     IPFS_MAX_FILE_NUMBER,
     IPFS_MEDIA_PATH,
+    IPFS_STATUS,
     IPFS_TELEMETRY_PATH,
     MAX_NUMBER_OF_REQUESTS,
     MORALIS_GATEWAY,
@@ -85,7 +86,8 @@ async def wait_ipfs_daemon(hass: HomeAssistant) -> None:
     _LOGGER.debug("Wait for IPFS local node connection...")
     while not await _check_connection(hass):
         await asyncio.sleep(10)
-    hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+    hass.data[DOMAIN][IPFS_STATUS] = "OK"
+    hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
 
@@ -231,20 +233,29 @@ async def add_user_info_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Option
     return ipfs_hash
 
 
+async def get_encrypted_user_info_for_address(hass: HomeAssistant, address: str) -> tp.Optional[str]:
+    encrypted_user_info = await read_ipfs_local_file(hass, address, IPFS_USERS_PATH)
+    return encrypted_user_info
+
 @to_thread
 def delete_folder_from_local_node(hass: HomeAssistant, dirname: str) -> None:
     try:
         _LOGGER.debug(f"Start deleting ipfs folder {dirname}")
         with ipfshttpclient2.connect() as client:
-            folders = client.files.ls("/")
-            folder_names = [folder["Name"] for folder in folders["Entries"]]
+            folders = client.files.ls("/")["Entries"]
+            if folders is not None:
+                folder_names = [folder["Name"] for folder in folders]
+            else:
+                folder_names = []
             if dirname[1:] in folder_names:
                 client.files.rm(dirname, recursive=True)
-                hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+                hass.data[DOMAIN][IPFS_STATUS] = "OK"
+                hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
                 _LOGGER.debug(f"Ipfs folder {dirname} was deleted")
     except Exception as e:
         _LOGGER.error(f"Exception in deleting folder {dirname}: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
 
 @to_thread
 def get_folder_hash(hass: HomeAssistant, ipfs_folder: str) -> str:
@@ -257,11 +268,13 @@ def get_folder_hash(hass: HomeAssistant, ipfs_folder: str) -> str:
     try:
         with ipfshttpclient2.connect() as client:
             res = client.files.stat(ipfs_folder)
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+            hass.data[DOMAIN][IPFS_STATUS] = "OK"
+            hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
             return res["Hash"]
     except Exception as e:
         _LOGGER.error(f"Exception in getting folder hash: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
 
 
 @to_thread
@@ -290,10 +303,12 @@ def create_folders(hass: HomeAssistant) -> None:
             if IPFS_USERS_PATH[1:] not in folder_names:
                 client.files.mkdir(IPFS_USERS_PATH)
                 _LOGGER.debug(f"IPFS folder {IPFS_USERS_PATH} created")
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+            hass.data[DOMAIN][IPFS_STATUS] = "OK"
+            hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
     except Exception as e:
         _LOGGER.error(f"Exception in creating ipfs folders: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
 
 
 @to_thread
@@ -312,14 +327,16 @@ def check_if_hash_in_folder(hass: HomeAssistant, ipfs_hash: str, folder: str) ->
                 return False
             for fileinfo in list_files["Entries"]:
                 stat = client.files.stat(f"{folder}/{fileinfo['Name']}")
-                hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+                hass.data[DOMAIN][IPFS_STATUS] = "OK"
+                hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
                 if ipfs_hash == stat["Hash"]:
                     return True
             else:
                 return False
     except Exception as e:
         _LOGGER.error(f"Exception in check if hash in folder: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
 
 
 @to_thread
@@ -349,13 +366,15 @@ def get_last_file_hash(
                     last_file = files["Entries"][-1]["Name"]
                     last_hash = client.files.stat(f"{path}/{last_file}")["Hash"]
                 _LOGGER.debug(f"Last {path} file {last_file}, with hash {last_hash}")
-                hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+                hass.data[DOMAIN][IPFS_STATUS] = "OK"
+                hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
                 return last_file, last_hash
             else:
                 return None, None
     except Exception as e:
         _LOGGER.error(f"Exception in get_last_file_hash: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
         return None, None
 
 
@@ -371,22 +390,24 @@ def read_ipfs_local_file(
     :return: dict with the data in json, string data otherwise
     """
 
-    with ipfshttpclient2.connect() as client:
-        try:
+    try:
+        with ipfshttpclient2.connect() as client:
             _LOGGER.debug(f"Read data from local file: {path}/{filename}")
             data = client.files.read(f"{path}/{filename}")
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
-        except Exception as e:
-            _LOGGER.warning(f"Exception in reading ipfs local file: {e}")
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
-            return None
-        try:
-            data_json = json.loads(data)
-            return data_json
-        except Exception as e:
-            _LOGGER.debug(f"Data is not json: {e}")
-        data = data.decode("utf-8")
-        return data
+            hass.data[DOMAIN][IPFS_STATUS] = "OK"
+            hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
+    except Exception as e:
+        _LOGGER.warning(f"Exception in reading ipfs local file: {e}")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
+        return None
+    try:
+        data_json = json.loads(data)
+        return data_json
+    except Exception as e:
+        _LOGGER.debug(f"Data is not json: {e}")
+    data = data.decode("utf-8")
+    return data
 
 
 async def get_ipfs_data(
@@ -463,16 +484,20 @@ def _delete_ipfs_telemetry_files(hass: HomeAssistant):
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(IPFS_TELEMETRY_PATH)["Entries"]
+            if files is None:
+                files = []
             num_files_to_delete = len(files) - IPFS_MAX_FILE_NUMBER
             if num_files_to_delete > 0:
                 for i in range(num_files_to_delete):
                     filename = files[i]["Name"]
                     client.files.rm(f"{IPFS_TELEMETRY_PATH}/{filename}")
                     _LOGGER.debug(f"Deleted old telemetry {filename}")
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+            hass.data[DOMAIN][IPFS_STATUS] = "OK"
+            hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
     except Exception as e:
         _LOGGER.error(f"Exeption in delete ipfs telemetry files: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
 
 
 @to_thread
@@ -487,11 +512,13 @@ def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
     try:
         with ipfshttpclient2.connect() as client:
             files = client.files.ls(IPFS_TELEMETRY_PATH)
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
-            if len(files["Entries"]) > IPFS_MAX_FILE_NUMBER:
+            hass.data[DOMAIN][IPFS_STATUS] = "OK"
+            hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
+            ipfs_files = files["Entries"] if files["Entries"] is not None else []
+            if len(ipfs_files) > IPFS_MAX_FILE_NUMBER:
                 _delete_ipfs_telemetry_files(hass)
-            if len(files["Entries"]) > 0:
-                last_file = files["Entries"][-2]["Name"]
+            if len(ipfs_files) > 1:
+                last_file = ipfs_files[-2]["Name"]
                 last_file_time = datetime.fromtimestamp(float(last_file.split("-")[-1]))
                 current_file_time = datetime.fromtimestamp(
                     float(filename.split("-")[-1])
@@ -508,7 +535,8 @@ def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
                 return True
     except Exception as e:
         _LOGGER.error(f"Exception in check_if_need_pin: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
         return True
 
 
@@ -533,6 +561,10 @@ def _add_to_local_node(
     try:
         _LOGGER.debug(f"Start adding {filename} to local node, pin: {pin}")
         with ipfshttpclient2.connect() as client:
+            if not pin:
+                if last_file_name is not None:
+                    client.files.rm(f"{path}/{last_file_name}")
+                    _LOGGER.debug(f"File {last_file_name} with was unpinned")
             result = client.add(filename, pin=False)
             ipfs_hash: tp.Optional[str] = result["Hash"]
             ipfs_file_size: tp.Optional[int] = int(result["Size"])
@@ -541,14 +573,12 @@ def _add_to_local_node(
             )
             filename = filename.split("/")[-1]
             client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{filename}")
-            if not pin:
-                if last_file_name is not None:
-                    client.files.rm(f"{path}/{last_file_name}")
-                    _LOGGER.debug(f"File {last_file_name} with was unpinned")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+        hass.data[DOMAIN][IPFS_STATUS] = "OK"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
     except Exception as e:
         _LOGGER.error(f"Exception in add to local node: {e}")
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
         ipfs_hash = None
         ipfs_file_size = None
     return ipfs_hash, ipfs_file_size
@@ -814,10 +844,12 @@ def _get_from_local_node_by_hash(
             res = client.cat(ipfs_hash)
             res_str = res.decode()
             _LOGGER.debug(f"Got data {ipfs_hash} from local gateway")
-            hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "OK")
+            hass.data[DOMAIN][IPFS_STATUS] = "OK"
+            hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
             return res_str
     except Exception as e:
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
         _LOGGER.error(f"Exception in getting file from local node by hash: {e}")
 
 
@@ -852,10 +884,12 @@ def _check_connection(hass: HomeAssistant) -> bool:
         _LOGGER.debug("Connected to IPFS local node")
         return True
     except ipfshttpclient2.exceptions.ConnectionError:
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
         _LOGGER.debug("Can't connect to IPFS")
         return False
     except Exception as e:
-        hass.states.async_set(f"{DOMAIN}.{IPFS_STATUS_ENTITY}", "Error")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
         _LOGGER.error(f"Unexpected error in check ipfs connection: {e}")
         return False
