@@ -295,11 +295,12 @@ async def _get_states(
             if entity_data.device_id != None:
                 if entity_data.device_id not in devices_data:
                     device = registry.async_get(entity_data.device_id)
-                    device_name = str(device.name_by_user) if device.name_by_user != None else str(device.name)
-                    devices_data[entity_data.device_id] = {
-                        "name": device_name,
-                        "entities": [entity_data.entity_id],
-                    }
+                    if device is not None:
+                        device_name = str(device.name_by_user) if device.name_by_user != None else str(device.name)
+                        devices_data[entity_data.device_id] = {
+                            "name": device_name,
+                            "entities": [entity_data.entity_id],
+                        }
                 else:
                     devices_data[entity_data.device_id]["entities"].append(entity_data.entity_id)
             entities_data[entity_data.entity_id] = entity_info
