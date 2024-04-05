@@ -197,7 +197,8 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         _LOGGER.warning(f"Exception in get dashboard: {e}")
         config_dashboard = None
     if config_dashboard is not None:
-        for view in config_dashboard["views"]:
+        # _LOGGER.debug(f"Config dashboard: {config_dashboard}")
+        for view in config_dashboard.get("views", []):
             for card in view["cards"]:
                 if "image" in card:
                     image_path = card["image"]

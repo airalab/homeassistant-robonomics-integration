@@ -512,10 +512,11 @@ def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
             files = client.files.ls(IPFS_TELEMETRY_PATH)
             hass.data[DOMAIN][IPFS_STATUS] = "OK"
             hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
-            if len(files["Entries"]) > IPFS_MAX_FILE_NUMBER:
+            ipfs_files = files["Entries"] if files["Entries"] is not None else []
+            if len(ipfs_files) > IPFS_MAX_FILE_NUMBER:
                 _delete_ipfs_telemetry_files(hass)
-            if len(files["Entries"]) > 0:
-                last_file = files["Entries"][-2]["Name"]
+            if len(ipfs_files) > 1:
+                last_file = ipfs_files[-2]["Name"]
                 last_file_time = datetime.fromtimestamp(float(last_file.split("-")[-1]))
                 current_file_time = datetime.fromtimestamp(
                     float(filename.split("-")[-1])

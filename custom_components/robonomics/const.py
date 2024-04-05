@@ -101,7 +101,7 @@ MEDIA_ACC = "4CC7GkKuJJzFzswqz39m5qWbgXaQks9f36jCgsadpN2c1hnh"
 GETTING_STATES_QUEUE = "getting_states_queue"
 GETTING_STATES = "getting_states"
 
-IPFS_STATUS_ENTITY = "ipfs_status"
+IPFS_STATUS_ENTITY = "ipfs_daemon_status"
 IPFS_DAEMON_STATUS_STATE_CHANGE = "ipfs_status_state_change_handler"
 
 WEBSOCKET = "websocket"
