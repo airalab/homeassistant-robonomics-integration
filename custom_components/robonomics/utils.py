@@ -91,9 +91,9 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
             try:
                 receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
                 encrypted_key = encrypt_message(random_seed, sender_kp, receiver_kp.public_key)
+                encrypted_keys[device] = encrypted_key
             except Exception as e:
                 _LOGGER.warning(f"Faild to encrypt key for: {device} with error: {e}")
-            encrypted_keys[device] = encrypted_key
         encrypted_keys["data"] = encrypted_data
         data_final = json.dumps(encrypted_keys)
         return data_final
