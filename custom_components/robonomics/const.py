@@ -41,6 +41,8 @@ TIME_CHANGE_UNSUB = "time_change_unsub"
 HANDLE_IPFS_REQUEST = "handle_ipfs_request"
 STATE_CHANGE_UNSUB = "state_change_unsub"
 HANDLE_STATE_CHANGE = "handle_state_change"
+TIME_CHANGE_LIBP2P_UNSUB = "time_change_libp2p_unsub"
+HANDLE_TIME_CHANGE_LIBP2P = "handle_time_change_libp2p"
 
 DATA_PATH = ".ha_robonomics_data"
 DATA_BACKUP_ENCRYPTED_NAME = "backup_remote_encrypted"
@@ -92,7 +94,6 @@ DELETE_ATTRIBUTES = [
     "unit_of_measurement",
     "linkquality",
     "transition",
-    "supported_features",
 ]
 ZERO_ACC = "0x0000000000000000000000000000000000000000000000000000000000000000"
 MEDIA_ACC_H256 = "0x0000000000000000000000000000000000000000000000000000000000000001"
@@ -118,6 +119,7 @@ WAIT_IPFS_DAEMON = "wait_ipfs_daemon"
 
 STORE_USERS = "users"
 LIBP2P = "libp2p"
+LIBP2P_RELAY_ADDRESSES = ["/dns4/libp2p-relay.robonomics.network/tcp/443/wss/p2p/12D3KooWEmZfGh3HEy7rQPKZ8DpJRYfFcbULN97t3hGwkB5xPmjn"]
 
 LAUNCH_REGISTRATION_COMMAND = "0x000000000000000000000000000000002f68615f726567697374726174696f6e"
 SUBSCRIPTION_LEFT_DAYS = "subscription_left_days"

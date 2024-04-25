@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import typing as tp
@@ -12,9 +13,11 @@ from .const import (
     LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL,
     LIBP2P_SEND_TOKEN_PROTOCOL,
     ROBONOMICS,
+    LIBP2P_RELAY_ADDRESSES,
 )
 from .utils import verify_sign
 from .manage_users import UserManager
+from .get_states import get_and_send_data
 
 from pyproxy import Libp2pProxyAPI
 
@@ -26,6 +29,7 @@ class LibP2P:
         self.libp2p_proxy = Libp2pProxyAPI(LIBP2P_WS_SERVER, self._set_peer_id)
 
     async def connect_to_websocket(self):
+        # await self.libp2p_proxy.set_relay(LIBP2P_RELAY_ADDRESSES[0])
         await self.libp2p_proxy.subscribe_to_protocol_sync(
             LIBP2P_LISTEN_COMMANDS_PROTOCOL, self._run_command, reconnect=True
         )
@@ -66,6 +70,7 @@ class LibP2P:
 
     def _set_peer_id(self, peer_id) -> None:
         self.hass.data[DOMAIN][PEER_ID_LOCAL] = peer_id
+        asyncio.ensure_future(get_and_send_data(self.hass))
 
     async def send_states_to_websocket(self, data: str):
         if self.libp2p_proxy.is_connected():

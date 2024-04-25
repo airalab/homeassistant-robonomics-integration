@@ -273,13 +273,14 @@ async def _get_states(
         entity_data = entity_registry.async_get(entity)
         entity_state = hass.states.get(entity)
         if entity_state != None:
-            try:
-                units = str(entity_state.attributes.get("unit_of_measurement"))
-            except:
-                units = "None"
+            units = str(entity_state.attributes.get("unit_of_measurement", "None"))
             entity_attributes = {}
             for attr in entity_state.attributes:
                 if attr not in DELETE_ATTRIBUTES:
+                    # if attr == "supported_color_modes":
+                    #     color_modes = []
+                    #     for color_mode in entity_state.attributes[attr]:
+                    #         color_modes.append(color_mode.)
                     if type(entity_state.attributes[attr]) == int or type(entity_state.attributes[attr]) == dict:
                         entity_attributes[attr] = entity_state.attributes[attr]
                     else:
@@ -300,6 +301,13 @@ async def _get_states(
                         devices_data[entity_data.device_id] = {
                             "name": device_name,
                             "entities": [entity_data.entity_id],
+                            "config_entries": list(device.config_entries),
+                            "manufacturer": device.manufacturer,
+                            "model": device.model,
+                            "via_device": device.via_device_id,
+                            "connections": list(device.connections),
+                            "suggested_area": device.suggested_area,
+                            "area_id": device.area_id,
                         }
                 else:
                     devices_data[entity_data.device_id]["entities"].append(entity_data.entity_id)

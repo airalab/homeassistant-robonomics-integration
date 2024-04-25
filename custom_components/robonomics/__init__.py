@@ -11,6 +11,7 @@ from datetime import timedelta
 from platform import platform
 import json
 import random
+import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -56,6 +57,9 @@ from .const import (
     HANDLE_LIBP2P_STATE_CHANGED,
     WAIT_IPFS_DAEMON,
     LIBP2P,
+    HANDLE_TIME_CHANGE_LIBP2P,
+    TIME_CHANGE_LIBP2P_UNSUB,
+
 )
 from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import create_folders, wait_ipfs_daemon, delete_folder_from_local_node, handle_ipfs_status_change
@@ -118,6 +122,12 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
             hass.data[DOMAIN][HANDLE_TIME_CHANGE],
             hass.data[DOMAIN][CONF_SENDING_TIMEOUT],
         )
+        hass.data[DOMAIN][TIME_CHANGE_LIBP2P_UNSUB]()
+        hass.data[DOMAIN][TIME_CHANGE_LIBP2P_UNSUB] = async_track_time_interval(
+            hass,
+            hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P],
+            timedelta(seconds=1),
+        )
         _LOGGER.debug(f"HASS.data after: {hass.data[DOMAIN]}")
     except Exception as e:
         _LOGGER.error(f"Exception in update_listener: {e}")
@@ -134,7 +144,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     :return: True after succesfull setting up
 
     """
-
+    lock = asyncio.Lock()
+    libp2p_message_queue = []
     hass.data.setdefault(DOMAIN, {})
     _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
@@ -209,7 +220,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
-
+    
     async def libp2p_state_changed(changed_entity: str, old_state, new_state):
         """Callback for state changing listener.
         It calls every timeout from config to get and send telemtry.
@@ -223,11 +234,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return
             # _LOGGER.info(f"Libp2p-state-changed: Changed entity: {changed_entity}, old state: {old_state}, new state: {new_state}")
             msg = await get_states_libp2p(hass)
-            await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
+            # await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
+            async with lock:
+                if len(libp2p_message_queue) == 0:
+                    libp2p_message_queue.append(msg)
+                else:
+                    libp2p_message_queue[0] = msg
         except Exception as e:
             _LOGGER.error(f"Exception in libp2p_state_changed: {e}")
     
     hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED] = libp2p_state_changed
+
+    async def libp2p_time_changed(event):
+        if len(libp2p_message_queue) > 0:
+            async with lock:
+                last_message = libp2p_message_queue[0]
+                libp2p_message_queue.pop(0)
+            await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(last_message)
+
+    hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P] = libp2p_time_changed
+
 
     async def ipfs_daemon_state_changed(changed_entity: str, old_state, new_state):
         _LOGGER.debug(f"IPFS Status entity changed state from {old_state} to {new_state}")
@@ -286,6 +312,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][CONF_SENDING_TIMEOUT],
     )
 
+    hass.data[DOMAIN][TIME_CHANGE_LIBP2P_UNSUB] = async_track_time_interval(
+        hass,
+        hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P],
+        timedelta(seconds=1),
+    )
+
     await hass.data[DOMAIN][ROBONOMICS].subscribe()
     await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
     hass.data[DOMAIN][LIBP2P] = LibP2P(hass)
@@ -316,6 +348,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
+    hass.data[DOMAIN][TIME_CHANGE_LIBP2P_UNSUB]()
     await hass.data[DOMAIN][LIBP2P].close_connection()
     if LIBP2P_UNSUB in hass.data[DOMAIN]:
         hass.data[DOMAIN][LIBP2P_UNSUB]()
