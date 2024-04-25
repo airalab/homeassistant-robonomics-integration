@@ -107,8 +107,6 @@ async def get_and_send_data(hass: HomeAssistant):
 async def get_states_libp2p(hass: HomeAssistant) -> str:
     states_json = await _get_states(hass, False)
     states_string = json.dumps(states_json)
-    with open("/home/homeassistant/test_telemetry.json", "w") as f:
-        f.write(states_string)
     sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
     sender_kp = sender_acc.keypair
     devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
