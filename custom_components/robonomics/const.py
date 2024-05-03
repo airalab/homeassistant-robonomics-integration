@@ -23,6 +23,8 @@ CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
 CONF_PINATA_USE = "pinata_use"
 CONF_CUSTOM_GATEWAY_USE = "custom_gateway_use"
 
+CONTROLLER_ADDRESS = "controller_address"
+
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
 PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"

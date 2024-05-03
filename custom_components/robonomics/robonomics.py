@@ -86,8 +86,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
                     decrypted = decrypt_message_devices(
                         res, sub_admin_kp.public_key, sub_admin_kp
                     )
-                    decrypted_str = decrypted.decode("utf-8")
-                    decrypted_json = json.loads(decrypted_str)
+                    decrypted_json = json.loads(decrypted)
                     if int(decrypted_json["twin_id"]) != -1:
                         _LOGGER.debug(
                             f"Restored twin id is {decrypted_json['twin_id']}"
