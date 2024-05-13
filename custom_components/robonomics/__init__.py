@@ -16,7 +16,7 @@ import time
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
 from homeassistant.const import MATCH_ALL
-from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event
+from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event, async_track_state_change
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
 from robonomicsinterface import Account
@@ -87,7 +87,8 @@ async def init_integration(hass: HomeAssistant) -> None:
         _LOGGER.error(f"Exception in first send libp2p states {e}")
     try:
         hass.async_create_task(UserManager(hass).update_users(start_devices_list))
-        hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change_event(
+        _LOGGER.debug("Start track state change")
+        hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
             hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
         )
     except Exception as e:
@@ -225,15 +226,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
     
-    @callback
-    async def libp2p_state_changed(event: Event):
+    # @callback
+    async def libp2p_state_changed(changed_entity: str, old_state, new_state):
         """Callback for state changing listener.
         It calls every timeout from config to get and send telemtry.
         """
+        # _LOGGER.debug(f"Start libp2p state change")
         if LIBP2P not in hass.data[DOMAIN]:
             return
-        old_state = event.data["old_state"]
-        new_state = event.data["new_state"]
+        # old_state = event.data["old_state"]
+        # new_state = event.data["new_state"]
+        # _LOGGER.debug(f"Old state: {old_state}, new state: {new_state}")
         try:
             if old_state is None or new_state is None:
                 return
@@ -252,7 +255,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED] = libp2p_state_changed
 
-    @callback
+    # @callback
     async def libp2p_time_changed(event):
         if len(libp2p_message_queue) > 0:
             async with lock:
@@ -262,7 +265,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P] = libp2p_time_changed
 
-    @callback
+    # @callback
     async def ipfs_daemon_state_changed(event: Event):
         old_state = event.data["old_state"]
         new_state = event.data["new_state"]

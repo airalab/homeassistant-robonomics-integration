@@ -675,12 +675,12 @@ class Robonomics:
 
         try:
             # _LOGGER.debug(f"Data from subscription callback: {data}")
-            if type(data[1]) == str and data[1] == self.controller_address:  ## Launch
+            if isinstance(data[1], str) and data[1] == self.controller_address:  ## Launch
                 if data[0] in self.devices_list or data[0] == self.controller_address:
                     self.hass.async_create_task(self._handle_launch(data))
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
-            elif type(data[1]) == int and len(data) == 4:
+            elif isinstance(data[1], int) and len(data) == 4:
                 if TWIN_ID in self.hass.data[DOMAIN]:
                     if (
                         data[1] == self.hass.data[DOMAIN][TWIN_ID]
@@ -688,13 +688,13 @@ class Robonomics:
                     ):  ## Change backup topic in Digital Twin
                         self.hass.async_create_task(_handle_backup_change(self.hass))
             elif (
-                type(data[1]) == int and data[0] in self.devices_list
+                isinstance(data[1], int) and data[0] in self.devices_list
             ):  ## Datalog to change password
                 self.hass.async_create_task(
                     UserManager(self.hass).create_or_update_user(data)
                 )
             elif (
-                type(data[1]) == list and data[0] == self.sub_owner_address
+                isinstance(data[1], list) and data[0] == self.sub_owner_address
             ):  ## New Device in subscription
                 self._update_devices_list(data[1])
                 self.hass.async_create_task(
