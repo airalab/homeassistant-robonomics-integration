@@ -23,6 +23,8 @@ CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
 CONF_PINATA_USE = "pinata_use"
 CONF_CUSTOM_GATEWAY_USE = "custom_gateway_use"
 
+CONTROLLER_ADDRESS = "controller_address"
+
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
 PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
@@ -113,6 +115,7 @@ LIBP2P_LISTEN_COMMANDS_PROTOCOL = "/call"
 LIBP2P_SEND_STATES_PROTOCOL = "/update"
 LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL = "/token_request"
 LIBP2P_SEND_TOKEN_PROTOCOL = "/token_response"
+LIBP2P_MULTIADDRESS = "libp2p_multiaddress"
 
 PEER_ID_LOCAL = "peer_id_local"
 WAIT_IPFS_DAEMON = "wait_ipfs_daemon"

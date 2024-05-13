@@ -112,7 +112,7 @@ def decrypt_message_devices(data: tp.Union[str, dict], sender_public_key: bytes,
     """
     try:
         _LOGGER.debug(f"Start decrypt for device {recipient_keypair.ss58_address}")
-        if type(data) == str:
+        if isinstance:
             data_json = json.loads(data)
         else:
             data_json = data
@@ -178,14 +178,14 @@ def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, fi
     dirname = tempfile.gettempdir()
     if filename is not None:
         filepath = f"{dirname}/{filename}"
-        if type(data) == str:
+        if isinstance(data, str):
             with open(filepath, "w") as f:
                 f.write(data)
         else:
             with open(filepath, "wb") as f:
                 f.write(data)
     else:
-        if type(data) == str:
+        if isinstance(data, str):
             if config:
                 filepath = f"{dirname}/config_encrypted-{time.time()}"
             else:
@@ -290,16 +290,3 @@ def verify_sign(signature: str, address: str) -> bool:
         return keypair.verify(address, signature_bytes)
     except Exception as e:
         _LOGGER.error(f"Exception during signature verification: {e}")
-
-def format_libp2p_node_multiaddress(peer_id: str) -> tp.Optional[str]:
-    """Format libp2p node local multiaddress from ip and peer id.
-
-    :param peer_id: Peer id of the libp2p node.
-    :return: Formatted multiaddress or None.
-    """
-
-    ip_address = get_ip_address()
-    _LOGGER.debug(f"IP address {ip_address}")
-    if (ip_address is not None) and (peer_id):
-        multiaddress = f"/ip4/{ip_address}/tcp/9999/ws/p2p/{peer_id}"
-        return multiaddress

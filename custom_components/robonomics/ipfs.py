@@ -661,7 +661,7 @@ def _add_to_custom_gateway(
                 addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
             ) as client:
                 result = client.add(filename)
-                if type(result) == list:
+                if isinstance(result, list):
                     result = result[-1]
                 ipfs_hash: tp.Optional[str] = result["Hash"]
                 ipfs_file_size: tp.Optional[int] = int(result["Size"])
@@ -673,7 +673,7 @@ def _add_to_custom_gateway(
                 addr=f"/dns4/{url}/tcp/{port}/https"
             ) as client:
                 result = client.add(filename)
-                if type(result) == list:
+                if isinstance(result, list):
                     result = result[-1]
                 ipfs_hash: tp.Optional[str] = result["Hash"]
                 ipfs_file_size: tp.Optional[int] = int(result["Size"])
