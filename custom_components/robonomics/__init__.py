@@ -226,25 +226,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
     
-    # @callback
     async def libp2p_state_changed(changed_entity: str, old_state, new_state):
         """Callback for state changing listener.
         It calls every timeout from config to get and send telemtry.
         """
-        # _LOGGER.debug(f"Start libp2p state change")
         if LIBP2P not in hass.data[DOMAIN]:
             return
-        # old_state = event.data["old_state"]
-        # new_state = event.data["new_state"]
-        # _LOGGER.debug(f"Old state: {old_state}, new state: {new_state}")
         try:
             if old_state is None or new_state is None:
                 return
             if old_state.state == new_state.state:
                 return
-            # _LOGGER.info(f"Libp2p-state-changed: Changed entity: {changed_entity}, old state: {old_state}, new state: {new_state}")
             msg = await get_states_libp2p(hass)
-            # await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
             async with lock:
                 if len(libp2p_message_queue) == 0:
                     libp2p_message_queue.append(msg)
@@ -255,7 +248,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED] = libp2p_state_changed
 
-    # @callback
     async def libp2p_time_changed(event):
         if len(libp2p_message_queue) > 0:
             async with lock:
@@ -265,7 +257,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P] = libp2p_time_changed
 
-    # @callback
     async def ipfs_daemon_state_changed(event: Event):
         old_state = event.data["old_state"]
         new_state = event.data["new_state"]
@@ -332,12 +323,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await hass.data[DOMAIN][ROBONOMICS].subscribe()
-    # await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
     hass.data[DOMAIN][LIBP2P] = LibP2P(hass)
     await hass.data[DOMAIN][LIBP2P].connect_to_websocket()
     if TWIN_ID not in hass.data[DOMAIN]:
         await get_or_create_twin_id(hass)
 
+    asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].pin_dapp_to_local_node())
     asyncio.ensure_future(init_integration(hass))
 
     _LOGGER.debug(f"Robonomics user control successfuly set up")

@@ -39,9 +39,10 @@ from .const import (
     TWIN_ID,
     ZERO_ACC,
     LAUNCH_REGISTRATION_COMMAND,
+    DAPP_HASH_DATALOG_ADDRESS,
 )
 from .get_states import get_and_send_data
-from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file
+from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file, pin_file_to_local_node_by_hash
 from .manage_users import UserManager
 from .utils import (
     create_notification,
@@ -552,6 +553,27 @@ class Robonomics:
                 except Exception as e:
                     _LOGGER.error(f"Exception in set new twin topic: {e}")
 
+    async def pin_dapp_to_local_node(self):
+        ipfs_hash = await self._find_dapp_hash()
+        _LOGGER.debug(f"Got DApp IPFS hash: {ipfs_hash}")
+        if ipfs_hash is not None:
+            await pin_file_to_local_node_by_hash(self.hass, ipfs_hash)
+
+    @to_thread
+    def _find_dapp_hash(self) -> tp.Optional[str]:
+        _LOGGER.debug(f"Start looking for DApp ipfs hash")
+        try:
+            datalog = Datalog(Account())
+            last_datalog_item = datalog.get_index(DAPP_HASH_DATALOG_ADDRESS)["end"]
+            last_datalog = datalog.get_item(DAPP_HASH_DATALOG_ADDRESS, last_datalog_item - 1)
+            if last_datalog is not None:
+                ipfs_hash = last_datalog[1]
+                return ipfs_hash
+            else:
+                return None
+        except Exception as e:
+            _LOGGER.error(f"Exception in looking for dapp ipfs hash in datalog: {e}")
+
     @to_thread
     def find_password(self, address: str) -> tp.Optional[str]:
         """Look for encrypted password in the datalog of the given account and decrypt it
@@ -693,6 +715,11 @@ class Robonomics:
                 self.hass.async_create_task(
                     UserManager(self.hass).create_or_update_user(data)
                 )
+            elif (
+                isinstance(data[1], int) and data[0] == DAPP_HASH_DATALOG_ADDRESS
+            ):  ## Change Dapp hash
+                ipfs_hash = data[2]
+                self.hass.async_create_task(pin_file_to_local_node_by_hash(ipfs_hash))
             elif (
                 isinstance(data[1], list) and data[0] == self.sub_owner_address
             ):  ## New Device in subscription
