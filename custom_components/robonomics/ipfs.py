@@ -53,11 +53,44 @@ from .const import (
     IPFS_STATUS_ENTITY,
     WAIT_IPFS_DAEMON,
     IPFS_USERS_PATH,
+    IPFS_DAPP_FILE_NAME,
 )
 from .utils import get_hash, to_thread, create_notification
 
 _LOGGER = logging.getLogger(__name__)
 
+
+@to_thread
+def pin_file_to_local_node_by_hash(hass: HomeAssistant, ipfs_hash: str) -> None:
+    _LOGGER.debug(f"Start pinnig hash {ipfs_hash} to local node")
+    try:
+        with ipfshttpclient2.connect() as client:
+            files_list = _get_files_list(client)
+            if IPFS_DAPP_FILE_NAME in files_list:
+                old_dapp_hash = client.files.stat(f"/{IPFS_DAPP_FILE_NAME}").get("Hash")
+                if old_dapp_hash != ipfs_hash:
+                    client.files.rm(f"/{IPFS_DAPP_FILE_NAME}", recursive=True)
+                    client.pin.rm(ipfs_hash)
+                    _LOGGER.debug(f"Old DApp hash {old_dapp_hash} was removed")
+                else:
+                    _LOGGER.debug("DApp hash wasn't changed")
+                    return
+            client.files.cp(f"/ipfs/{ipfs_hash}", f"/{IPFS_DAPP_FILE_NAME}")
+            client.pin.add(ipfs_hash)
+        hass.data[DOMAIN][IPFS_STATUS] = "OK"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
+        _LOGGER.debug(f"Hash {ipfs_hash} was pinned to local node")
+    except Exception as e:
+        _LOGGER.error(f"Exception in pin to local node by hash: {e}")
+        hass.data[DOMAIN][IPFS_STATUS] = "Error"
+        hass.states.async_set(f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS])
+
+def _get_files_list(client, path: str = "/"):
+    files_list = client.files.ls(path)["Entries"]
+    if files_list is None:
+        files_list = []
+    item_names = [item["Name"] for item in files_list]
+    return item_names
 
 async def handle_ipfs_status_change(hass: HomeAssistant, ipfs_daemon_ok: bool):
     if not ipfs_daemon_ok:
