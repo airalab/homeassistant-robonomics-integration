@@ -93,7 +93,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
                 encrypted_key = encrypt_message(random_seed, sender_kp, receiver_kp.public_key)
                 encrypted_keys[device] = encrypted_key
             except Exception as e:
-                _LOGGER.warning(f"Faild to encrypt key for: {device} with error: {e}")
+                _LOGGER.warning(f"Faild to encrypt key for: {device} with error: {e}. Check your RWS devices, you may have SR25519 address in devices.")
         encrypted_keys["data"] = encrypted_data
         data_final = json.dumps(encrypted_keys)
         return data_final
@@ -198,6 +198,13 @@ def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, fi
                 f.write(data)
     return filepath
 
+def get_path_in_temp_dir(filename: str = None) -> str:
+    temp_dir = tempfile.gettempdir()
+    if filename is not None:
+        final_path = f"{temp_dir}/{filename}"
+    else:
+        final_path = temp_dir
+    return final_path
 
 def delete_temp_dir(dirpath: str) -> None:
     """

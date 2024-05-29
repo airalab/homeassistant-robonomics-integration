@@ -15,7 +15,7 @@ import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
-from homeassistant.const import MATCH_ALL
+from homeassistant.const import MATCH_ALL, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event, async_track_state_change
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
@@ -70,33 +70,6 @@ from .services import restore_from_backup_service_call, save_backup_service_call
 from .libp2p import LibP2P
 
 
-async def init_integration(hass: HomeAssistant) -> None:
-    """Compare rws devices with users from Home Assistant
-
-    :param hass: HomeAssistant instance
-    """
-    start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
-    _LOGGER.debug(f"Start devices list is {start_devices_list}")
-    await asyncio.sleep(60)
-    if DOMAIN not in hass.data:
-        return
-    try:
-        msg = await get_states_libp2p(hass)
-        await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
-    except Exception as e:
-        _LOGGER.error(f"Exception in first send libp2p states {e}")
-    try:
-        hass.async_create_task(UserManager(hass).update_users(start_devices_list))
-        _LOGGER.debug("Start track state change")
-        hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
-            hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
-        )
-    except Exception as e:
-        _LOGGER.error(f"Exception in first check devices {e}")
-
-    await get_and_send_data(hass)
-
-
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update. It's called when config updates.
 
@@ -149,6 +122,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     lock = asyncio.Lock()
     libp2p_message_queue = []
     hass.data.setdefault(DOMAIN, {})
+    async def init_integration(_: Event) -> None:
+        """Compare rws devices with users from Home Assistant
+
+        :param hass: HomeAssistant instance
+        """
+        start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
+        _LOGGER.debug(f"Start devices list is {start_devices_list}")
+        # await asyncio.sleep(20)
+        if DOMAIN not in hass.data:
+            return
+        try:
+            msg = await get_states_libp2p(hass)
+            await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
+        except Exception as e:
+            _LOGGER.error(f"Exception in first send libp2p states {e}")
+        try:
+            hass.async_create_task(UserManager(hass).update_users(start_devices_list))
+            _LOGGER.debug("Start track state change")
+            hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
+                hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
+            )
+        except Exception as e:
+            _LOGGER.error(f"Exception in first check devices {e}")
+
+        await get_and_send_data(hass)
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, init_integration)
     _LOGGER.debug(f"Robonomics user control starting set up")
     conf = entry.data
     if CONF_IPFS_GATEWAY in conf:
@@ -226,25 +225,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed
     
-    # @callback
     async def libp2p_state_changed(changed_entity: str, old_state, new_state):
         """Callback for state changing listener.
         It calls every timeout from config to get and send telemtry.
         """
-        # _LOGGER.debug(f"Start libp2p state change")
         if LIBP2P not in hass.data[DOMAIN]:
             return
-        # old_state = event.data["old_state"]
-        # new_state = event.data["new_state"]
-        # _LOGGER.debug(f"Old state: {old_state}, new state: {new_state}")
         try:
             if old_state is None or new_state is None:
                 return
             if old_state.state == new_state.state:
                 return
-            # _LOGGER.info(f"Libp2p-state-changed: Changed entity: {changed_entity}, old state: {old_state}, new state: {new_state}")
             msg = await get_states_libp2p(hass)
-            # await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
             async with lock:
                 if len(libp2p_message_queue) == 0:
                     libp2p_message_queue.append(msg)
@@ -255,7 +247,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED] = libp2p_state_changed
 
-    # @callback
     async def libp2p_time_changed(event):
         if len(libp2p_message_queue) > 0:
             async with lock:
@@ -265,7 +256,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P] = libp2p_time_changed
 
-    # @callback
+    @callback
     async def ipfs_daemon_state_changed(event: Event):
         old_state = event.data["old_state"]
         new_state = event.data["new_state"]
@@ -332,13 +323,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await hass.data[DOMAIN][ROBONOMICS].subscribe()
-    # await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
     hass.data[DOMAIN][LIBP2P] = LibP2P(hass)
     await hass.data[DOMAIN][LIBP2P].connect_to_websocket()
     if TWIN_ID not in hass.data[DOMAIN]:
         await get_or_create_twin_id(hass)
 
-    asyncio.ensure_future(init_integration(hass))
+    asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].pin_dapp_to_local_node())
+    # asyncio.ensure_future(init_integration(hass))
 
     _LOGGER.debug(f"Robonomics user control successfuly set up")
     return True

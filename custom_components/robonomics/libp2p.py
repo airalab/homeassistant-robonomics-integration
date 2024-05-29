@@ -32,33 +32,32 @@ class LibP2P:
 
     async def connect_to_websocket(self):
         # await self.libp2p_proxy.set_relay(LIBP2P_RELAY_ADDRESSES[0])
-        await self.libp2p_proxy.subscribe_to_protocol_sync(
+        await self.libp2p_proxy.subscribe_to_protocol_async(
             LIBP2P_LISTEN_COMMANDS_PROTOCOL, self._run_command, reconnect=True
         )
         await self.libp2p_proxy.subscribe_to_protocol_async(
             LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL, self._send_token, reconnect=True
         )
 
-    def _run_command(self, received_data: tp.Union[str, dict]) -> None:
+    async def _run_command(self, received_data: tp.Union[str, dict]) -> None:
         if isinstance(received_data, str):
             try:
                 data = json.loads(received_data)
             except Exception as e:
                 decrypted_data = self.hass.data[DOMAIN][ROBONOMICS].decrypt_message(received_data)
                 data = json.loads(decrypted_data)
+        _LOGGER.debug(f"Got command from libp2p: {data}")
         message_entity_id = data["params"]["entity_id"]
         params = data["params"].copy()
         del params["entity_id"]
         if params == {}:
-            params = None
-        self.hass.async_create_task(
-            self.hass.services.async_call(
+            params = None       
+        await self.hass.services.async_call(
                 domain=data["platform"],
                 service=data["name"],
                 service_data=params,
                 target={"entity_id": message_entity_id},
             )
-        )
 
     async def _send_token(self, data: tp.Union[str, dict]) -> None:
         if isinstance(data, str):

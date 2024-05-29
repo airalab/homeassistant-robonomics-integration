@@ -60,6 +60,9 @@ async def get_and_send_data(hass: HomeAssistant):
     :param hass: HomeAssistant instance
     """
 
+    if TWIN_ID not in hass.data[DOMAIN]:
+        _LOGGER.warning("Trying to send data before creating twin id")
+        return
     _LOGGER.debug(f"Get states request, another getting states: {hass.data[DOMAIN][GETTING_STATES]}")
     if hass.data[DOMAIN][GETTING_STATES]:
         _LOGGER.debug("Another states are sending. Wait...")
@@ -87,8 +90,7 @@ async def get_and_send_data(hass: HomeAssistant):
     except Exception as e:
         _LOGGER.error(f"Exception in create keypair during get and send data: {e}")
     try:
-        if TWIN_ID in hass.data[DOMAIN]:
-            await _get_dashboard_and_services(hass)
+        await _get_dashboard_and_services(hass)
         data = await _get_states(hass)
         data = json.dumps(data)
         _LOGGER.debug(f"Got states to send datalog")

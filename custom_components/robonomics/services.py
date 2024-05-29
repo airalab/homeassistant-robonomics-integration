@@ -135,7 +135,7 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
         hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
         _LOGGER.debug("Start looking for backup ipfs hash")
         ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
-        result = await get_ipfs_data(hass, ipfs_backup_hash, 0)
+        result = await get_ipfs_data(hass, ipfs_backup_hash)
         backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
         with open(backup_path, "w") as f:
             f.write(result)

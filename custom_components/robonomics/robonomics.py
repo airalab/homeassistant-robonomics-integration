@@ -39,9 +39,10 @@ from .const import (
     TWIN_ID,
     ZERO_ACC,
     LAUNCH_REGISTRATION_COMMAND,
+    DAPP_HASH_DATALOG_ADDRESS,
 )
 from .get_states import get_and_send_data
-from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file
+from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file, pin_file_to_local_node_by_hash
 from .manage_users import UserManager
 from .utils import (
     create_notification,
@@ -54,6 +55,20 @@ from .utils import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def retry_with_change_wss_async(func: tp.Callable):
+    async def wrapper(obj, *args, **kwargs):
+        async for attempt in AsyncRetrying(
+            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+        ):
+            with attempt:
+                try:
+                    res = await func(obj, *args, **kwargs)
+                    return res
+                except TimeoutError:
+                    obj._change_current_wss()
+                    raise TimeoutError
+    return wrapper
 
 async def get_or_create_twin_id(hass: HomeAssistant) -> None:
     """Try to get current twin id from local storage, datalogs or twin list in blockchain.
@@ -74,7 +89,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
         if last_telemetry_hash is not None:
             hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
             res = await get_ipfs_data(
-                hass, last_telemetry_hash, MAX_NUMBER_OF_REQUESTS - 1
+                hass, last_telemetry_hash, number_of_requests=1
             )
             if res is not None:
                 try:
@@ -307,7 +322,7 @@ class Robonomics:
         try:
             ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
             result = await get_ipfs_data(
-                self.hass, ipfs_hash, 0
+                self.hass, ipfs_hash
             )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
             _LOGGER.debug(f"Result: {result}")
             try:
@@ -552,6 +567,28 @@ class Robonomics:
                 except Exception as e:
                     _LOGGER.error(f"Exception in set new twin topic: {e}")
 
+    async def pin_dapp_to_local_node(self):
+        ipfs_hash = await self._find_dapp_hash()
+        _LOGGER.debug(f"Got DApp IPFS hash: {ipfs_hash}")
+        if ipfs_hash is not None:
+            await pin_file_to_local_node_by_hash(self.hass, ipfs_hash)
+
+    @retry_with_change_wss_async
+    @to_thread
+    def _find_dapp_hash(self) -> tp.Optional[str]:
+        _LOGGER.debug(f"Start looking for DApp ipfs hash")
+        try:
+            datalog = Datalog(Account())
+            last_datalog_item = datalog.get_index(DAPP_HASH_DATALOG_ADDRESS)["end"]
+            last_datalog = datalog.get_item(DAPP_HASH_DATALOG_ADDRESS, last_datalog_item - 1)
+            if last_datalog is not None:
+                ipfs_hash = last_datalog[1]
+                return ipfs_hash
+            else:
+                return None
+        except Exception as e:
+            _LOGGER.error(f"Exception in looking for dapp ipfs hash in datalog: {e}")
+
     @to_thread
     def find_password(self, address: str) -> tp.Optional[str]:
         """Look for encrypted password in the datalog of the given account and decrypt it
@@ -677,7 +714,8 @@ class Robonomics:
             # _LOGGER.debug(f"Data from subscription callback: {data}")
             if isinstance(data[1], str) and data[1] == self.controller_address:  ## Launch
                 if data[0] in self.devices_list or data[0] == self.controller_address:
-                    self.hass.async_create_task(self._handle_launch(data))
+                    asyncio.run_coroutine_threadsafe(self._handle_launch(data), self.hass.loop).result()
+                    # self.hass.async_create_task(self._handle_launch(data))
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
             elif isinstance(data[1], int) and len(data) == 4:
@@ -686,20 +724,21 @@ class Robonomics:
                         data[1] == self.hass.data[DOMAIN][TWIN_ID]
                         and data[3] == self.sub_owner_address
                     ):  ## Change backup topic in Digital Twin
-                        self.hass.async_create_task(_handle_backup_change(self.hass))
+                        asyncio.run_coroutine_threadsafe(_handle_backup_change(self.hass), self.hass.loop).result()
             elif (
                 isinstance(data[1], int) and data[0] in self.devices_list
             ):  ## Datalog to change password
-                self.hass.async_create_task(
-                    UserManager(self.hass).create_or_update_user(data)
-                )
+                asyncio.run_coroutine_threadsafe(UserManager(self.hass).create_or_update_user(data), self.hass.loop).result()
+            elif (
+                isinstance(data[1], int) and data[0] == DAPP_HASH_DATALOG_ADDRESS
+            ):  ## Change Dapp hash
+                ipfs_hash = data[2]
+                asyncio.run_coroutine_threadsafe(pin_file_to_local_node_by_hash(self.hass, ipfs_hash), self.hass.loop).result()
             elif (
                 isinstance(data[1], list) and data[0] == self.sub_owner_address
             ):  ## New Device in subscription
                 self._update_devices_list(data[1])
-                self.hass.async_create_task(
-                    UserManager(self.hass).update_users(data[1])
-                )
+                asyncio.run_coroutine_threadsafe(UserManager(self.hass).update_users(data[1]), self.hass.loop).result()
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
 
