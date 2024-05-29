@@ -60,12 +60,15 @@ async def get_and_send_data(hass: HomeAssistant):
     :param hass: HomeAssistant instance
     """
 
+    if TWIN_ID not in hass.data[DOMAIN]:
+        _LOGGER.warning("Trying to send data before creating twin id")
+        return
+
     _LOGGER.debug(f"Get states request, another getting states: {hass.data[DOMAIN][GETTING_STATES]}")
     if hass.data[DOMAIN][GETTING_STATES]:
         _LOGGER.debug("Another states are sending. Wait...")
         hass.data[DOMAIN][GETTING_STATES_QUEUE] += 1
         on_queue = hass.data[DOMAIN][GETTING_STATES_QUEUE]
-        counter = 0
         while hass.data[DOMAIN][GETTING_STATES]:
             await asyncio.sleep(5)
             if on_queue > 3:
@@ -87,22 +90,19 @@ async def get_and_send_data(hass: HomeAssistant):
     except Exception as e:
         _LOGGER.error(f"Exception in create keypair during get and send data: {e}")
     try:
-        if TWIN_ID in hass.data[DOMAIN]:
-            await _get_dashboard_and_services(hass)
-            data = await _get_states(hass)
-            data = json.dumps(data)
-            _LOGGER.debug(f"Got states to send datalog")
-            devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
-            devices_list_with_admin.append(sender_acc.get_address())
-            encrypted_data = encrypt_for_devices(str(data), sender_kp, devices_list_with_admin)
-            await asyncio.sleep(2)
-            filename = write_data_to_temp_file(encrypted_data)
-            ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
-            delete_temp_file(filename)
-            await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
-            hass.data[DOMAIN][GETTING_STATES] = False
-        else:
-            _LOGGER.warning("Trying to send data before creating twin id")
+        await _get_dashboard_and_services(hass)
+        data = await _get_states(hass)
+        data = json.dumps(data)
+        _LOGGER.debug(f"Got states to send datalog")
+        devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
+        devices_list_with_admin.append(sender_acc.get_address())
+        encrypted_data = encrypt_for_devices(str(data), sender_kp, devices_list_with_admin)
+        await asyncio.sleep(2)
+        filename = write_data_to_temp_file(encrypted_data)
+        ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
+        delete_temp_file(filename)
+        await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
+        hass.data[DOMAIN][GETTING_STATES] = False
     except Exception as e:
         _LOGGER.error(f"Exception in get_and_send_data: {e}")
 

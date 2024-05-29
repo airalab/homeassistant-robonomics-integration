@@ -14,8 +14,8 @@ import random
 import time
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
-from homeassistant.const import MATCH_ALL
+from homeassistant.core import HomeAssistant, ServiceCall, Event, CoreState
+from homeassistant.const import MATCH_ALL, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event, async_track_state_change
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
@@ -70,33 +70,6 @@ from .services import restore_from_backup_service_call, save_backup_service_call
 from .libp2p import LibP2P
 
 
-async def init_integration(hass: HomeAssistant) -> None:
-    """Compare rws devices with users from Home Assistant
-
-    :param hass: HomeAssistant instance
-    """
-    start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
-    _LOGGER.debug(f"Start devices list is {start_devices_list}")
-    await asyncio.sleep(60)
-    if DOMAIN not in hass.data:
-        return
-    try:
-        msg = await get_states_libp2p(hass)
-        await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
-    except Exception as e:
-        _LOGGER.error(f"Exception in first send libp2p states {e}")
-    try:
-        hass.async_create_task(UserManager(hass).update_users(start_devices_list))
-        _LOGGER.debug("Start track state change")
-        hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
-            hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
-        )
-    except Exception as e:
-        _LOGGER.error(f"Exception in first check devices {e}")
-
-    await get_and_send_data(hass)
-
-
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update. It's called when config updates.
 
@@ -149,7 +122,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     lock = asyncio.Lock()
     libp2p_message_queue = []
     hass.data.setdefault(DOMAIN, {})
-    _LOGGER.debug(f"Robonomics user control starting set up")
+    async def init_integration(_: Event = None) -> None:
+        """Compare rws devices with users from Home Assistant
+
+        :param hass: HomeAssistant instance
+        """
+        _LOGGER.debug(f"hass state: {hass.state}")
+        start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
+        _LOGGER.debug(f"Start devices list is {start_devices_list}")
+        if DOMAIN not in hass.data:
+            return
+        try:
+            msg = await get_states_libp2p(hass)
+            await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
+        except Exception as e:
+            _LOGGER.error(f"Exception in first send libp2p states {e}")
+        try:
+            hass.async_create_task(UserManager(hass).update_users(start_devices_list))
+            _LOGGER.debug("Start track state change")
+            hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
+                hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
+            )
+        except Exception as e:
+            _LOGGER.error(f"Exception in first check devices {e}")
+
+        await get_and_send_data(hass)
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, init_integration)
+    _LOGGER.debug("Robonomics user control starting set up")
     conf = entry.data
     if CONF_IPFS_GATEWAY in conf:
         hass.data[DOMAIN][CONF_IPFS_GATEWAY] = conf[CONF_IPFS_GATEWAY]
@@ -168,7 +167,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][CONTROLLER_ADDRESS] = sub_admin_acc.get_address()
     _LOGGER.debug(f"Controller: {sub_admin_acc.get_address()}")
     _LOGGER.debug(f"Owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
-    hass.data[DOMAIN][ROBONOMICS]: Robonomics = Robonomics(
+    hass.data[DOMAIN][ROBONOMICS] = Robonomics(
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
         hass.data[DOMAIN][CONF_ADMIN_SEED],
@@ -328,10 +327,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if TWIN_ID not in hass.data[DOMAIN]:
         await get_or_create_twin_id(hass)
 
-    asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].pin_dapp_to_local_node())
-    asyncio.ensure_future(init_integration(hass))
+    # asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].pin_dapp_to_local_node())
+    if hass.state == CoreState.running:
+        asyncio.ensure_future(init_integration())
 
-    _LOGGER.debug(f"Robonomics user control successfuly set up")
+    _LOGGER.debug(f"Robonomics user control successfuly set up, hass state: {hass.state}")
     return True
 
 
