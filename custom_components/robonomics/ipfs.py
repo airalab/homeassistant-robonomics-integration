@@ -638,7 +638,7 @@ def _add_to_pinata(
 
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
     try:
-        RES = None
+        res = None
         res = pinata.pin_file_to_ipfs(filename, save_absolute_paths=False)
         ipfs_hash: tp.Optional[str] = res["IpfsHash"]
         ipfs_file_size: tp.Optional[int] = int(res["PinSize"])

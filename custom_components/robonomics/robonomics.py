@@ -715,11 +715,11 @@ class Robonomics:
                 self.hass.async_create_task(
                     UserManager(self.hass).create_or_update_user(data)
                 )
-            elif (
-                isinstance(data[1], int) and data[0] == DAPP_HASH_DATALOG_ADDRESS
-            ):  ## Change Dapp hash
-                ipfs_hash = data[2]
-                self.hass.async_create_task(pin_file_to_local_node_by_hash(ipfs_hash))
+            # elif (
+            #     isinstance(data[1], int) and data[0] == DAPP_HASH_DATALOG_ADDRESS
+            # ):  ## Change Dapp hash
+            #     ipfs_hash = data[2]
+            #     self.hass.async_create_task(pin_file_to_local_node_by_hash(ipfs_hash))
             elif (
                 isinstance(data[1], list) and data[0] == self.sub_owner_address
             ):  ## New Device in subscription
