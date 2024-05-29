@@ -129,7 +129,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
-        await asyncio.sleep(60)
         if DOMAIN not in hass.data:
             return
         try:
@@ -148,7 +147,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await get_and_send_data(hass)
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, init_integration)
-    _LOGGER.debug(f"Robonomics user control starting set up")
+    _LOGGER.debug("Robonomics user control starting set up")
     conf = entry.data
     if CONF_IPFS_GATEWAY in conf:
         hass.data[DOMAIN][CONF_IPFS_GATEWAY] = conf[CONF_IPFS_GATEWAY]
@@ -167,7 +166,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][CONTROLLER_ADDRESS] = sub_admin_acc.get_address()
     _LOGGER.debug(f"Controller: {sub_admin_acc.get_address()}")
     _LOGGER.debug(f"Owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
-    hass.data[DOMAIN][ROBONOMICS]: Robonomics = Robonomics(
+    hass.data[DOMAIN][ROBONOMICS] = Robonomics(
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
         hass.data[DOMAIN][CONF_ADMIN_SEED],
@@ -329,7 +328,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].pin_dapp_to_local_node())
 
-    _LOGGER.debug(f"Robonomics user control successfuly set up")
+    _LOGGER.debug("Robonomics user control successfuly set up")
     return True
 
 
@@ -362,5 +361,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for component in PLATFORMS
         )
     )
-    _LOGGER.debug(f"Robonomics integration was unloaded")
+    _LOGGER.debug("Robonomics integration was unloaded")
     return True
