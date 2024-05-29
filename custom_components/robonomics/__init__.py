@@ -14,7 +14,7 @@ import random
 import time
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
+from homeassistant.core import HomeAssistant, ServiceCall, Event, CoreState
 from homeassistant.const import MATCH_ALL, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event, async_track_state_change
 from homeassistant.helpers.typing import ConfigType
@@ -122,11 +122,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     lock = asyncio.Lock()
     libp2p_message_queue = []
     hass.data.setdefault(DOMAIN, {})
-    async def init_integration(_: Event) -> None:
+    async def init_integration(_: Event = None) -> None:
         """Compare rws devices with users from Home Assistant
 
         :param hass: HomeAssistant instance
         """
+        _LOGGER.debug(f"hass state: {hass.state}")
         start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
         _LOGGER.debug(f"Start devices list is {start_devices_list}")
         if DOMAIN not in hass.data:
@@ -327,8 +328,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await get_or_create_twin_id(hass)
 
     # asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].pin_dapp_to_local_node())
+    if hass.state == CoreState.running:
+        asyncio.ensure_future(init_integration())
 
-    _LOGGER.debug("Robonomics user control successfuly set up")
+    _LOGGER.debug(f"Robonomics user control successfuly set up, hass state: {hass.state}")
     return True
 
 
@@ -361,5 +364,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for component in PLATFORMS
         )
     )
-    _LOGGER.debug("Robonomics integration was unloaded")
+    _LOGGER.debug(f"Robonomics integration was unloaded")
     return True
