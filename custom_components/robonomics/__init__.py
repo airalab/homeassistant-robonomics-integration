@@ -70,33 +70,6 @@ from .services import restore_from_backup_service_call, save_backup_service_call
 from .libp2p import LibP2P
 
 
-async def init_integration(hass: HomeAssistant) -> None:
-    """Compare rws devices with users from Home Assistant
-
-    :param hass: HomeAssistant instance
-    """
-    start_devices_list = await hass.data[DOMAIN][ROBONOMICS].get_devices_list()
-    _LOGGER.debug(f"Start devices list is {start_devices_list}")
-    await asyncio.sleep(60)
-    if DOMAIN not in hass.data:
-        return
-    try:
-        msg = await get_states_libp2p(hass)
-        await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
-    except Exception as e:
-        _LOGGER.error(f"Exception in first send libp2p states {e}")
-    try:
-        hass.async_create_task(UserManager(hass).update_users(start_devices_list))
-        _LOGGER.debug("Start track state change")
-        hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
-            hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
-        )
-    except Exception as e:
-        _LOGGER.error(f"Exception in first check devices {e}")
-
-    await get_and_send_data(hass)
-
-
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
     """Handle options update. It's called when config updates.
 
