@@ -46,7 +46,11 @@ class LibP2P:
             except Exception as e:
                 decrypted_data = self.hass.data[DOMAIN][ROBONOMICS].decrypt_message(received_data)
                 data = json.loads(decrypted_data)
-        _LOGGER.debug(f"Got command from libp2p: {data}")
+        else:
+            data = received_data
+        if "sender" in data:
+            decrypted_data = self.hass.data[DOMAIN][ROBONOMICS].decrypt_message(data["data"], data["sender"])
+            data = json.loads(decrypted_data)
         message_entity_id = data["params"]["entity_id"]
         params = data["params"].copy()
         del params["entity_id"]

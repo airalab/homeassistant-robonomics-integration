@@ -68,7 +68,6 @@ async def get_and_send_data(hass: HomeAssistant):
         _LOGGER.debug("Another states are sending. Wait...")
         hass.data[DOMAIN][GETTING_STATES_QUEUE] += 1
         on_queue = hass.data[DOMAIN][GETTING_STATES_QUEUE]
-        counter = 0
         while hass.data[DOMAIN][GETTING_STATES]:
             await asyncio.sleep(5)
             if on_queue > 3:
@@ -93,7 +92,7 @@ async def get_and_send_data(hass: HomeAssistant):
         await _get_dashboard_and_services(hass)
         data = await _get_states(hass)
         data = json.dumps(data)
-        _LOGGER.debug(f"Got states to send datalog")
+        _LOGGER.debug("Got states to send datalog")
         devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
         devices_list_with_admin.append(sender_acc.get_address())
         encrypted_data = encrypt_for_devices(str(data), sender_kp, devices_list_with_admin)
