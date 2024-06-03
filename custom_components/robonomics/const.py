@@ -115,7 +115,6 @@ LIBP2P_LISTEN_COMMANDS_PROTOCOL = "/call"
 LIBP2P_SEND_STATES_PROTOCOL = "/update"
 LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL = "/token_request"
 LIBP2P_SEND_TOKEN_PROTOCOL = "/token_response"
-LIBP2P_MULTIADDRESS = "libp2p_multiaddress"
 
 PEER_ID_LOCAL = "peer_id_local"
 WAIT_IPFS_DAEMON = "wait_ipfs_daemon"

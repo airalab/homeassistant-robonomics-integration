@@ -14,7 +14,6 @@ from .const import (
     LIBP2P_SEND_TOKEN_PROTOCOL,
     ROBONOMICS,
     LIBP2P_RELAY_ADDRESSES,
-    LIBP2P_MULTIADDRESS,
 )
 from .utils import verify_sign
 from .manage_users import UserManager
@@ -75,7 +74,6 @@ class LibP2P:
 
     def _set_peer_id(self, message: InitialMessage) -> None:
         self.hass.data[DOMAIN][PEER_ID_LOCAL] = message.peer_id
-        self.hass.data[DOMAIN][LIBP2P_MULTIADDRESS] = message.multi_addressess
         asyncio.ensure_future(get_and_send_data(self.hass))
 
     async def send_states_to_websocket(self, data: str):

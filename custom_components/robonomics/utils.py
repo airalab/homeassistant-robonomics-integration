@@ -297,3 +297,17 @@ def verify_sign(signature: str, address: str) -> bool:
         return keypair.verify(address, signature_bytes)
     except Exception as e:
         _LOGGER.error(f"Exception during signature verification: {e}")
+
+def format_libp2p_node_multiaddress(peer_id: str) -> tp.Optional[str]:
+    """Format libp2p node local multiaddress from ip and peer id.
+
+    :param peer_id: Peer id of the libp2p node.
+    
+    :return: Formatted multiaddress or None.
+    """
+
+    ip_address = get_ip_address()
+    _LOGGER.debug(f"IP address {ip_address}")
+    if (ip_address is not None) and (peer_id):
+        multiaddress = f"/ip4/{ip_address}/tcp/9999/ws/p2p/{peer_id}"
+        return multiaddress
