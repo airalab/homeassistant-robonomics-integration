@@ -138,13 +138,17 @@ async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str
     :param data: dict with the keys from STEP_USER_DATA_SCHEMA and values provided by the user
     """
 
-    if await hass.async_add_executor_job(_is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]):
+    if await hass.async_add_executor_job(
+        _is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]
+    ):
         raise InvalidSubAdminSeed
     if not _is_valid_sub_owner_address(data[CONF_SUB_OWNER_ADDRESS]):
         raise InvalidSubOwnerAddress
     if not _has_sub_owner_subscription(data[CONF_SUB_OWNER_ADDRESS]):
         raise NoSubscription
-    if not _is_sub_admin_in_subscription(data[CONF_ADMIN_SEED], data[CONF_SUB_OWNER_ADDRESS]):
+    if not _is_sub_admin_in_subscription(
+        data[CONF_ADMIN_SEED], data[CONF_SUB_OWNER_ADDRESS]
+    ):
         raise ControllerNotInDevices
     if not await _is_ipfs_local_connected():
         raise CantConnectToIPFS
@@ -166,7 +170,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return OptionsFlowHandler(config_entry)
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Handle the initial step of the configuration. Contains user's warnings.
 
         :param user_input: Dict with the keys from STEP_WARN_DATA_SCHEMA and values provided by user
@@ -179,14 +185,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(device_unique_id)
         self._abort_if_unique_id_configured()
         if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=STEP_WARN_DATA_SCHEMA)
+            return self.async_show_form(
+                step_id="user", data_schema=STEP_WARN_DATA_SCHEMA
+            )
         else:
             if [x for x in user_input if not user_input[x]]:
                 errors["base"] = "warnings"
-                return self.async_show_form(step_id="user", data_schema=STEP_WARN_DATA_SCHEMA, errors=errors)
+                return self.async_show_form(
+                    step_id="user", data_schema=STEP_WARN_DATA_SCHEMA, errors=errors
+                )
             return await self.async_step_conf()
 
-    async def async_step_conf(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_conf(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Handle the second step of the configuration. Contains fields to provide credentials.
 
         :param: user_input: Dict with the keys from STEP_USER_DATA_SCHEMA and values provided by user
@@ -196,7 +208,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         self.updated_config = {}
         if user_input is None:
-            return self.async_show_form(step_id="conf", data_schema=STEP_USER_DATA_SCHEMA)
+            return self.async_show_form(
+                step_id="conf", data_schema=STEP_USER_DATA_SCHEMA
+            )
         errors = {}
         try:
             info = await _validate_input(self.hass, user_input)
@@ -216,7 +230,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             return self.async_create_entry(title=info["title"], data=user_input)
 
-        return self.async_show_form(step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
+        return self.async_show_form(
+            step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
@@ -228,7 +244,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self.updated_config = self.config_entry.data.copy()
         _LOGGER.debug(f"Updated config: {self.updated_config}")
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Manage Timeout and Pinata and Custom IPFS gateways.
 
         :param user_input: Dict with the keys from OPTIONS_DATA_SCHEMA and values provided by user
@@ -251,7 +269,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
             self.updated_config.update(user_input)
 
-            self.hass.config_entries.async_update_entry(self.config_entry, data=self.updated_config)
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=self.updated_config
+            )
             return self.async_create_entry(title="", data=user_input)
 
         if CONF_PINATA_PUB in self.config_entry.data:
@@ -260,7 +280,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_IPFS_GATEWAY in self.config_entry.data:
                 custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
                 custom_ipfs_port = self.config_entry.data[CONF_IPFS_GATEWAY_PORT]
-                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
+                custom_ipfs_gateway_auth = self.config_entry.data[
+                    CONF_IPFS_GATEWAY_AUTH
+                ]
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
                         vol.Required(
@@ -271,9 +293,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Optional(CONF_PINATA_PUB, default=pinata_pub): str,
                         vol.Optional(CONF_PINATA_SECRET, default=pinata_secret): str,
                         vol.Required(CONF_CUSTOM_GATEWAY_USE, default=True): bool,
-                        vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
-                        vol.Required(CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port): int,
-                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
+                        vol.Optional(
+                            CONF_IPFS_GATEWAY, default=custom_ipfs_gateway
+                        ): str,
+                        vol.Required(
+                            CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port
+                        ): int,
+                        vol.Required(
+                            CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth
+                        ): bool,
                     }
                 )
             else:
@@ -296,7 +324,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_IPFS_GATEWAY in self.config_entry.data:
                 custom_ipfs_gateway = self.config_entry.data[CONF_IPFS_GATEWAY]
                 custom_ipfs_port = self.config_entry.data[CONF_IPFS_GATEWAY_PORT]
-                custom_ipfs_gateway_auth = self.config_entry.data[CONF_IPFS_GATEWAY_AUTH]
+                custom_ipfs_gateway_auth = self.config_entry.data[
+                    CONF_IPFS_GATEWAY_AUTH
+                ]
                 OPTIONS_DATA_SCHEMA = vol.Schema(
                     {
                         vol.Required(
@@ -307,9 +337,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Optional(CONF_PINATA_PUB): str,
                         vol.Optional(CONF_PINATA_SECRET): str,
                         vol.Required(CONF_CUSTOM_GATEWAY_USE, default=True): bool,
-                        vol.Optional(CONF_IPFS_GATEWAY, default=custom_ipfs_gateway): str,
-                        vol.Required(CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port): int,
-                        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth): bool,
+                        vol.Optional(
+                            CONF_IPFS_GATEWAY, default=custom_ipfs_gateway
+                        ): str,
+                        vol.Required(
+                            CONF_IPFS_GATEWAY_PORT, default=custom_ipfs_port
+                        ): int,
+                        vol.Required(
+                            CONF_IPFS_GATEWAY_AUTH, default=custom_ipfs_gateway_auth
+                        ): bool,
                     }
                 )
             else:

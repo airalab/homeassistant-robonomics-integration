@@ -49,7 +49,14 @@ from .const import (
     IPFS_USERS_PATH,
     IPFS_DAPP_FILE_NAME,
 )
-from .utils import get_hash, to_thread, create_notification, get_path_in_temp_dir, delete_temp_dir
+from .utils import (
+    get_hash,
+    to_thread,
+    create_notification,
+    get_path_in_temp_dir,
+    delete_temp_dir,
+    path_is_dir,
+)
 from .ipfs_helpers.decorators import catch_ipfs_errors
 from .ipfs_helpers.get_data import GetIPFSData
 
@@ -80,12 +87,19 @@ async def pin_file_to_local_node_by_hash(hass: HomeAssistant, ipfs_hash: str) ->
 def _async_pin_by_hash_to_local_node(
     hass: HomeAssistant, ipfs_hash: str, path: tp.Optional[str] = None
 ) -> tp.Optional[bool]:
-    with ipfshttpclient2.connect() as client:
-        if path is not None:
-            client.files.cp(f"/ipfs/{ipfs_hash}", path)
-        client.pin.add(ipfs_hash)
-        _LOGGER.debug(f"Hash {ipfs_hash} was pinned to local node with path: {path}")
-        return True
+    _LOGGER.debug(f"Start pinning hash {ipfs_hash} to local node")
+    try:
+        with ipfshttpclient2.connect(timeout=40) as client:
+            if path is not None:
+                client.files.cp(f"/ipfs/{ipfs_hash}", path)
+            client.pin.add(ipfs_hash)
+            _LOGGER.debug(
+                f"Hash {ipfs_hash} was pinned to local node with path: {path}"
+            )
+            return True
+    except ipfshttpclient2.exceptions.TimeoutError:
+        _LOGGER.debug(f"Can't pin hash {ipfs_hash} to local node by timeout")
+        return False
 
 
 @to_thread
@@ -96,7 +110,7 @@ def _async_remove_pin_from_local_node_if_exists(
     path: tp.Optional[str] = None,
 ) -> tp.Optional[bool]:
     if (ipfs_hash is None) and (path is None):
-        _LOGGER.error(f"Can't remove pin without path and name")
+        _LOGGER.error("Can't remove pin without path and name")
         return False
     _LOGGER.debug(f"Start removing pin with hash: {ipfs_hash} or path: {path}")
     with ipfshttpclient2.connect() as client:
@@ -108,27 +122,32 @@ def _async_remove_pin_from_local_node_if_exists(
                 _LOGGER.debug(f"Removed {path} from ipfs")
             else:
                 _LOGGER.debug(f"Path {path} does not exist")
-        if _hash_pinned(hass, client, ipfs_hash):
-            client.pin.rm(ipfs_hash)
-            _LOGGER.debug(f"Removed pin {ipfs_hash} from local node")
-            return True
-        else:
-            _LOGGER.debug(f"Hash {ipfs_hash} is not pinned in local node")
-            return False
+        if ipfs_hash is not None:
+            if _hash_pinned(hass, client, ipfs_hash):
+                client.pin.rm(ipfs_hash)
+                _LOGGER.debug(f"Removed pin {ipfs_hash} from local node")
+                return True
+            else:
+                _LOGGER.debug(f"Hash {ipfs_hash} is not pinned in local node")
+                return False
 
 
-@catch_ipfs_errors("Exception in chek if file exists")
+@catch_ipfs_errors("Exception in check if file exists")
 def _ipfs_file_exists(hass: HomeAssistant, client, filename_with_path: str) -> bool:
-    filename = filename_with_path.split("/")[-1]
-    filepath = filename_with_path.replace(filename, "")
-    files = _get_files_list(hass, client, filepath)
-    return filename in files
+    try:
+        client.files.stat(filename_with_path)
+        return True
+    except ipfshttpclient2.exceptions.ErrorResponse:
+        return False
 
 
 @catch_ipfs_errors("Exception in check if ipfs path is dir")
 def _ipfs_path_is_dir(hass: HomeAssistant, client, filename_with_path: str) -> bool:
-    path_type = client.files.stat(filename_with_path)["Type"]
-    return path_type == "directory"
+    if _ipfs_file_exists(hass, client, filename_with_path):
+        path_type = client.files.stat(filename_with_path)["Type"]
+        return path_type == "directory"
+    else:
+        return False
 
 
 @catch_ipfs_errors("Exception in check if hash pinned")
@@ -136,6 +155,7 @@ def _hash_pinned(hass: HomeAssistant, client, ipfs_hash: str) -> bool:
     pins = client.pin.ls()
     pinned_hashes = list(pins["Keys"].keys())
     return ipfs_hash in pinned_hashes
+
 
 @to_thread
 @catch_ipfs_errors("Exception in check if hash pinned async")
@@ -197,7 +217,7 @@ async def handle_ipfs_status_change(hass: HomeAssistant, ipfs_daemon_ok: bool):
         await wait_ipfs_daemon(hass)
     else:
         service_data = {
-            "message": f"IPFS Daemon now works well.",
+            "message": "IPFS Daemon now works well.",
             "title": "IPFS OK",
         }
         await create_notification(hass, service_data)
@@ -208,8 +228,10 @@ async def wait_ipfs_daemon(hass: HomeAssistant) -> None:
         return
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = True
     _LOGGER.debug("Wait for IPFS local node connection...")
-    while not await _check_connection(hass):
+    connected = await hass.async_add_executor_job(_check_connection, hass)
+    while not connected:
         await asyncio.sleep(10)
+        connected = await hass.async_add_executor_job(_check_connection, hass)
     hass.data[DOMAIN][IPFS_STATUS] = "OK"
     hass.states.async_set(
         f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS]
@@ -607,10 +629,10 @@ def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
             delta = current_file_time - last_file_time
             _LOGGER.debug(f"Time from the last pin: {delta}")
             if delta > timedelta(seconds=SECONDS_IN_DAY):
-                _LOGGER.debug(f"Telemetry must be pinned")
+                _LOGGER.debug("Telemetry must be pinned")
                 return True
             else:
-                _LOGGER.debug(f"Telemetry must not be pinned")
+                _LOGGER.debug("Telemetry must not be pinned")
                 return False
         else:
             return True
@@ -641,12 +663,10 @@ def _add_to_local_node(
     with ipfshttpclient2.connect() as client:
         if not pin:
             if last_file_name is not None:
-                if _ipfs_path_is_dir(hass, client, f"{path}/{last_file_name}"):
-                    client.files.rm(f"{path}/{last_file_name}", recursive=True)
-                else:
-                    client.files.rm(f"{path}/{last_file_name}")
+                is_dir = _ipfs_path_is_dir(hass, client, f"{path}/{last_file_name}")
+                client.files.rm(f"{path}/{last_file_name}", recursive=is_dir)
                 _LOGGER.debug(f"File {last_file_name} with was unpinned")
-        result = client.add(filename, pin=False)
+        result = client.add(filename, pin=False, recursive=path_is_dir(filename))
         if isinstance(result, list):
             for res in result:
                 if "/" not in res["Name"]:
@@ -810,9 +830,7 @@ def _upload_to_crust(
         return None
 
     if price >= balance:
-        _LOGGER.warning(
-            f"Not enough account balance to store the file in Crust Network"
-        )
+        _LOGGER.warning("Not enough account balance to store the file in Crust Network")
         return None
 
     try:
@@ -871,7 +889,7 @@ async def _add_to_ipfs(
             seed = hass.data[DOMAIN][CONF_ADMIN_SEED]
         else:
             seed = None
-        added_hash_and_size= await _add_to_custom_gateway(
+        added_hash_and_size = await _add_to_custom_gateway(
             filename,
             hass.data[DOMAIN][CONF_IPFS_GATEWAY],
             hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT],
@@ -898,7 +916,6 @@ async def _add_to_ipfs(
         return None, None
 
 
-@to_thread
 def _check_connection(hass: HomeAssistant) -> bool:
     """Check connection to IPFS local node
 
@@ -915,13 +932,13 @@ def _check_connection(hass: HomeAssistant) -> bool:
                 files = [fileinfo["Name"] for fileinfo in files_info]
                 if "test_file" in files:
                     client.files.rm("/test_file")
-                    _LOGGER.debug(f"Deleted test string from the local node MFS")
+                    _LOGGER.debug("Deleted test string from the local node MFS")
                 time.sleep(0.5)
             client.files.cp(f"/ipfs/{test_hash}", "/test_file")
-            _LOGGER.debug(f"Added test string to the local node MFS")
+            _LOGGER.debug("Added test string to the local node MFS")
             time.sleep(0.5)
             client.files.rm("/test_file")
-            _LOGGER.debug(f"Deleted test string from the local node MFS")
+            _LOGGER.debug("Deleted test string from the local node MFS")
             time.sleep(0.5)
             res = client.pin.rm(test_hash)
             _LOGGER.debug(f"Unpinned test string from local node with res: {res}")

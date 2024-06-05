@@ -48,7 +48,13 @@ from .const import (
     Z2M_BACKUP_TOPIC_RESPONSE,
     Z2M_CONFIG_NAME,
 )
-from .utils import decrypt_message, delete_temp_file, encrypt_message, to_thread, write_data_to_temp_file
+from .utils import (
+    decrypt_message,
+    delete_temp_file,
+    encrypt_message,
+    to_thread,
+    write_data_to_temp_file,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,14 +106,20 @@ def create_secure_backup(
                 if z2m_backup_path is not None:
                     tar.add(z2m_backup_path, arcname=Z2M_CONFIG_NAME)
                     delete_temp_file(z2m_backup_path)
-            if os.path.isdir(mosquitto_path) and os.path.isfile(f"{mosquitto_path}passwd"):
-                _LOGGER.debug("Mosquitto configuration exists and will be added to backup")
+            if os.path.isdir(mosquitto_path) and os.path.isfile(
+                f"{mosquitto_path}passwd"
+            ):
+                _LOGGER.debug(
+                    "Mosquitto configuration exists and will be added to backup"
+                )
                 tar.add(f"{mosquitto_path}passwd", arcname=MQTT_CONFIG_NAME)
         _LOGGER.debug(f"Backup {tar_path} was created")
         _LOGGER.debug(f"Start encrypt backup {tar_path}")
         with open(tar_path, "rb") as f:
             tar_data = f.read()
-        encrypted_data = encrypt_message(tar_data, admin_keypair, admin_keypair.public_key)
+        encrypted_data = encrypt_message(
+            tar_data, admin_keypair, admin_keypair.public_key
+        )
         encrypted_tar_path = path_to_tar.joinpath(
             f"{BACKUP_ENCRYPTED_PREFIX}_{backup_name_time[0]}_{backup_name_time[1]}"
         )
@@ -189,7 +201,9 @@ async def restore_from_backup(
                 new_config_dirs = dirnames
         for new_dir in new_config_dirs:
             try:
-                shutil.copytree(f"{path_to_new_config}/{new_dir}", f"{path_to_old_config}/{new_dir}")
+                shutil.copytree(
+                    f"{path_to_new_config}/{new_dir}", f"{path_to_old_config}/{new_dir}"
+                )
             except Exception as e:
                 _LOGGER.debug(f"Exception in copy directories: {e}")
         for new_file in new_config_files:
@@ -202,13 +216,17 @@ async def restore_from_backup(
                 _LOGGER.debug(f"Exception in copy files: {e}")
         try:
             if os.path.exists(f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}"):
-                if os.path.isdir(mosquitto_path) and os.path.exists(f"{mosquitto_path}passwd"):
+                if os.path.isdir(mosquitto_path) and os.path.exists(
+                    f"{mosquitto_path}passwd"
+                ):
                     os.remove(f"{mosquitto_path}passwd")
                 shutil.copy(
                     f"{path_to_new_config_dir}/{MQTT_CONFIG_NAME}",
                     f"{mosquitto_path}passwd",
                 )
-                _LOGGER.debug(f"Mosquitto password file was restored to {mosquitto_path}passwd")
+                _LOGGER.debug(
+                    f"Mosquitto password file was restored to {mosquitto_path}passwd"
+                )
         except Exception as e:
             _LOGGER.warning(
                 f"Exception in restoring mosquitto password: {e}. Mosquitto configuration will be placed in homeassistant configuration directory"
@@ -222,9 +240,13 @@ async def restore_from_backup(
                 if os.path.isdir(zigbee2mqtt_path):
                     if os.path.isdir(f"{zigbee2mqtt_path}data"):
                         shutil.rmtree(f"{zigbee2mqtt_path}data")
-                    with zipfile.ZipFile(f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", "r") as zip_ref:
+                    with zipfile.ZipFile(
+                        f"{path_to_new_config_dir}/{Z2M_CONFIG_NAME}", "r"
+                    ) as zip_ref:
                         zip_ref.extractall(f"{zigbee2mqtt_path}data")
-                    _LOGGER.debug(f"Z2M configuration was restored to {zigbee2mqtt_path}data")
+                    _LOGGER.debug(
+                        f"Z2M configuration was restored to {zigbee2mqtt_path}data"
+                    )
                 else:
                     _LOGGER.warning(
                         f"Zigbee2mqtt does not exist in {zigbee2mqtt_path}, configuration will be restored in homeassistant configuration directory"
@@ -249,7 +271,9 @@ async def restore_from_backup(
         _LOGGER.debug(f"Exception in restore from backup: {e}")
 
 
-async def restore_backup_hassio(hass: HomeAssistant, path_to_encrypted: Path, admin_keypair: Keypair) -> None:
+async def restore_backup_hassio(
+    hass: HomeAssistant, path_to_encrypted: Path, admin_keypair: Keypair
+) -> None:
     """Restore superviser backup
     :param hass: Home Assistant instanse
     :param path_to_encrypted: Path to encrypted backup downloaded from IPFS
@@ -262,7 +286,9 @@ async def restore_backup_hassio(hass: HomeAssistant, path_to_encrypted: Path, ad
         encrypted = f.read()
     decrypted = decrypt_message(encrypted, admin_keypair.public_key, admin_keypair)
     _LOGGER.error(f"Start uploading backup to hassio")
-    response = await _send_command_hassio(hass, "/backups/new/upload", "post", {"file": decrypted})
+    response = await _send_command_hassio(
+        hass, "/backups/new/upload", "post", {"file": decrypted}
+    )
     try:
         resp = await response.json()
         slug = resp["data"]["slug"]
@@ -274,7 +300,9 @@ async def restore_backup_hassio(hass: HomeAssistant, path_to_encrypted: Path, ad
     response = await _send_command_hassio(hass, f"/backups/{slug}/restore/full", "post")
 
 
-async def create_secure_backup_hassio(hass: HomeAssistant, admin_keypair: Keypair) -> (str, str):
+async def create_secure_backup_hassio(
+    hass: HomeAssistant, admin_keypair: Keypair
+) -> (str, str):
     """Create superviser backup
     :param hass: Home Assistant instanse
     :param admin_keypair: Controller Keypair
@@ -289,9 +317,13 @@ async def create_secure_backup_hassio(hass: HomeAssistant, admin_keypair: Keypai
         response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
         backup = await response.read()
         _LOGGER.error(f"Backup {slug} downloaded")
-        encrypted_data = encrypt_message(backup, admin_keypair, admin_keypair.public_key)
+        encrypted_data = encrypt_message(
+            backup, admin_keypair, admin_keypair.public_key
+        )
         tarpath = write_data_to_temp_file(backup, filename=f"{slug}.tar")
-        encrypted_tarpath = write_data_to_temp_file(encrypted_data, filename=f"{slug}_encrypted")
+        encrypted_tarpath = write_data_to_temp_file(
+            encrypted_data, filename=f"{slug}_encrypted"
+        )
         _LOGGER.debug(f"Backup was encrypted")
         return encrypted_tarpath, tarpath
     except Exception as e:
@@ -300,7 +332,10 @@ async def create_secure_backup_hassio(hass: HomeAssistant, admin_keypair: Keypai
 
 
 async def _send_command_hassio(
-    hass: HomeAssistant, command: str, method: str, payload: tp.Optional[tp.Dict[str, tp.Any]] = None
+    hass: HomeAssistant,
+    command: str,
+    method: str,
+    payload: tp.Optional[tp.Dict[str, tp.Any]] = None,
 ) -> tp.Coroutine:
     """Send API command to Superviser
     :param hass: Home Assistant instanse
@@ -318,7 +353,9 @@ async def _send_command_hassio(
             f"http://{hassio._ip}{command}",
             data=payload,
             headers={
-                aiohttp.hdrs.AUTHORIZATION: (f"Bearer {os.environ.get('SUPERVISOR_TOKEN', '')}"),
+                aiohttp.hdrs.AUTHORIZATION: (
+                    f"Bearer {os.environ.get('SUPERVISOR_TOKEN', '')}"
+                ),
                 "X-Hass-Source": "core.handler",
             },
             timeout=aiohttp.ClientTimeout(total=10),
@@ -360,7 +397,9 @@ class _BackupZ2M:
         _LOGGER.debug("Start creating zigbee2mqtt backup")
         publish(self.hass, Z2M_BACKUP_TOPIC_REQUEST, "")
         _LOGGER.debug("Message to create z2m backup was sent")
-        self.remove_mqtt_subscribe = subscribe(self.hass, Z2M_BACKUP_TOPIC_RESPONSE, self._z2m_backup_callback)
+        self.remove_mqtt_subscribe = subscribe(
+            self.hass, Z2M_BACKUP_TOPIC_RESPONSE, self._z2m_backup_callback
+        )
         _LOGGER.debug("Subscribed")
         i = 0
         while not self.received:

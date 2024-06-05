@@ -19,7 +19,7 @@ from ..const import (
     MORALIS_GATEWAY,
     PINATA_GATEWAY,
 )
-from ..utils import to_thread
+from ..utils import to_thread, delete_temp_dir_if_exists
 from .decorators import catch_ipfs_errors
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,14 +49,16 @@ class GetIPFSData:
             elif isinstance(res, ClientResponse):
                 result_text = await res.text()
             else:
-                _LOGGER.error(f"Unexpected result from get ipfs data with type {type(res)}")
+                _LOGGER.error(
+                    f"Unexpected result from get ipfs data with type {type(res)}"
+                )
         return result_text
 
     async def get_directory_to_given_path(
         self, dir_with_path: str
     ) -> tp.Optional[bool]:
+        delete_temp_dir_if_exists(dir_with_path)
         res = await self._get_ipfs_data(is_directory=True)
-        _LOGGER.debug(f"IPFS get res: {res}")
         if res is not None:
             await self._extract_archive(res, dir_with_path)
             return True
@@ -155,14 +157,13 @@ class GetIPFSData:
                 return None
         else:
             return None
-        
 
     async def _extract_archive(self, response: ClientResponse, dir_with_path: str):
         tar_buffer = BytesIO()
         tar_content = await response.content.read()
         tar_buffer.write(tar_content)
         tar_buffer.seek(0)
-        with tarfile.open(fileobj=tar_buffer, mode='r:*') as tar:
+        with tarfile.open(fileobj=tar_buffer, mode="r:*") as tar:
             subdir_and_files = []
             for tarinfo in tar.getmembers():
                 if tarinfo.name.startswith(f"{self.ipfs_hash}/"):

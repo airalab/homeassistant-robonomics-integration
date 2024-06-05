@@ -31,7 +31,7 @@ from .const import (
     HANDLE_IPFS_REQUEST,
     IPFS_MEDIA_PATH,
     ROBONOMICS,
-    TWIN_ID
+    TWIN_ID,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
 from .utils import delete_temp_file, encrypt_message
@@ -78,7 +78,9 @@ async def save_video(
         admin_keypair: Keypair = sub_admin_acc.keypair
         with open(f"{path}/{filename}", "rb") as f:
             video_data = f.read()
-        encrypted_data = encrypt_message(video_data, admin_keypair, admin_keypair.public_key)
+        encrypted_data = encrypt_message(
+            video_data, admin_keypair, admin_keypair.public_key
+        )
         with open(f"{path}/{filename}", "w") as f:
             f.write(encrypted_data)
 
@@ -87,10 +89,14 @@ async def save_video(
         # delete file from system
         _LOGGER.debug(f"delete original video {filename}")
         os.remove(f"{path}/{filename}")
-        await hass.data[DOMAIN][ROBONOMICS].set_media_topic(folder_ipfs_hash, hass.data[DOMAIN][TWIN_ID])
+        await hass.data[DOMAIN][ROBONOMICS].set_media_topic(
+            folder_ipfs_hash, hass.data[DOMAIN][TWIN_ID]
+        )
 
 
-async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_admin_acc: Account) -> None:
+async def save_backup_service_call(
+    hass: HomeAssistant, call: ServiceCall, sub_admin_acc: Account
+) -> None:
     """Callback for save_backup_to_robonomics service.
     It creates secure backup, adds to IPFS and updates
     the Digital Twin topic.
@@ -101,7 +107,9 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
     """
 
     if is_hassio(hass):
-        encrypted_backup_path, backup_path = await create_secure_backup_hassio(hass, sub_admin_acc.keypair)
+        encrypted_backup_path, backup_path = await create_secure_backup_hassio(
+            hass, sub_admin_acc.keypair
+        )
     else:
         mosquitto_path = call.data.get("mosquitto_path")
         full = call.data.get("full")
@@ -114,14 +122,20 @@ async def save_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_a
             admin_keypair=sub_admin_acc.keypair,
             full=full,
         )
-    ipfs_hash = await add_backup_to_ipfs(hass, str(backup_path), str(encrypted_backup_path))
+    ipfs_hash = await add_backup_to_ipfs(
+        hass, str(backup_path), str(encrypted_backup_path)
+    )
     _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
     delete_temp_file(encrypted_backup_path)
     delete_temp_file(backup_path)
-    await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(ipfs_hash, hass.data[DOMAIN][TWIN_ID])
+    await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(
+        ipfs_hash, hass.data[DOMAIN][TWIN_ID]
+    )
 
 
-async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCall, sub_admin_acc: Account) -> None:
+async def restore_from_backup_service_call(
+    hass: HomeAssistant, call: ServiceCall, sub_admin_acc: Account
+) -> None:
     """Callback for restore_from_robonomics_backup service.
     It restores configuration file from backup.
 
@@ -134,12 +148,16 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
         hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
         hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
         _LOGGER.debug("Start looking for backup ipfs hash")
-        ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(hass.data[DOMAIN][TWIN_ID])
+        ipfs_backup_hash = await hass.data[DOMAIN][ROBONOMICS].get_backup_hash(
+            hass.data[DOMAIN][TWIN_ID]
+        )
         result = await get_ipfs_data(hass, ipfs_backup_hash)
         backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
         with open(backup_path, "w") as f:
             f.write(result)
-        sub_admin_kp = Keypair.create_from_mnemonic(hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+        sub_admin_kp = Keypair.create_from_mnemonic(
+            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+        )
         if is_hassio(hass):
             await restore_backup_hassio(hass, Path(backup_path), sub_admin_kp)
         else:
@@ -151,7 +169,9 @@ async def restore_from_backup_service_call(hass: HomeAssistant, call: ServiceCal
             if mosquitto_path is None:
                 mosquitto_path = "/etc/mosquitto"
             await unpack_backup(hass, Path(backup_path), sub_admin_kp)
-            await restore_from_backup(hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path()))
+            await restore_from_backup(
+                hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path())
+            )
             _LOGGER.debug(f"Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")

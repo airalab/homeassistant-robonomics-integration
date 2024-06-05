@@ -152,7 +152,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
                 _LOGGER.debug("Twin id was not created")
 
 
-def _run_launch_command(
+async def _run_launch_command(
     hass: HomeAssistant, encrypted_command: str, sender_address: str
 ) -> None:
     """Function to unwrap launch command and call Home Assistant service for device
@@ -197,15 +197,12 @@ def _run_launch_command(
         del params["entity_id"]
         if params == {}:
             params = None
-        asyncio.run_coroutine_threadsafe(
-            hass.services.async_call(
-                domain=message["platform"],
-                service=message["name"],
-                service_data=params,
-                target={"entity_id": message_entity_id},
-            ),
-            hass.loop,
-        ).result()
+        await hass.services.async_call(
+            domain=message["platform"],
+            service=message["name"],
+            service_data=params,
+            target={"entity_id": message_entity_id},
+        )
     except Exception as e:
         _LOGGER.error(f"Exception in sending command: {e}")
 
@@ -346,7 +343,8 @@ class Robonomics:
                 )
             elif "platform" in json_result:
                 _LOGGER.debug(f"Got call service command {json_result}")
-                _run_launch_command(self.hass, result, data[0])
+                await _run_launch_command(self.hass, result, data[0])
+            # asyncio.ensure_future(get_and_send_data(self.hass))
             await get_and_send_data(self.hass)
         except Exception as e:
             _LOGGER.error(f"Exception in launch handler command: {e}")
@@ -472,7 +470,7 @@ class Robonomics:
                         _LOGGER.debug(f"Backup hash is {backup_hash}")
                         return backup_hash
                 else:
-                    _LOGGER.debug(f"No backup topic was found")
+                    _LOGGER.debug("No backup topic was found")
                     return None
         except Exception as e:
             _LOGGER.error(f"Exception in getting backup hash: {e}")
@@ -534,6 +532,9 @@ class Robonomics:
     async def set_twin_topic_with_remove_old(
         self, ipfs_hash: str, twin_number: int, address: str
     ):
+        _LOGGER.debug(
+            f"Start setting new twin topic: {ipfs_hash} for address {address}"
+        )
         bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
         info = await self._get_twin_info(twin_number)
         if info is not None:
@@ -595,20 +596,17 @@ class Robonomics:
     @retry_with_change_wss_async
     @to_thread
     def _find_dapp_hash(self) -> tp.Optional[str]:
-        _LOGGER.debug(f"Start looking for DApp ipfs hash")
-        try:
-            datalog = Datalog(Account())
-            last_datalog_item = datalog.get_index(DAPP_HASH_DATALOG_ADDRESS)["end"]
-            last_datalog = datalog.get_item(
-                DAPP_HASH_DATALOG_ADDRESS, last_datalog_item - 1
-            )
-            if last_datalog is not None:
-                ipfs_hash = last_datalog[1]
-                return ipfs_hash
-            else:
-                return None
-        except Exception as e:
-            _LOGGER.error(f"Exception in looking for dapp ipfs hash in datalog: {e}")
+        _LOGGER.debug("Start looking for DApp ipfs hash")
+        datalog = Datalog(Account())
+        last_datalog_item = datalog.get_index(DAPP_HASH_DATALOG_ADDRESS)["end"]
+        last_datalog = datalog.get_item(
+            DAPP_HASH_DATALOG_ADDRESS, last_datalog_item - 1
+        )
+        if last_datalog is not None:
+            ipfs_hash = last_datalog[1]
+            return ipfs_hash
+        else:
+            return None
 
     @to_thread
     def find_password(self, address: str) -> tp.Optional[str]:
@@ -739,7 +737,7 @@ class Robonomics:
                 if data[0] in self.devices_list or data[0] == self.controller_address:
                     asyncio.run_coroutine_threadsafe(
                         self._handle_launch(data), self.hass.loop
-                    ).result()
+                    )
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
             elif isinstance(data[1], int) and len(data) == 4:
@@ -750,27 +748,27 @@ class Robonomics:
                     ):  ## Change backup topic in Digital Twin
                         asyncio.run_coroutine_threadsafe(
                             _handle_backup_change(self.hass), self.hass.loop
-                        ).result()
+                        )
             elif (
                 isinstance(data[1], int) and data[0] in self.devices_list
             ):  ## Datalog to change password
                 asyncio.run_coroutine_threadsafe(
                     UserManager(self.hass).create_or_update_user(data), self.hass.loop
-                ).result()
+                )
             elif (
                 isinstance(data[1], int) and data[0] == DAPP_HASH_DATALOG_ADDRESS
             ):  ## Change Dapp hash
                 ipfs_hash = data[2]
                 asyncio.run_coroutine_threadsafe(
                     pin_file_to_local_node_by_hash(self.hass, ipfs_hash), self.hass.loop
-                ).result()
+                )
             elif (
                 isinstance(data[1], list) and data[0] == self.sub_owner_address
             ):  ## New Device in subscription
                 self._update_devices_list(data[1])
                 asyncio.run_coroutine_threadsafe(
                     UserManager(self.hass).update_users(data[1]), self.hass.loop
-                ).result()
+                )
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
 

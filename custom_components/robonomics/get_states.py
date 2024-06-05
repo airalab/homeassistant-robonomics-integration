@@ -47,9 +47,23 @@ from .const import (
     GETTING_STATES,
     GETTING_STATES_QUEUE,
     PEER_ID_LOCAL,
+    LIBP2P_MULTIADDRESS,
 )
-from .utils import encrypt_for_devices, get_hash, delete_temp_file, encrypt_message, write_data_to_temp_file
-from .ipfs import add_config_to_ipfs, add_telemetry_to_ipfs, add_media_to_ipfs, check_if_hash_in_folder, get_last_file_hash, read_ipfs_local_file
+from .utils import (
+    encrypt_for_devices,
+    get_hash,
+    delete_temp_file,
+    format_libp2p_node_multiaddress,
+    write_data_to_temp_file,
+)
+from .ipfs import (
+    add_config_to_ipfs,
+    add_telemetry_to_ipfs,
+    add_media_to_ipfs,
+    check_if_hash_in_folder,
+    get_last_file_hash,
+    read_ipfs_local_file,
+)
 import json
 
 
@@ -62,7 +76,9 @@ async def get_and_send_data(hass: HomeAssistant):
     if TWIN_ID not in hass.data[DOMAIN]:
         _LOGGER.warning("Trying to send data before creating twin id")
         return
-    _LOGGER.debug(f"Get states request, another getting states: {hass.data[DOMAIN][GETTING_STATES]}")
+    _LOGGER.debug(
+        f"Get states request, another getting states: {hass.data[DOMAIN][GETTING_STATES]}"
+    )
     if hass.data[DOMAIN][GETTING_STATES]:
         _LOGGER.debug("Another states are sending. Wait...")
         hass.data[DOMAIN][GETTING_STATES_QUEUE] += 1
@@ -70,7 +86,9 @@ async def get_and_send_data(hass: HomeAssistant):
         while hass.data[DOMAIN][GETTING_STATES]:
             await asyncio.sleep(5)
             if on_queue > 3:
-                _LOGGER.debug("Another states are sending too long. Start getting states...")
+                _LOGGER.debug(
+                    "Another states are sending too long. Start getting states..."
+                )
                 break
             if on_queue < hass.data[DOMAIN][GETTING_STATES_QUEUE]:
                 _LOGGER.debug("Stop waiting to send states")
@@ -83,7 +101,9 @@ async def get_and_send_data(hass: HomeAssistant):
         hass.data[DOMAIN][GETTING_STATES_QUEUE] = 0
 
     try:
-        sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+        sender_acc = Account(
+            seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+        )
         sender_kp = sender_acc.keypair
     except Exception as e:
         _LOGGER.error(f"Exception in create keypair during get and send data: {e}")
@@ -94,7 +114,9 @@ async def get_and_send_data(hass: HomeAssistant):
         _LOGGER.debug("Got states to send datalog")
         devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
         devices_list_with_admin.append(sender_acc.get_address())
-        encrypted_data = encrypt_for_devices(str(data), sender_kp, devices_list_with_admin)
+        encrypted_data = encrypt_for_devices(
+            str(data), sender_kp, devices_list_with_admin
+        )
         await asyncio.sleep(2)
         filename = write_data_to_temp_file(encrypted_data)
         ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
@@ -108,11 +130,15 @@ async def get_and_send_data(hass: HomeAssistant):
 async def get_states_libp2p(hass: HomeAssistant) -> str:
     states_json = await _get_states(hass, False)
     states_string = json.dumps(states_json)
-    sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+    sender_acc = Account(
+        seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+    )
     sender_kp = sender_acc.keypair
     devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
     devices_list_with_admin.append(sender_acc.get_address())
-    encrypted_string = encrypt_for_devices(states_string, sender_kp, devices_list_with_admin)
+    encrypted_string = encrypt_for_devices(
+        states_string, sender_kp, devices_list_with_admin
+    )
     return encrypted_string
 
 
@@ -142,7 +168,9 @@ def _state_changes_during_period(
     ).get(entity_id, [])
 
 
-async def _get_state_history(hass: HomeAssistant, entity_id: str) -> tp.List[tp.Tuple[str, str]]:
+async def _get_state_history(
+    hass: HomeAssistant, entity_id: str
+) -> tp.List[tp.Tuple[str, str]]:
     """Get 24 hours history for the given entity.
 
     :param hass: HomeAssistant instance
@@ -208,10 +236,14 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                         filename = f"{hass.config.path()}/www/{image_path[2]}"
                         ipfs_hash_media = await get_hash(filename)
                         card["image"] = ipfs_hash_media
-                        if not await check_if_hash_in_folder(hass, ipfs_hash_media, IPFS_MEDIA_PATH):
+                        if not await check_if_hash_in_folder(
+                            hass, ipfs_hash_media, IPFS_MEDIA_PATH
+                        ):
                             await add_media_to_ipfs(hass, filename)
     peer_id = hass.data[DOMAIN].get(PEER_ID_LOCAL, "")
     local_libp2p_multiaddress = format_libp2p_node_multiaddress(peer_id)
+    libp2p_multiaddress = hass.data[DOMAIN][LIBP2P_MULTIADDRESS].copy()
+    libp2p_multiaddress.append(local_libp2p_multiaddress)
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
     if current_config is None:
@@ -223,7 +255,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             "twin_id": hass.data[DOMAIN][TWIN_ID],
             "sending_timeout": hass.data[DOMAIN][CONF_SENDING_TIMEOUT].seconds,
             "peer_id": peer_id,
-            "libp2p_multiaddress": local_libp2p_multiaddress
+            "libp2p_multiaddress": libp2p_multiaddress,
         }
         if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
             if current_config != new_config:
@@ -232,21 +264,34 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 config_filename = f"{dirname}/config-{time.time()}"
                 with open(config_filename, "w") as f:
                     json.dump(new_config, f)
-                sender_acc = Account(seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519)
+                sender_acc = Account(
+                    seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
+                    crypto_type=KeypairType.ED25519,
+                )
                 sender_kp = sender_acc.keypair
-                devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
+                devices_list_with_admin = hass.data[DOMAIN][
+                    ROBONOMICS
+                ].devices_list.copy()
                 devices_list_with_admin.append(sender_acc.get_address())
-                encrypted_data = encrypt_for_devices(json.dumps(new_config), sender_kp, devices_list_with_admin)
+                encrypted_data = encrypt_for_devices(
+                    json.dumps(new_config), sender_kp, devices_list_with_admin
+                )
                 filename = write_data_to_temp_file(encrypted_data, config=True)
                 _LOGGER.debug(f"Filename: {filename}")
-                hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(hass, config_filename, filename)
+                hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(
+                    hass, config_filename, filename
+                )
                 delete_temp_file(config_filename)
                 delete_temp_file(filename)
             else:
                 _LOGGER.debug("Config wasn't changed")
-                _, last_config_hash = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
+                _, last_config_hash = await get_last_file_hash(
+                    hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX
+                )
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = last_config_hash
-            _LOGGER.debug(f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}")
+            _LOGGER.debug(
+                f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}"
+            )
             await hass.data[DOMAIN][ROBONOMICS].set_config_topic(
                 hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID]
             )
@@ -254,9 +299,10 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         _LOGGER.error(f"Exception in change config: {e}")
 
 
-async def _get_states(
-    hass: HomeAssistant, with_history: bool=True
-) -> tp.Dict[str, tp.Dict[str, tp.Union[str, tp.Dict[str, tp.Dict[str, tp.Union[str, float]]]]],]:
+async def _get_states(hass: HomeAssistant, with_history: bool = True) -> tp.Dict[
+    str,
+    tp.Dict[str, tp.Union[str, tp.Dict[str, tp.Dict[str, tp.Union[str, float]]]]],
+]:
     """Get info about all entities within 24hrs
 
     :param hass: HomeAssistant instance
@@ -282,7 +328,9 @@ async def _get_states(
                     #     color_modes = []
                     #     for color_mode in entity_state.attributes[attr]:
                     #         color_modes.append(color_mode.)
-                    if isinstance(entity_state.attributes[attr], int) or isinstance(entity_state.attributes[attr], dict):
+                    if isinstance(entity_state.attributes[attr], int) or isinstance(
+                        entity_state.attributes[attr], dict
+                    ):
                         entity_attributes[attr] = entity_state.attributes[attr]
                     else:
                         entity_attributes[attr] = str(entity_state.attributes[attr])
@@ -298,7 +346,11 @@ async def _get_states(
                 if entity_data.device_id not in devices_data:
                     device = registry.async_get(entity_data.device_id)
                     if device is not None:
-                        device_name = str(device.name_by_user) if device.name_by_user != None else str(device.name)
+                        device_name = (
+                            str(device.name_by_user)
+                            if device.name_by_user != None
+                            else str(device.name)
+                        )
                         devices_data[entity_data.device_id] = {
                             "name": device_name,
                             "entities": [entity_data.entity_id],
@@ -311,7 +363,9 @@ async def _get_states(
                             "area_id": device.area_id,
                         }
                 else:
-                    devices_data[entity_data.device_id]["entities"].append(entity_data.entity_id)
+                    devices_data[entity_data.device_id]["entities"].append(
+                        entity_data.entity_id
+                    )
             entities_data[entity_data.entity_id] = entity_info
 
     all_data["devices"] = devices_data
@@ -321,4 +375,3 @@ async def _get_states(
     else:
         all_data["twin_id"] = -1
     return all_data
-

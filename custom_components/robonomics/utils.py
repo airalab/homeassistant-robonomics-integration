@@ -26,13 +26,16 @@ _LOGGER = logging.getLogger(__name__)
 VERSION_STORAGE = 6
 SERVICE_PERSISTENT_NOTIFICATION = "create"
 
-async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, str]) -> None:
+
+async def create_notification(
+    hass: HomeAssistant, service_data: tp.Dict[str, str]
+) -> None:
     """Create HomeAssistant notification.
 
     :param hass: HomeAssistant instance
     :param service_data: Message for notification
     """
-    service_data["notification_id"] =  DOMAIN
+    service_data["notification_id"] = DOMAIN
     await hass.services.async_call(
         domain=NOTIFY_DOMAIN,
         service=SERVICE_PERSISTENT_NOTIFICATION,
@@ -40,7 +43,9 @@ async def create_notification(hass: HomeAssistant, service_data: tp.Dict[str, st
     )
 
 
-def encrypt_message(message: tp.Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes) -> str:
+def encrypt_message(
+    message: tp.Union[bytes, str], sender_keypair: Keypair, recipient_public_key: bytes
+) -> str:
     """Encrypt message with sender private key and recipient public key
 
     :param message: Message to encrypt
@@ -54,7 +59,9 @@ def encrypt_message(message: tp.Union[bytes, str], sender_keypair: Keypair, reci
     return f"0x{encrypted.hex()}"
 
 
-def decrypt_message(encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+def decrypt_message(
+    encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair
+) -> str:
     """Decrypt message with recepient private key and sender puplic key
 
     :param encrypted_message: Message to decrypt
@@ -84,16 +91,24 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
     try:
         random_seed = Keypair.generate_mnemonic()
         random_acc = Account(random_seed, crypto_type=KeypairType.ED25519)
-        encrypted_data = encrypt_message(str(data), sender_kp, random_acc.keypair.public_key)
+        encrypted_data = encrypt_message(
+            str(data), sender_kp, random_acc.keypair.public_key
+        )
         encrypted_keys = {}
         # _LOGGER.debug(f"Encrypt states for following devices: {devices}")
         for device in devices:
             try:
-                receiver_kp = Keypair(ss58_address=device, crypto_type=KeypairType.ED25519)
-                encrypted_key = encrypt_message(random_seed, sender_kp, receiver_kp.public_key)
+                receiver_kp = Keypair(
+                    ss58_address=device, crypto_type=KeypairType.ED25519
+                )
+                encrypted_key = encrypt_message(
+                    random_seed, sender_kp, receiver_kp.public_key
+                )
                 encrypted_keys[device] = encrypted_key
             except Exception as e:
-                _LOGGER.warning(f"Faild to encrypt key for: {device} with error: {e}. Check your RWS devices, you may have SR25519 address in devices.")
+                _LOGGER.warning(
+                    f"Faild to encrypt key for: {device} with error: {e}. Check your RWS devices, you may have SR25519 address in devices."
+                )
         encrypted_keys["data"] = encrypted_data
         data_final = json.dumps(encrypted_keys)
         return data_final
@@ -101,9 +116,11 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
         _LOGGER.error(f"Exception in encrypt for devices: {e}")
 
 
-def decrypt_message_devices(data: tp.Union[str, dict], sender_public_key: bytes, recipient_keypair: Keypair) -> str:
+def decrypt_message_devices(
+    data: tp.Union[str, dict], sender_public_key: bytes, recipient_keypair: Keypair
+) -> str:
     """Decrypt message that was encrypted fo devices
-    
+
     :param data: Ancrypted data
     :param sender_public_key: Sender address
     :param recipient_keypair: Recepient account keypair
@@ -117,9 +134,15 @@ def decrypt_message_devices(data: tp.Union[str, dict], sender_public_key: bytes,
         else:
             data_json = data
         if recipient_keypair.ss58_address in data_json:
-            decrypted_seed = decrypt_message(data_json[recipient_keypair.ss58_address], sender_public_key, recipient_keypair).decode("utf-8")
+            decrypted_seed = decrypt_message(
+                data_json[recipient_keypair.ss58_address],
+                sender_public_key,
+                recipient_keypair,
+            ).decode("utf-8")
             decrypted_acc = Account(decrypted_seed, crypto_type=KeypairType.ED25519)
-            decrypted_data = decrypt_message(data_json["data"], sender_public_key, decrypted_acc.keypair).decode("utf-8")
+            decrypted_data = decrypt_message(
+                data_json["data"], sender_public_key, decrypted_acc.keypair
+            ).decode("utf-8")
             return decrypted_data
         else:
             _LOGGER.error(f"Error in decrypt for devices: account is not in devices")
@@ -165,7 +188,9 @@ def get_hash(filename: str) -> tp.Optional[str]:
     return ipfs_hash_local
 
 
-def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, filename: str = None) -> str:
+def write_data_to_temp_file(
+    data: tp.Union[str, bytes], config: bool = False, filename: str = None
+) -> str:
     """
     Create file and store data in it
 
@@ -198,6 +223,7 @@ def write_data_to_temp_file(data: tp.Union[str, bytes], config: bool = False, fi
                 f.write(data)
     return filepath
 
+
 def get_path_in_temp_dir(filename: str = None) -> str:
     temp_dir = tempfile.gettempdir()
     if filename is not None:
@@ -206,6 +232,11 @@ def get_path_in_temp_dir(filename: str = None) -> str:
         final_path = temp_dir
     return final_path
 
+
+def path_is_dir(path: str) -> bool:
+    return os.path.isdir(path)
+
+
 def delete_temp_dir(dirpath: str) -> None:
     """
     Delete temporary directory
@@ -213,6 +244,11 @@ def delete_temp_dir(dirpath: str) -> None:
     :param dirpath: the path to the directory
     """
     shutil.rmtree(dirpath)
+
+
+def delete_temp_dir_if_exists(dirpath: str) -> None:
+    if os.path.exists(dirpath) and os.path.isdir(dirpath):
+        delete_temp_dir(dirpath)
 
 
 def delete_temp_file(filename: str) -> None:
@@ -226,12 +262,19 @@ def delete_temp_file(filename: str) -> None:
 
 def _get_store_for_key(hass: HomeAssistant, key: str):
     """Create a Store object for the key."""
-    return Store(hass, VERSION_STORAGE, f"robonomics.{key}", encoder=JSONEncoder, atomic_writes=True)
+    return Store(
+        hass,
+        VERSION_STORAGE,
+        f"robonomics.{key}",
+        encoder=JSONEncoder,
+        atomic_writes=True,
+    )
 
 
 async def async_load_from_store(hass, key):
     """Load the retained data from store and return de-serialized data."""
     return await _get_store_for_key(hass, key).async_load() or {}
+
 
 async def async_remove_store(hass: HomeAssistant, key: str):
     """Remove data from store for given key"""
@@ -254,6 +297,7 @@ async def async_save_to_store(hass, key, data) -> bool:
         return
     _LOGGER.debug(f"Content in .storage/robonomics.{key} was't changed")
 
+
 async def add_or_change_store(
     hass: HomeAssistant, store_key: str, data_key: str, data_value: str
 ) -> None:
@@ -270,23 +314,28 @@ async def remove_from_store(hass: HomeAssistant, store_key: str, data_key: str) 
         if current_data.pop(data_key, None):
             await async_save_to_store(hass, store_key, current_data)
 
-async def async_post_request(hass: HomeAssistant, url: str, headers: dict, data: str) -> tp.Optional[dict]:
+
+async def async_post_request(
+    hass: HomeAssistant, url: str, headers: dict, data: str
+) -> tp.Optional[dict]:
     _LOGGER.debug(f"Request to {url} with data: {data}")
-    websession = async_create_clientsession(hass)  
+    websession = async_create_clientsession(hass)
     resp = await websession.post(url, headers=headers, data=data)
     if resp.status == 200:
         return await resp.json()
     else:
         _LOGGER.error(f"Post request faild with response {resp.status}")
 
+
 def get_ip_address():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 1))
+        s.connect(("8.8.8.8", 1))
         ip_address = s.getsockname()[0]
         return ip_address
     except socket.error:
         return None
+
 
 def verify_sign(signature: str, address: str) -> bool:
     try:
@@ -298,11 +347,12 @@ def verify_sign(signature: str, address: str) -> bool:
     except Exception as e:
         _LOGGER.error(f"Exception during signature verification: {e}")
 
+
 def format_libp2p_node_multiaddress(peer_id: str) -> tp.Optional[str]:
     """Format libp2p node local multiaddress from ip and peer id.
 
     :param peer_id: Peer id of the libp2p node.
-    
+
     :return: Formatted multiaddress or None.
     """
 
