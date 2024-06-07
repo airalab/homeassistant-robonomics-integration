@@ -230,10 +230,11 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         for view in config_dashboard.get("views", []):
             for card in view["cards"]:
                 if "image" in card:
+                    _LOGGER.debug(f"Image in config: {card['image']}")
                     image_path = card["image"]
                     if image_path[:6] == "/local":
-                        image_path = image_path.split("/")
-                        filename = f"{hass.config.path()}/www/{image_path[2]}"
+                        image_path = image_path.replace("/local/", "")
+                        filename = f"{hass.config.path()}/www/{image_path}"
                         ipfs_hash_media = await get_hash(filename)
                         card["image"] = ipfs_hash_media
                         if not await check_if_hash_in_folder(

@@ -18,6 +18,8 @@ from ..const import (
     MAX_NUMBER_OF_REQUESTS,
     MORALIS_GATEWAY,
     PINATA_GATEWAY,
+    CRUST_GATEWAY_1,
+    CRUST_GATEWAY_2,
 )
 from ..utils import to_thread, delete_temp_dir_if_exists
 from .decorators import catch_ipfs_errors
@@ -70,6 +72,8 @@ class GetIPFSData:
             IPFS_GATEWAY,
             MORALIS_GATEWAY,
             PINATA_GATEWAY,
+            CRUST_GATEWAY_1,
+            CRUST_GATEWAY_2,
         ]
         if CONF_IPFS_GATEWAY in self.hass.data[DOMAIN]:
             gateways.append(self.hass.data[DOMAIN][CONF_IPFS_GATEWAY])

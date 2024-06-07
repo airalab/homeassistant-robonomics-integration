@@ -28,6 +28,8 @@ CONTROLLER_ADDRESS = "controller_address"
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
 PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
+CRUST_GATEWAY_1 = "https://ipfs.living/ipfs/"
+CRUST_GATEWAY_2 = "https://crustipfs.live/ipfs/"
 
 ROBONOMICS_WSS = [
     "wss://kusama.rpc.robonomics.network/",
