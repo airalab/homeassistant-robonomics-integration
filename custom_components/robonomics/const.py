@@ -31,7 +31,7 @@ PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 
 ROBONOMICS_WSS = [
     "wss://kusama.rpc.robonomics.network/",
-    "wss://robonomics.0xsamsara.com/"
+    "wss://robonomics.0xsamsara.com/",
 ]
 
 SENDING_TIMEOUT = "sending_timeout"
@@ -115,17 +115,21 @@ LIBP2P_LISTEN_COMMANDS_PROTOCOL = "/call"
 LIBP2P_SEND_STATES_PROTOCOL = "/update"
 LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL = "/token_request"
 LIBP2P_SEND_TOKEN_PROTOCOL = "/token_response"
-LIBP2P_MULTIADDRESS = "libp2p_multiaddress"
 
 PEER_ID_LOCAL = "peer_id_local"
 WAIT_IPFS_DAEMON = "wait_ipfs_daemon"
 
 STORE_USERS = "users"
 LIBP2P = "libp2p"
-LIBP2P_RELAY_ADDRESSES = ["/dns4/libp2p-relay.robonomics.network/tcp/443/wss/p2p/12D3KooWEmZfGh3HEy7rQPKZ8DpJRYfFcbULN97t3hGwkB5xPmjn"]
+LIBP2P_RELAY_ADDRESSES = [
+    "/dns4/libp2p-relay.robonomics.network/tcp/443/wss/p2p/12D3KooWEmZfGh3HEy7rQPKZ8DpJRYfFcbULN97t3hGwkB5xPmjn"
+]
 
-LAUNCH_REGISTRATION_COMMAND = "0x000000000000000000000000000000002f68615f726567697374726174696f6e"
+LAUNCH_REGISTRATION_COMMAND = (
+    "0x000000000000000000000000000000002f68615f726567697374726174696f6e"
+)
 SUBSCRIPTION_LEFT_DAYS = "subscription_left_days"
 
 DAPP_HASH_DATALOG_ADDRESS = "4G7qwXRFqUt1V1VxQejue2k9kV7CzcKCnmDDUeQ8Ed52BcSU"
 IPFS_DAPP_FILE_NAME = "robonomics_dapp"
+LIBP2P_MULTIADDRESS = "libp2p_multiaddress"

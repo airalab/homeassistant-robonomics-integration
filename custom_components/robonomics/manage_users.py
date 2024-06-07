@@ -194,6 +194,7 @@ class UserManager:
             await self._add_user_info_to_twin_id(address, password)
 
     async def _add_user_info_to_twin_id(self, address: str, password: str) -> None:
+        _LOGGER.debug(f"Start adding info about user for address {address} to twin id")
         encrypted_data = self.hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(
             json.dumps({"password": password}), [address]
         )
@@ -235,8 +236,12 @@ class UserManager:
         return access_token
 
     async def _get_password_for_address(self, address: str) -> str:
-        encrypted_user_info = await get_encrypted_user_info_for_address(self.hass, address)
-        user_info = self.hass.data[DOMAIN][ROBONOMICS].decrypt_message_for_devices(encrypted_user_info)
+        encrypted_user_info = await get_encrypted_user_info_for_address(
+            self.hass, address
+        )
+        user_info = self.hass.data[DOMAIN][ROBONOMICS].decrypt_message_for_devices(
+            encrypted_user_info
+        )
         user_info_json = json.loads(user_info)
         return user_info_json["password"]
 

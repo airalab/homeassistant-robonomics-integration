@@ -42,7 +42,12 @@ from .const import (
     DAPP_HASH_DATALOG_ADDRESS,
 )
 from .get_states import get_and_send_data
-from .ipfs import get_ipfs_data, get_last_file_hash, read_ipfs_local_file, pin_file_to_local_node_by_hash
+from .ipfs import (
+    get_ipfs_data,
+    get_last_file_hash,
+    read_ipfs_local_file,
+    pin_file_to_local_node_by_hash,
+)
 from .manage_users import UserManager
 from .utils import (
     create_notification,
@@ -54,6 +59,22 @@ from .utils import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def retry_with_change_wss_async(func: tp.Callable):
+    async def wrapper(obj, *args, **kwargs):
+        async for attempt in AsyncRetrying(
+            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+        ):
+            with attempt:
+                try:
+                    res = await func(obj, *args, **kwargs)
+                    return res
+                except TimeoutError:
+                    obj._change_current_wss()
+                    raise TimeoutError
+
+    return wrapper
 
 
 async def get_or_create_twin_id(hass: HomeAssistant) -> None:
@@ -74,9 +95,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
         ].get_last_telemetry_hash()
         if last_telemetry_hash is not None:
             hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
-            res = await get_ipfs_data(
-                hass, last_telemetry_hash, MAX_NUMBER_OF_REQUESTS - 1
-            )
+            res = await get_ipfs_data(hass, last_telemetry_hash, number_of_requests=1)
             if res is not None:
                 try:
                     _LOGGER.debug("Start getting info about telemetry")
@@ -133,7 +152,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
                 _LOGGER.debug("Twin id was not created")
 
 
-def _run_launch_command(
+async def _run_launch_command(
     hass: HomeAssistant, encrypted_command: str, sender_address: str
 ) -> None:
     """Function to unwrap launch command and call Home Assistant service for device
@@ -178,13 +197,11 @@ def _run_launch_command(
         del params["entity_id"]
         if params == {}:
             params = None
-        hass.async_create_task(
-            hass.services.async_call(
-                domain=message["platform"],
-                service=message["name"],
-                service_data=params,
-                target={"entity_id": message_entity_id},
-            )
+        await hass.services.async_call(
+            domain=message["platform"],
+            service=message["name"],
+            service_data=params,
+            target={"entity_id": message_entity_id},
         )
     except Exception as e:
         _LOGGER.error(f"Exception in sending command: {e}")
@@ -240,7 +257,9 @@ class Robonomics:
         except Exception as e:
             _LOGGER.error(f"Exception in enum: {e}")
 
-    def encrypt_for_devices(self, data: tp.Union[str, dict], devices: tp.List[str] = None) -> str:
+    def encrypt_for_devices(
+        self, data: tp.Union[str, dict], devices: tp.List[str] = None
+    ) -> str:
         if devices is None:
             devices = self.devices_list.copy()
         if self.controller_address not in devices:
@@ -253,7 +272,9 @@ class Robonomics:
         sender_public_key = Keypair(
             ss58_address=sender_address, crypto_type=KeypairType.ED25519
         ).public_key
-        return decrypt_message_devices(data, sender_public_key, self.controller_account.keypair)
+        return decrypt_message_devices(
+            data, sender_public_key, self.controller_account.keypair
+        )
 
     def encrypt_message(self, data: str, recepient_address: str = None) -> str:
         if recepient_address is None:
@@ -308,7 +329,7 @@ class Robonomics:
         try:
             ipfs_hash = ipfs_32_bytes_to_qm_hash(data[2])
             result = await get_ipfs_data(
-                self.hass, ipfs_hash, 0
+                self.hass, ipfs_hash
             )  # {'platform': 'light', 'name', 'turn_on', 'params': {'entity_id': 'light.lightbulb'}}
             _LOGGER.debug(f"Result: {result}")
             try:
@@ -317,10 +338,13 @@ class Robonomics:
                 json_result = json.loads(self.decrypt_message(result, data[0]))
             if "password" in json_result:
                 _LOGGER.debug(f"Got registration command with password from {data[0]}")
-                await UserManager(self.hass).create_user(data[0], json_result["password"])
+                await UserManager(self.hass).create_user(
+                    data[0], json_result["password"]
+                )
             elif "platform" in json_result:
                 _LOGGER.debug(f"Got call service command {json_result}")
-                _run_launch_command(self.hass, result, data[0])
+                await _run_launch_command(self.hass, result, data[0])
+            # asyncio.ensure_future(get_and_send_data(self.hass))
             await get_and_send_data(self.hass)
         except Exception as e:
             _LOGGER.error(f"Exception in launch handler command: {e}")
@@ -446,7 +470,7 @@ class Robonomics:
                         _LOGGER.debug(f"Backup hash is {backup_hash}")
                         return backup_hash
                 else:
-                    _LOGGER.debug(f"No backup topic was found")
+                    _LOGGER.debug("No backup topic was found")
                     return None
         except Exception as e:
             _LOGGER.error(f"Exception in getting backup hash: {e}")
@@ -460,7 +484,9 @@ class Robonomics:
         """
 
         try:
-            await self.set_twin_topic_with_remove_old(ipfs_hash, twin_number, self.sub_owner_address)
+            await self.set_twin_topic_with_remove_old(
+                ipfs_hash, twin_number, self.sub_owner_address
+            )
         except Exception as e:
             _LOGGER.error(f"Exception in set backup topic {e}")
 
@@ -472,7 +498,9 @@ class Robonomics:
         """
 
         try:
-            await self.set_twin_topic_with_remove_old(ipfs_hash, twin_number, self.controller_address)
+            await self.set_twin_topic_with_remove_old(
+                ipfs_hash, twin_number, self.controller_address
+            )
         except Exception as e:
             _LOGGER.error(f"Exception in set config topic {e}")
 
@@ -501,19 +529,25 @@ class Robonomics:
                 return
         await self._set_twin_topic(bytes_hash, twin_number, address)
 
-    async def set_twin_topic_with_remove_old(self, ipfs_hash: str, twin_number: int, address: str):
+    async def set_twin_topic_with_remove_old(
+        self, ipfs_hash: str, twin_number: int, address: str
+    ):
+        _LOGGER.debug(
+            f"Start setting new twin topic: {ipfs_hash} for address {address}"
+        )
         bytes_hash = ipfs_qm_hash_to_32_bytes(ipfs_hash)
         info = await self._get_twin_info(twin_number)
         if info is not None:
             for topic in info:
                 if topic[0] == bytes_hash:
                     if topic[1] == address:
-                        _LOGGER.debug(f"Topic for address {address} with this ipfs hash exists")
+                        _LOGGER.debug(
+                            f"Topic for address {address} with this ipfs hash exists"
+                        )
                         return
                 if topic[1] == address:
                     await self._set_twin_topic(topic[0], twin_number, ZERO_ACC)
         await self._set_twin_topic(bytes_hash, twin_number, address)
-    
 
     @to_thread
     def _get_twin_info(self, twin_number: int):
@@ -559,20 +593,20 @@ class Robonomics:
         if ipfs_hash is not None:
             await pin_file_to_local_node_by_hash(self.hass, ipfs_hash)
 
+    @retry_with_change_wss_async
     @to_thread
     def _find_dapp_hash(self) -> tp.Optional[str]:
-        _LOGGER.debug(f"Start looking for DApp ipfs hash")
-        try:
-            datalog = Datalog(Account())
-            last_datalog_item = datalog.get_index(DAPP_HASH_DATALOG_ADDRESS)["end"]
-            last_datalog = datalog.get_item(DAPP_HASH_DATALOG_ADDRESS, last_datalog_item - 1)
-            if last_datalog is not None:
-                ipfs_hash = last_datalog[1]
-                return ipfs_hash
-            else:
-                return None
-        except Exception as e:
-            _LOGGER.error(f"Exception in looking for dapp ipfs hash in datalog: {e}")
+        _LOGGER.debug("Start looking for DApp ipfs hash")
+        datalog = Datalog(Account())
+        last_datalog_item = datalog.get_index(DAPP_HASH_DATALOG_ADDRESS)["end"]
+        last_datalog = datalog.get_item(
+            DAPP_HASH_DATALOG_ADDRESS, last_datalog_item - 1
+        )
+        if last_datalog is not None:
+            ipfs_hash = last_datalog[1]
+            return ipfs_hash
+        else:
+            return None
 
     @to_thread
     def find_password(self, address: str) -> tp.Optional[str]:
@@ -697,9 +731,13 @@ class Robonomics:
 
         try:
             # _LOGGER.debug(f"Data from subscription callback: {data}")
-            if isinstance(data[1], str) and data[1] == self.controller_address:  ## Launch
+            if (
+                isinstance(data[1], str) and data[1] == self.controller_address
+            ):  ## Launch
                 if data[0] in self.devices_list or data[0] == self.controller_address:
-                    self.hass.async_create_task(self._handle_launch(data))
+                    asyncio.run_coroutine_threadsafe(
+                        self._handle_launch(data), self.hass.loop
+                    )
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
             elif isinstance(data[1], int) and len(data) == 4:
@@ -708,24 +746,28 @@ class Robonomics:
                         data[1] == self.hass.data[DOMAIN][TWIN_ID]
                         and data[3] == self.sub_owner_address
                     ):  ## Change backup topic in Digital Twin
-                        self.hass.async_create_task(_handle_backup_change(self.hass))
+                        asyncio.run_coroutine_threadsafe(
+                            _handle_backup_change(self.hass), self.hass.loop
+                        )
             elif (
                 isinstance(data[1], int) and data[0] in self.devices_list
             ):  ## Datalog to change password
-                self.hass.async_create_task(
-                    UserManager(self.hass).create_or_update_user(data)
+                asyncio.run_coroutine_threadsafe(
+                    UserManager(self.hass).create_or_update_user(data), self.hass.loop
                 )
-            # elif (
-            #     isinstance(data[1], int) and data[0] == DAPP_HASH_DATALOG_ADDRESS
-            # ):  ## Change Dapp hash
-            #     ipfs_hash = data[2]
-            #     self.hass.async_create_task(pin_file_to_local_node_by_hash(ipfs_hash))
+            elif (
+                isinstance(data[1], int) and data[0] == DAPP_HASH_DATALOG_ADDRESS
+            ):  ## Change Dapp hash
+                ipfs_hash = data[2]
+                asyncio.run_coroutine_threadsafe(
+                    pin_file_to_local_node_by_hash(self.hass, ipfs_hash), self.hass.loop
+                )
             elif (
                 isinstance(data[1], list) and data[0] == self.sub_owner_address
             ):  ## New Device in subscription
                 self._update_devices_list(data[1])
-                self.hass.async_create_task(
-                    UserManager(self.hass).update_users(data[1])
+                asyncio.run_coroutine_threadsafe(
+                    UserManager(self.hass).update_users(data[1]), self.hass.loop
                 )
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")

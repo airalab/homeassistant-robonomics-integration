@@ -1,4 +1,5 @@
 """Custom exceptions for the Robonomics integration."""
+
 from homeassistant.exceptions import HomeAssistantError
 
 
