@@ -55,6 +55,7 @@ from .utils import (
     delete_temp_file,
     format_libp2p_node_multiaddress,
     write_data_to_temp_file,
+    write_file_data,
 )
 from .ipfs import (
     add_config_to_ipfs,
@@ -263,8 +264,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 _LOGGER.debug("Config was changed")
                 dirname = tempfile.gettempdir()
                 config_filename = f"{dirname}/config-{time.time()}"
-                with open(config_filename, "w") as f:
-                    json.dump(new_config, f)
+                await hass.async_add_executor_job(write_file_data, config_filename, json.dumps(new_config))
                 sender_acc = Account(
                     seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
                     crypto_type=KeypairType.ED25519,

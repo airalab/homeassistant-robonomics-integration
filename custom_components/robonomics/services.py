@@ -34,7 +34,7 @@ from .const import (
     TWIN_ID,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
-from .utils import delete_temp_file, encrypt_message
+from .utils import delete_temp_file, encrypt_message, read_file_data, write_file_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,14 +76,11 @@ async def save_video(
     if os.path.isfile(f"{path}/{filename}"):
         _LOGGER.debug(f"Start encrypt video {filename}")
         admin_keypair: Keypair = sub_admin_acc.keypair
-        with open(f"{path}/{filename}", "rb") as f:
-            video_data = f.read()
+        video_data = await hass.async_add_executor_job(read_file_data, f"{path}/{filename}", "rb")
         encrypted_data = encrypt_message(
             video_data, admin_keypair, admin_keypair.public_key
         )
-        with open(f"{path}/{filename}", "w") as f:
-            f.write(encrypted_data)
-
+        await hass.async_add_executor_job(write_file_data, f"{path}/{filename}", encrypted_data)
         await add_media_to_ipfs(hass, f"{path}/{filename}")
         folder_ipfs_hash = await get_folder_hash(hass, IPFS_MEDIA_PATH)
         # delete file from system
@@ -153,8 +150,7 @@ async def restore_from_backup_service_call(
         )
         result = await get_ipfs_data(hass, ipfs_backup_hash)
         backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
-        with open(backup_path, "w") as f:
-            f.write(result)
+        await hass.async_add_executor_job(write_file_data, backup_path, result)
         sub_admin_kp = Keypair.create_from_mnemonic(
             hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
         )

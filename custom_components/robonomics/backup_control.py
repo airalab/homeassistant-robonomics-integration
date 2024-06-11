@@ -53,6 +53,7 @@ from .utils import (
     encrypt_message,
     to_thread,
     write_data_to_temp_file,
+    read_file_data,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -281,8 +282,7 @@ async def restore_backup_hassio(
     _LOGGER.debug(f"Start decrypting backup {path_to_encrypted}")
     hassio = hass.data[HASSIO_DOMAIN]
     hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-    with open(path_to_encrypted) as f:
-        encrypted = f.read()
+    encrypted = await hass.async_add_executor_job(read_file_data, path_to_encrypted)
     decrypted = decrypt_message(encrypted, admin_keypair.public_key, admin_keypair)
     _LOGGER.error(f"Start uploading backup to hassio")
     response = await _send_command_hassio(

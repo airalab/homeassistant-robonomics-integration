@@ -223,6 +223,15 @@ def write_data_to_temp_file(
                 f.write(data)
     return filepath
 
+def read_file_data(filename: str, keys: str = "r") -> tp.Union[str, bytes]:
+    with open(filename, keys) as f:
+        data = f.read()
+    return data
+
+def write_file_data(filename: str, data: tp.Union[str, bytes], keys: str = "w") -> None:
+    with open(filename, keys) as f:
+        data = f.write(data)
+
 
 def get_path_in_temp_dir(filename: str = None) -> str:
     temp_dir = tempfile.gettempdir()
