@@ -118,7 +118,7 @@ async def get_and_send_data(hass: HomeAssistant):
             str(data), sender_kp, devices_list_with_admin
         )
         await asyncio.sleep(2)
-        filename = write_data_to_temp_file(encrypted_data)
+        filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data)
         ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
         delete_temp_file(filename)
         await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
@@ -243,7 +243,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                             await add_media_to_ipfs(hass, filename)
     peer_id = hass.data[DOMAIN].get(PEER_ID_LOCAL, "")
     local_libp2p_multiaddress = format_libp2p_node_multiaddress(peer_id)
-    libp2p_multiaddress = hass.data[DOMAIN][LIBP2P_MULTIADDRESS].copy()
+    libp2p_multiaddress = hass.data[DOMAIN].get(LIBP2P_MULTIADDRESS, []).copy()
     libp2p_multiaddress.append(local_libp2p_multiaddress)
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
@@ -277,7 +277,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 encrypted_data = encrypt_for_devices(
                     json.dumps(new_config), sender_kp, devices_list_with_admin
                 )
-                filename = write_data_to_temp_file(encrypted_data, config=True)
+                filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data, True)
                 _LOGGER.debug(f"Filename: {filename}")
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(
                     hass, config_filename, filename
