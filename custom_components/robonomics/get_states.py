@@ -55,6 +55,7 @@ from .utils import (
     delete_temp_file,
     format_libp2p_node_multiaddress,
     write_data_to_temp_file,
+    write_file_data,
 )
 from .ipfs import (
     add_config_to_ipfs,
@@ -118,7 +119,7 @@ async def get_and_send_data(hass: HomeAssistant):
             str(data), sender_kp, devices_list_with_admin
         )
         await asyncio.sleep(2)
-        filename = write_data_to_temp_file(encrypted_data)
+        filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data)
         ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
         delete_temp_file(filename)
         await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
@@ -230,10 +231,11 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
         for view in config_dashboard.get("views", []):
             for card in view["cards"]:
                 if "image" in card:
+                    _LOGGER.debug(f"Image in config: {card['image']}")
                     image_path = card["image"]
                     if image_path[:6] == "/local":
-                        image_path = image_path.split("/")
-                        filename = f"{hass.config.path()}/www/{image_path[2]}"
+                        image_path = image_path.replace("/local/", "")
+                        filename = f"{hass.config.path()}/www/{image_path}"
                         ipfs_hash_media = await get_hash(filename)
                         card["image"] = ipfs_hash_media
                         if not await check_if_hash_in_folder(
@@ -242,7 +244,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                             await add_media_to_ipfs(hass, filename)
     peer_id = hass.data[DOMAIN].get(PEER_ID_LOCAL, "")
     local_libp2p_multiaddress = format_libp2p_node_multiaddress(peer_id)
-    libp2p_multiaddress = hass.data[DOMAIN][LIBP2P_MULTIADDRESS].copy()
+    libp2p_multiaddress = hass.data[DOMAIN].get(LIBP2P_MULTIADDRESS, []).copy()
     libp2p_multiaddress.append(local_libp2p_multiaddress)
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
@@ -262,8 +264,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 _LOGGER.debug("Config was changed")
                 dirname = tempfile.gettempdir()
                 config_filename = f"{dirname}/config-{time.time()}"
-                with open(config_filename, "w") as f:
-                    json.dump(new_config, f)
+                await hass.async_add_executor_job(write_file_data, config_filename, json.dumps(new_config))
                 sender_acc = Account(
                     seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
                     crypto_type=KeypairType.ED25519,
@@ -276,7 +277,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 encrypted_data = encrypt_for_devices(
                     json.dumps(new_config), sender_kp, devices_list_with_admin
                 )
-                filename = write_data_to_temp_file(encrypted_data, config=True)
+                filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data, True)
                 _LOGGER.debug(f"Filename: {filename}")
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(
                     hass, config_filename, filename

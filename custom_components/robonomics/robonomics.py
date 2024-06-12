@@ -356,16 +356,7 @@ class Robonomics:
         :param hass: HomeAssistant instance
         """
         try:
-            async for attempt in AsyncRetrying(
-                wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
-            ):
-                with attempt:
-                    try:
-                        rws = RWS(Account(remote_ws=self.current_wss))
-                        rws_days_left = rws.get_days_left(addr=self.sub_owner_address)
-                    except TimeoutError:
-                        self._change_current_wss()
-                        raise TimeoutError
+            rws_days_left = await self._get_rws_left_days()
             _LOGGER.debug(f"Left {rws_days_left} days of subscription")
             if rws_days_left == -1:
                 self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = 100000
@@ -389,6 +380,13 @@ class Robonomics:
                 await create_notification(self.hass, service_data)
         except Exception as e:
             _LOGGER.error(f"Exception in requesting subscription left days: {e}")
+
+    @retry_with_change_wss_async
+    @to_thread
+    def _get_rws_left_days(self) -> int:
+        rws = RWS(Account(remote_ws=self.current_wss))
+        rws_days_left = rws.get_days_left(addr=self.sub_owner_address)
+        return rws_days_left
 
     @to_thread
     def get_last_telemetry_hash(self) -> tp.Optional[str]:

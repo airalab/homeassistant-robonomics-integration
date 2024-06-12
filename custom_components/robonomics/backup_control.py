@@ -35,7 +35,6 @@ from substrateinterface import Keypair
 from homeassistant.components.hassio.const import DOMAIN as HASSIO_DOMAIN
 from homeassistant.components.hassio.handler import async_create_backup
 from http import HTTPStatus
-import aiohttp
 
 from .const import (
     BACKUP_ENCRYPTED_PREFIX,
@@ -54,6 +53,7 @@ from .utils import (
     encrypt_message,
     to_thread,
     write_data_to_temp_file,
+    read_file_data,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -282,8 +282,7 @@ async def restore_backup_hassio(
     _LOGGER.debug(f"Start decrypting backup {path_to_encrypted}")
     hassio = hass.data[HASSIO_DOMAIN]
     hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-    with open(path_to_encrypted) as f:
-        encrypted = f.read()
+    encrypted = await hass.async_add_executor_job(read_file_data, path_to_encrypted)
     decrypted = decrypt_message(encrypted, admin_keypair.public_key, admin_keypair)
     _LOGGER.error(f"Start uploading backup to hassio")
     response = await _send_command_hassio(
@@ -320,9 +319,11 @@ async def create_secure_backup_hassio(
         encrypted_data = encrypt_message(
             backup, admin_keypair, admin_keypair.public_key
         )
-        tarpath = write_data_to_temp_file(backup, filename=f"{slug}.tar")
-        encrypted_tarpath = write_data_to_temp_file(
-            encrypted_data, filename=f"{slug}_encrypted"
+        tarpath = await hass.async_add_executor_job(
+            write_data_to_temp_file, backup, False, f"{slug}.tar"
+        )
+        encrypted_tarpath = await hass.async_add_executor_job(
+            write_data_to_temp_file, encrypted_data, False, f"{slug}_encrypted"
         )
         _LOGGER.debug(f"Backup was encrypted")
         return encrypted_tarpath, tarpath
