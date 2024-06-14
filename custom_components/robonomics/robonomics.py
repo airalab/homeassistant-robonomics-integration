@@ -693,8 +693,9 @@ class Robonomics:
             if DOMAIN not in self.hass.data:
                 return
             await asyncio.sleep(15)
-        self._change_current_wss()
-        await self.resubscribe()
+        if DOMAIN in self.hass.data:
+            self._change_current_wss()
+            await self.resubscribe()
 
     async def subscribe(self) -> None:
         """Subscribe to NewDevices, NewRecord, TopicChanged and NewLaunch events"""

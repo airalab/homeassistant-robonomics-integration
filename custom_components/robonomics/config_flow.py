@@ -78,7 +78,7 @@ def _is_ipfs_local_connected() -> bool:
         return False
 
 
-def _has_sub_owner_subscription(sub_owner_address: str) -> bool:
+async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: str) -> bool:
     """Check if controller account is in subscription devices
 
     :param sub_owner_address: Subscription owner address
@@ -87,14 +87,14 @@ def _has_sub_owner_subscription(sub_owner_address: str) -> bool:
     """
 
     rws = RWS(Account())
-    res = rws.get_ledger(sub_owner_address)
+    res = await hass.async_add_executor_job(rws.get_ledger, sub_owner_address)
     if res is None:
         return False
     else:
         return True
 
 
-def _is_sub_admin_in_subscription(sub_admin_seed: str, sub_owner_address: str) -> bool:
+async def _is_sub_admin_in_subscription(hass: HomeAssistant, sub_admin_seed: str, sub_owner_address: str) -> bool:
     """Check if controller account is in subscription devices
 
     :param sub_admin_seed: Controller's seed
@@ -104,7 +104,7 @@ def _is_sub_admin_in_subscription(sub_admin_seed: str, sub_owner_address: str) -
     """
 
     rws = RWS(Account(sub_admin_seed, crypto_type=KeypairType.ED25519))
-    res = rws.is_in_sub(sub_owner_address)
+    res = await hass.async_add_executor_job(rws.is_in_sub, sub_owner_address)
     return res
 
 
@@ -144,10 +144,10 @@ async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str
         raise InvalidSubAdminSeed
     if not _is_valid_sub_owner_address(data[CONF_SUB_OWNER_ADDRESS]):
         raise InvalidSubOwnerAddress
-    if not _has_sub_owner_subscription(data[CONF_SUB_OWNER_ADDRESS]):
+    if not await _has_sub_owner_subscription(hass, data[CONF_SUB_OWNER_ADDRESS]):
         raise NoSubscription
-    if not _is_sub_admin_in_subscription(
-        data[CONF_ADMIN_SEED], data[CONF_SUB_OWNER_ADDRESS]
+    if not await _is_sub_admin_in_subscription(
+        hass, data[CONF_ADMIN_SEED], data[CONF_SUB_OWNER_ADDRESS]
     ):
         raise ControllerNotInDevices
     if not await _is_ipfs_local_connected():
