@@ -4,6 +4,7 @@ which sets in `manifest.json`. This module allows to setup the integration from 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -31,6 +32,7 @@ from .const import (
     CONF_WARN_ACCOUNT_MANAGMENT,
     CONF_WARN_DATA_SENDING,
     DOMAIN,
+    CRYPTO_TYPE,
 )
 from .exceptions import (
     CantConnectToIPFS,
@@ -88,6 +90,7 @@ async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: st
 
     rws = RWS(Account())
     res = await hass.async_add_executor_job(rws.get_ledger, sub_owner_address)
+    # res = asyncio.run_coroutine_threadsafe(rws.get_ledger(sub_owner_address), hass).result()
     if res is None:
         return False
     else:
@@ -103,8 +106,9 @@ async def _is_sub_admin_in_subscription(hass: HomeAssistant, sub_admin_seed: str
     :return: True if controller account is in subscription devices, false otherwise
     """
 
-    rws = RWS(Account(sub_admin_seed, crypto_type=KeypairType.ED25519))
+    rws = RWS(Account(sub_admin_seed, crypto_type=CRYPTO_TYPE))
     res = await hass.async_add_executor_job(rws.is_in_sub, sub_owner_address)
+    # res = rws.is_in_sub(sub_owner_address)
     return res
 
 

@@ -48,6 +48,7 @@ from .const import (
     GETTING_STATES_QUEUE,
     PEER_ID_LOCAL,
     LIBP2P_MULTIADDRESS,
+    CRYPTO_TYPE,
 )
 from .utils import (
     encrypt_for_devices,
@@ -103,7 +104,7 @@ async def get_and_send_data(hass: HomeAssistant):
 
     try:
         sender_acc = Account(
-            seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+            seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=CRYPTO_TYPE
         )
         sender_kp = sender_acc.keypair
     except Exception as e:
@@ -132,7 +133,7 @@ async def get_states_libp2p(hass: HomeAssistant) -> str:
     states_json = await _get_states(hass, False)
     states_string = json.dumps(states_json)
     sender_acc = Account(
-        seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+        seed=hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=CRYPTO_TYPE
     )
     sender_kp = sender_acc.keypair
     devices_list_with_admin = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
@@ -267,7 +268,7 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
                 await hass.async_add_executor_job(write_file_data, config_filename, json.dumps(new_config))
                 sender_acc = Account(
                     seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
-                    crypto_type=KeypairType.ED25519,
+                    crypto_type=CRYPTO_TYPE,
                 )
                 sender_kp = sender_acc.keypair
                 devices_list_with_admin = hass.data[DOMAIN][

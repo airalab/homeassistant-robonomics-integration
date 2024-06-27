@@ -1,6 +1,7 @@
 """Constants for the Robonomics Control integration."""
 
 from homeassistant.const import Platform
+from substrateinterface import KeypairType
 
 DOMAIN = "robonomics"
 PLATFORMS = [Platform.BUTTON, Platform.SENSOR]
@@ -135,3 +136,5 @@ SUBSCRIPTION_LEFT_DAYS = "subscription_left_days"
 DAPP_HASH_DATALOG_ADDRESS = "4G7qwXRFqUt1V1VxQejue2k9kV7CzcKCnmDDUeQ8Ed52BcSU"
 IPFS_DAPP_FILE_NAME = "robonomics_dapp"
 LIBP2P_MULTIADDRESS = "libp2p_multiaddress"
+
+CRYPTO_TYPE = KeypairType.SR25519

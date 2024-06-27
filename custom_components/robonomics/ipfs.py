@@ -48,6 +48,7 @@ from .const import (
     WAIT_IPFS_DAEMON,
     IPFS_USERS_PATH,
     IPFS_DAPP_FILE_NAME,
+    CRYPTO_TYPE,
 )
 from .utils import (
     get_hash,
@@ -815,7 +816,7 @@ def _upload_to_crust(
     """
 
     seed: str = hass.data[DOMAIN][CONF_ADMIN_SEED]
-    mainnet = Mainnet(seed=seed, crypto_type=KeypairType.ED25519)
+    mainnet = Mainnet(seed=seed, crypto_type=CRYPTO_TYPE)
     try:
         # Check balance
         balance = mainnet.get_balance()

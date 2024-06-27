@@ -30,7 +30,6 @@ from .const import (
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     IPFS_CONFIG_PATH,
-    MAX_NUMBER_OF_REQUESTS,
     MEDIA_ACC,
     ROBONOMICS,
     ROBONOMICS_WSS,
@@ -40,6 +39,8 @@ from .const import (
     ZERO_ACC,
     LAUNCH_REGISTRATION_COMMAND,
     DAPP_HASH_DATALOG_ADDRESS,
+    CRYPTO_TYPE,
+    CRYPTO_TYPE,
 )
 from .get_states import get_and_send_data
 from .ipfs import (
@@ -101,7 +102,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
                     _LOGGER.debug("Start getting info about telemetry")
                     sub_admin_kp = Account(
                         hass.data[DOMAIN][CONF_ADMIN_SEED],
-                        crypto_type=KeypairType.ED25519,
+                        crypto_type=CRYPTO_TYPE,
                     ).keypair
                     decrypted = decrypt_message_devices(
                         res, sub_admin_kp.public_key, sub_admin_kp
@@ -174,10 +175,10 @@ async def _run_launch_command(
         message = literal_eval(encrypted_command)
     else:
         kp_sender = Keypair(
-            ss58_address=sender_address, crypto_type=KeypairType.ED25519
+            ss58_address=sender_address, crypto_type=CRYPTO_TYPE
         )
         sub_admin_kp = Keypair.create_from_mnemonic(
-            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=CRYPTO_TYPE
         )
         try:
             decrypted = decrypt_message(
@@ -237,7 +238,7 @@ class Robonomics:
         self.controller_seed: str = controller_seed
         self.controller_account: Account = Account(
             seed=self.controller_seed,
-            crypto_type=KeypairType.ED25519,
+            crypto_type=CRYPTO_TYPE,
             remote_ws=self.current_wss,
         )
         self.controller_address: str = self.controller_account.get_address()
@@ -270,7 +271,7 @@ class Robonomics:
         if sender_address is None:
             sender_address = self.controller_address
         sender_public_key = Keypair(
-            ss58_address=sender_address, crypto_type=KeypairType.ED25519
+            ss58_address=sender_address, crypto_type=CRYPTO_TYPE
         ).public_key
         return decrypt_message_devices(
             data, sender_public_key, self.controller_account.keypair
@@ -280,7 +281,7 @@ class Robonomics:
         if recepient_address is None:
             recepient_address = self.controller_address
         recepient_public_key = Keypair(
-            ss58_address=recepient_address, crypto_type=KeypairType.ED25519
+            ss58_address=recepient_address, crypto_type=CRYPTO_TYPE
         ).public_key
         return encrypt_message(
             data, self.controller_account.keypair, recepient_public_key
@@ -290,7 +291,7 @@ class Robonomics:
         if sender_address is None:
             sender_address = self.controller_address
         sender_public_key = Keypair(
-            ss58_address=sender_address, crypto_type=KeypairType.ED25519
+            ss58_address=sender_address, crypto_type=CRYPTO_TYPE
         ).public_key
         return decrypt_message(
             encrypted_data, sender_public_key, self.controller_account.keypair
@@ -308,7 +309,7 @@ class Robonomics:
         _LOGGER.debug(f"New Robonomics ws is {self.current_wss}")
         self.controller_account: Account = Account(
             seed=self.controller_seed,
-            crypto_type=KeypairType.ED25519,
+            crypto_type=CRYPTO_TYPE,
             remote_ws=self.current_wss,
         )
 
@@ -787,7 +788,7 @@ class Robonomics:
         ):
             with attempt:
                 try:
-                    account = Account(seed=seed, crypto_type=KeypairType.ED25519)
+                    account = Account(seed=seed, crypto_type=CRYPTO_TYPE)
                     _LOGGER.debug(f"Start creating rws datalog")
                     datalog = Datalog(account, rws_sub_owner=self.sub_owner_address)
                     receipt = datalog.record(data)

@@ -20,7 +20,9 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.json import JSONEncoder
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import DOMAIN, CRYPTO_TYPE
+from .encryption_utils.sr25519.sr25519_encrypt import sr25519_encrypt
+from .encryption_utils.sr25519.sr25519_decrypt import sr25519_decrypt
 
 _LOGGER = logging.getLogger(__name__)
 VERSION_STORAGE = 6
@@ -54,8 +56,10 @@ def encrypt_message(
 
     :return: encrypted message
     """
-
-    encrypted = sender_keypair.encrypt_message(message, recipient_public_key)
+    if CRYPTO_TYPE == KeypairType.ED25519:
+        encrypted = sender_keypair.encrypt_message(message, recipient_public_key)
+    else:
+        encrypted = sr25519_encrypt(message, recipient_public_key)
     return f"0x{encrypted.hex()}"
 
 
@@ -75,7 +79,12 @@ def decrypt_message(
         encrypted_message = encrypted_message[2:]
     bytes_encrypted = bytes.fromhex(encrypted_message)
 
-    return recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
+    if CRYPTO_TYPE == KeypairType.ED25519:
+        decrypted = recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
+    else:
+        decrypted = sr25519_decrypt(bytes_encrypted, recipient_keypair.private_key)
+
+    return decrypted
 
 
 def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) -> str:
@@ -90,7 +99,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
     """
     try:
         random_seed = Keypair.generate_mnemonic()
-        random_acc = Account(random_seed, crypto_type=KeypairType.ED25519)
+        random_acc = Account(random_seed, crypto_type=CRYPTO_TYPE)
         encrypted_data = encrypt_message(
             str(data), sender_kp, random_acc.keypair.public_key
         )
@@ -99,7 +108,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
         for device in devices:
             try:
                 receiver_kp = Keypair(
-                    ss58_address=device, crypto_type=KeypairType.ED25519
+                    ss58_address=device, crypto_type=CRYPTO_TYPE
                 )
                 encrypted_key = encrypt_message(
                     random_seed, sender_kp, receiver_kp.public_key
@@ -139,7 +148,7 @@ def decrypt_message_devices(
                 sender_public_key,
                 recipient_keypair,
             ).decode("utf-8")
-            decrypted_acc = Account(decrypted_seed, crypto_type=KeypairType.ED25519)
+            decrypted_acc = Account(decrypted_seed, crypto_type=CRYPTO_TYPE)
             decrypted_data = decrypt_message(
                 data_json["data"], sender_public_key, decrypted_acc.keypair
             ).decode("utf-8")
@@ -351,7 +360,7 @@ def verify_sign(signature: str, address: str) -> bool:
         if signature.startswith("0x"):
             signature = signature[2:]
         signature_bytes = bytes.fromhex(signature)
-        keypair = Keypair(ss58_address=address, crypto_type=KeypairType.ED25519)
+        keypair = Keypair(ss58_address=address, crypto_type=CRYPTO_TYPE)
         return keypair.verify(address, signature_bytes)
     except Exception as e:
         _LOGGER.error(f"Exception during signature verification: {e}")

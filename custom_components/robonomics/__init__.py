@@ -65,6 +65,7 @@ from .const import (
     HANDLE_TIME_CHANGE_LIBP2P,
     TIME_CHANGE_LIBP2P_UNSUB,
     CONTROLLER_ADDRESS,
+    CRYPTO_TYPE,
 )
 from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import (
@@ -189,7 +190,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
     sub_admin_acc = Account(
-        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=CRYPTO_TYPE
     )
     hass.data[DOMAIN][CONTROLLER_ADDRESS] = sub_admin_acc.get_address()
     _LOGGER.debug(f"Controller: {sub_admin_acc.get_address()}")

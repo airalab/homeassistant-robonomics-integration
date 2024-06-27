@@ -32,6 +32,7 @@ from .const import (
     IPFS_MEDIA_PATH,
     ROBONOMICS,
     TWIN_ID,
+    CRYPTO_TYPE,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
 from .utils import delete_temp_file, encrypt_message, read_file_data, write_file_data
@@ -152,7 +153,7 @@ async def restore_from_backup_service_call(
         backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
         await hass.async_add_executor_job(write_file_data, backup_path, result)
         sub_admin_kp = Keypair.create_from_mnemonic(
-            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
+            hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=CRYPTO_TYPE
         )
         if is_hassio(hass):
             await restore_backup_hassio(hass, Path(backup_path), sub_admin_kp)
