@@ -721,7 +721,7 @@ class Robonomics:
         self.subscriber.cancel()
         await self.subscribe()
 
-    @callback
+
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
         """Check the event and call handlers
 

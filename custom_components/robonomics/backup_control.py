@@ -315,7 +315,7 @@ async def create_secure_backup_hassio(
         slug = resp_create["slug"]
         response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
         backup = await response.read()
-        _LOGGER.error(f"Backup {slug} downloaded")
+        _LOGGER.debug(f"Backup {slug} downloaded")
         encrypted_data = encrypt_message(
             backup, admin_keypair, admin_keypair.public_key
         )

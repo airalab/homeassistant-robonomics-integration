@@ -75,7 +75,7 @@ async def get_and_send_data(hass: HomeAssistant):
     """
 
     if TWIN_ID not in hass.data[DOMAIN]:
-        _LOGGER.warning("Trying to send data before creating twin id")
+        _LOGGER.debug("Trying to send data before creating twin id")
         return
     _LOGGER.debug(
         f"Get states request, another getting states: {hass.data[DOMAIN][GETTING_STATES]}"

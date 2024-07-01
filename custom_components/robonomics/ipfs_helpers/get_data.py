@@ -62,7 +62,8 @@ class GetIPFSData:
         delete_temp_dir_if_exists(dir_with_path)
         res = await self._get_ipfs_data(is_directory=True)
         if res is not None:
-            await self._extract_archive(res, dir_with_path)
+            tar_content = await res.content.read()
+            await self.hass.async_add_executor_job(self._extract_archive, tar_content, dir_with_path)
             return True
         else:
             return False
@@ -162,9 +163,8 @@ class GetIPFSData:
         else:
             return None
 
-    async def _extract_archive(self, response: ClientResponse, dir_with_path: str):
+    def _extract_archive(self, tar_content: bytes, dir_with_path: str):
         tar_buffer = BytesIO()
-        tar_content = await response.content.read()
         tar_buffer.write(tar_content)
         tar_buffer.seek(0)
         with tarfile.open(fileobj=tar_buffer, mode="r:*") as tar:
