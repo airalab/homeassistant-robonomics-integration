@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Optional
+from nacl.exceptions import CryptoError
 
 import homeassistant.helpers.config_validation as cv
 import ipfshttpclient2
@@ -14,8 +15,10 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from robonomicsinterface import RWS, Account
-from substrateinterface import KeypairType
+from substrateinterface import KeypairType, Keypair
 from substrateinterface.utils.ss58 import is_valid_ss58_address
+from homeassistant.helpers.selector import FileSelector, FileSelectorConfig, TextSelector, TextSelectorConfig, TextSelectorType
+from homeassistant.components.file_upload import process_uploaded_file
 
 from .const import (
     CONF_ADMIN_SEED,
@@ -30,6 +33,9 @@ from .const import (
     CONF_SUB_OWNER_ADDRESS,
     CONF_WARN_ACCOUNT_MANAGMENT,
     CONF_WARN_DATA_SENDING,
+    CONF_PASSWORD,
+    CONF_CONFIG_FILE,
+    CONF_CONTROLLER_TYPE,
     DOMAIN,
 )
 from .exceptions import (
@@ -38,23 +44,29 @@ from .exceptions import (
     InvalidSubAdminSeed,
     InvalidSubOwnerAddress,
     NoSubscription,
+    InvalidConfigPassword,
 )
 from .utils import to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_ADMIN_SEED): str,
-        vol.Required(CONF_SUB_OWNER_ADDRESS): str,
-        vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
-        vol.Optional(CONF_IPFS_GATEWAY): str,
-        vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
-        vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
-        vol.Optional(CONF_PINATA_PUB): str,
-        vol.Optional(CONF_PINATA_SECRET): str,
-    }
-)
+# STEP_USER_DATA_SCHEMA = vol.Schema(
+#     {
+#         vol.Required(CONF_ADMIN_SEED): str,
+#         vol.Required(CONF_SUB_OWNER_ADDRESS): str,
+#         vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
+#         vol.Optional(CONF_IPFS_GATEWAY): str,
+#         vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
+#         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
+#         vol.Optional(CONF_PINATA_PUB): str,
+#         vol.Optional(CONF_PINATA_SECRET): str,
+#     }
+# )
+STEP_USER_DATA_SCHEMA_FIELDS = {}
+PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+STEP_USER_DATA_SCHEMA_FIELDS[CONF_CONFIG_FILE] = FileSelector(FileSelectorConfig(accept=".json,application/json"))
+STEP_USER_DATA_SCHEMA_FIELDS[CONF_PASSWORD] = PASSWORD_SELECTOR
+STEP_USER_DATA_SCHEMA = vol.Schema(STEP_USER_DATA_SCHEMA_FIELDS)
 
 STEP_WARN_DATA_SCHEMA = vol.Schema(
     {
@@ -94,7 +106,7 @@ async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: st
         return True
 
 
-async def _is_sub_admin_in_subscription(hass: HomeAssistant, sub_admin_seed: str, sub_owner_address: str) -> bool:
+async def _is_sub_admin_in_subscription(hass: HomeAssistant, controller_seed: str, sub_owner_address: str) -> bool:
     """Check if controller account is in subscription devices
 
     :param sub_admin_seed: Controller's seed
@@ -103,7 +115,7 @@ async def _is_sub_admin_in_subscription(hass: HomeAssistant, sub_admin_seed: str
     :return: True if controller account is in subscription devices, false otherwise
     """
 
-    rws = RWS(Account(sub_admin_seed, crypto_type=KeypairType.ED25519))
+    rws = RWS(Account(controller_seed, crypto_type=KeypairType.ED25519))
     res = await hass.async_add_executor_job(rws.is_in_sub, sub_owner_address)
     return res
 
@@ -131,13 +143,15 @@ def _is_valid_sub_owner_address(sub_owner_address: str) -> bool:
     return is_valid_ss58_address(sub_owner_address, valid_ss58_format=32)
 
 
-async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
+async def _validate_config(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
     :param hass: HomeAssistant instance
     :param data: dict with the keys from STEP_USER_DATA_SCHEMA and values provided by the user
     """
 
+    if data[CONF_ADMIN_SEED] is None:
+        raise InvalidConfigPassword
     if await hass.async_add_executor_job(
         _is_valid_sub_admin_seed, data[CONF_ADMIN_SEED]
     ):
@@ -211,9 +225,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="conf", data_schema=STEP_USER_DATA_SCHEMA
             )
+        _LOGGER.debug(f"User data: {user_input}")
+        with process_uploaded_file(self.hass, user_input[CONF_CONFIG_FILE]) as f:
+            config_file = f.read_text(encoding="utf-8")
+        _LOGGER.debug(f"Config file: {config_file}")
+        config = self._parse_config_file(user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD])
+
         errors = {}
         try:
-            info = await _validate_input(self.hass, user_input)
+            info = await _validate_config(self.hass, config)
         except InvalidSubAdminSeed:
             errors["base"] = "invalid_sub_admin_seed"
         except InvalidSubOwnerAddress:
@@ -228,12 +248,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            return self.async_create_entry(title=info["title"], data=user_input)
+            return self.async_create_entry(title=info["title"], data=config)
 
         return self.async_show_form(
             step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
+    def _parse_config_file(self, config_file_id: str, password: str) -> dict:
+        with process_uploaded_file(self.hass, config_file_id) as f:
+            config_file_data = f.read_text(encoding="utf-8")
+        config = {}
+        try:
+            controller_kp = Keypair.create_from_encrypted_json(config_file_data.get("controllerKey"), password)
+            config[CONF_ADMIN_SEED] = f"0x{controller_kp.private_key}"
+            config[CONF_CONTROLLER_TYPE] = controller_kp.crypto_type
+        except CryptoError:
+            config[CONF_ADMIN_SEED] = None
+            config[CONF_CONTROLLER_TYPE] = None
+        config[CONF_SUB_OWNER_ADDRESS] = config_file_data.get("owner")
+        config[CONF_PINATA_PUB] = config_file_data.get(CONF_PINATA_PUB)
+        config[CONF_PINATA_SECRET] = config_file_data.get(CONF_PINATA_SECRET)
+        config[CONF_IPFS_GATEWAY] = config_file_data.get(CONF_IPFS_GATEWAY)
+        config[CONF_IPFS_GATEWAY_PORT] = config_file_data.get(CONF_IPFS_GATEWAY_PORT)
+        config[CONF_IPFS_GATEWAY_AUTH] = config_file_data.get(CONF_IPFS_GATEWAY_AUTH)
+        config[CONF_SENDING_TIMEOUT] = config_file_data.get(CONF_SENDING_TIMEOUT)
+        return config
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:

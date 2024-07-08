@@ -22,6 +22,9 @@ CONF_WARN_DATA_SENDING = "warn_data_sending"
 CONF_WARN_ACCOUNT_MANAGMENT = "warn_account_managment"
 CONF_PINATA_USE = "pinata_use"
 CONF_CUSTOM_GATEWAY_USE = "custom_gateway_use"
+CONF_PASSWORD = "password"
+CONF_CONFIG_FILE = "config_file"
+CONF_CONTROLLER_TYPE = "controller_type"
 
 CONTROLLER_ADDRESS = "controller_address"
 

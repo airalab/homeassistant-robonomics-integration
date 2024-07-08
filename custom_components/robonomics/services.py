@@ -7,8 +7,6 @@ import tempfile
 import time
 import typing as tp
 from pathlib import Path
-import json
-import base64
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -151,9 +149,9 @@ async def restore_from_backup_service_call(
         result = await get_ipfs_data(hass, ipfs_backup_hash)
         backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
         await hass.async_add_executor_job(write_file_data, backup_path, result)
-        sub_admin_kp = Keypair.create_from_mnemonic(
+        sub_admin_kp = Account(
             hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-        )
+        ).keypair
         if is_hassio(hass):
             await restore_backup_hassio(hass, Path(backup_path), sub_admin_kp)
         else:
@@ -168,6 +166,6 @@ async def restore_from_backup_service_call(
             await restore_from_backup(
                 hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path())
             )
-            _LOGGER.debug(f"Config restored, restarting...")
+            _LOGGER.debug("Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")

@@ -4,3 +4,4 @@ config.py
 conf.py
 decrypted
 conf.py
+custom_components/robonomics/robonomics_helpers

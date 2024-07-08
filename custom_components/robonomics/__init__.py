@@ -9,10 +9,6 @@ import logging
 import os
 import shutil
 from datetime import timedelta
-from platform import platform
-import json
-import random
-import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, Event, CoreState, callback
@@ -24,8 +20,6 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
-from robonomicsinterface import Account
-from substrateinterface import KeypairType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -188,17 +182,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][IPFS_DAEMON_OK] = True
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = False
 
-    sub_admin_acc = Account(
-        hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-    )
-    hass.data[DOMAIN][CONTROLLER_ADDRESS] = sub_admin_acc.get_address()
-    _LOGGER.debug(f"Controller: {sub_admin_acc.get_address()}")
-    _LOGGER.debug(f"Owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
     hass.data[DOMAIN][ROBONOMICS] = Robonomics(
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
         hass.data[DOMAIN][CONF_ADMIN_SEED],
     )
+    controller_account = hass.data[DOMAIN][ROBONOMICS].controller_account
+
+    hass.data[DOMAIN][CONTROLLER_ADDRESS] = hass.data[DOMAIN][
+        ROBONOMICS
+    ].controller_address
+    _LOGGER.debug(f"Controller: {hass.data[DOMAIN][CONTROLLER_ADDRESS]}")
+    _LOGGER.debug(f"Owner: {hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS]}")
     await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
     if (CONF_PINATA_PUB in conf) and (CONF_PINATA_SECRET in conf):
         hass.data[DOMAIN][CONF_PINATA_PUB] = conf[CONF_PINATA_PUB]
@@ -291,7 +286,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     @callback
     def libp2p_time_changed(event):
         hass.loop.create_task(libp2p_send_states_from_queue())
-    
+
     async def libp2p_send_states_from_queue():
         if len(libp2p_message_queue) > 0:
             async with lock:
@@ -309,7 +304,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"IPFS Status entity changed state from {old_state} to {new_state}"
         )
         if old_state.state != new_state.state:
-            hass.loop.create_task(handle_ipfs_status_change(hass, new_state.state == "OK"))
+            hass.loop.create_task(
+                handle_ipfs_status_change(hass, new_state.state == "OK")
+            )
 
     hass.data[DOMAIN][IPFS_DAEMON_STATUS_STATE_CHANGE] = async_track_state_change_event(
         hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
@@ -324,7 +321,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if TWIN_ID not in hass.data[DOMAIN]:
             _LOGGER.debug("There is no twin id. Looking for one...")
             await get_or_create_twin_id(hass)
-        await save_backup_service_call(hass, call, sub_admin_acc)
+        await save_backup_service_call(hass, call, controller_account)
 
     async def handle_restore_from_backup(call: ServiceCall) -> None:
         """Callback for restore_from_robonomics_backup service.
@@ -334,7 +331,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if TWIN_ID not in hass.data[DOMAIN]:
             _LOGGER.debug("There is no twin id. Looking for one...")
             await get_or_create_twin_id(hass)
-        await restore_from_backup_service_call(hass, call, sub_admin_acc)
+        await restore_from_backup_service_call(hass, call, controller_account)
 
     async def handle_save_video(call: ServiceCall) -> None:
         """Callback for save_video_to_robonomics service"""
@@ -350,7 +347,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if TWIN_ID not in hass.data[DOMAIN]:
             _LOGGER.debug("There is no twin id. Looking for one...")
             await get_or_create_twin_id(hass)
-        await save_video(hass, target, path, duration, sub_admin_acc)
+        await save_video(hass, target, path, duration, controller_account)
 
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
     hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
@@ -415,5 +412,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for component in PLATFORMS
         )
     )
-    _LOGGER.debug(f"Robonomics integration was unloaded")
+    _LOGGER.debug("Robonomics integration was unloaded")
     return True

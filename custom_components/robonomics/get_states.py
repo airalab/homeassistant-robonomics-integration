@@ -10,6 +10,7 @@ import asyncio
 import logging
 import tempfile
 import time
+import json
 import typing as tp
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -17,20 +18,14 @@ from datetime import datetime, timedelta
 import homeassistant.util.dt as dt_util
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 from homeassistant.components.recorder import get_instance, history
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_get_all_descriptions
-import homeassistant.util.dt as dt_util
 from robonomicsinterface import Account
-import typing as tp
-import os
-from datetime import timedelta, datetime
 from substrateinterface import KeypairType
 
 _LOGGER = logging.getLogger(__name__)
-
-import json
 
 from .const import (
     CONF_ADMIN_SEED,
@@ -65,7 +60,6 @@ from .ipfs import (
     get_last_file_hash,
     read_ipfs_local_file,
 )
-import json
 
 
 async def get_and_send_data(hass: HomeAssistant):
@@ -320,7 +314,7 @@ async def _get_states(hass: HomeAssistant, with_history: bool = True) -> tp.Dict
     for entity in entity_registry.entities:
         entity_data = entity_registry.async_get(entity)
         entity_state = hass.states.get(entity)
-        if entity_state != None:
+        if entity_state is not None:
             units = str(entity_state.attributes.get("unit_of_measurement", "None"))
             entity_attributes = {}
             for attr in entity_state.attributes:
@@ -343,13 +337,13 @@ async def _get_states(hass: HomeAssistant, with_history: bool = True) -> tp.Dict
             if with_history:
                 history = await _get_state_history(hass, entity_data.entity_id)
                 entity_info["history"] = history
-            if entity_data.device_id != None:
+            if entity_data.device_id is not None:
                 if entity_data.device_id not in devices_data:
                     device = registry.async_get(entity_data.device_id)
                     if device is not None:
                         device_name = (
                             str(device.name_by_user)
-                            if device.name_by_user != None
+                            if device.name_by_user is not None
                             else str(device.name)
                         )
                         devices_data[entity_data.device_id] = {
