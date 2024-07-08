@@ -290,6 +290,10 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             await hass.data[DOMAIN][ROBONOMICS].set_config_topic(
                 hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID]
             )
+        else:
+            await hass.data[DOMAIN][ROBONOMICS].set_config_topic(
+                hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID]
+            )
     except Exception as e:
         _LOGGER.error(f"Exception in change config: {e}")
 
