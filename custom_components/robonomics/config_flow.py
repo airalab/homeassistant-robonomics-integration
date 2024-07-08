@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 from nacl.exceptions import CryptoError
+import json
 
 import homeassistant.helpers.config_validation as cv
 import ipfshttpclient2
@@ -226,9 +227,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="conf", data_schema=STEP_USER_DATA_SCHEMA
             )
         _LOGGER.debug(f"User data: {user_input}")
-        with process_uploaded_file(self.hass, user_input[CONF_CONFIG_FILE]) as f:
-            config_file = f.read_text(encoding="utf-8")
-        _LOGGER.debug(f"Config file: {config_file}")
         config = self._parse_config_file(user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD])
 
         errors = {}
@@ -257,21 +255,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def _parse_config_file(self, config_file_id: str, password: str) -> dict:
         with process_uploaded_file(self.hass, config_file_id) as f:
             config_file_data = f.read_text(encoding="utf-8")
+        config_file_data = json.loads(config_file_data)
         config = {}
         try:
-            controller_kp = Keypair.create_from_encrypted_json(config_file_data.get("controllerKey"), password)
-            config[CONF_ADMIN_SEED] = f"0x{controller_kp.private_key}"
+            controller_kp = Keypair.create_from_encrypted_json(json.loads(config_file_data.get("controllerkey")), password)
+            config[CONF_ADMIN_SEED] = f"0x{controller_kp.private_key.hex()}"
             config[CONF_CONTROLLER_TYPE] = controller_kp.crypto_type
         except CryptoError:
             config[CONF_ADMIN_SEED] = None
             config[CONF_CONTROLLER_TYPE] = None
         config[CONF_SUB_OWNER_ADDRESS] = config_file_data.get("owner")
-        config[CONF_PINATA_PUB] = config_file_data.get(CONF_PINATA_PUB)
-        config[CONF_PINATA_SECRET] = config_file_data.get(CONF_PINATA_SECRET)
-        config[CONF_IPFS_GATEWAY] = config_file_data.get(CONF_IPFS_GATEWAY)
-        config[CONF_IPFS_GATEWAY_PORT] = config_file_data.get(CONF_IPFS_GATEWAY_PORT)
-        config[CONF_IPFS_GATEWAY_AUTH] = config_file_data.get(CONF_IPFS_GATEWAY_AUTH)
-        config[CONF_SENDING_TIMEOUT] = config_file_data.get(CONF_SENDING_TIMEOUT)
+        config[CONF_PINATA_PUB] = config_file_data.get("pinatapublic")
+        config[CONF_PINATA_SECRET] = config_file_data.get("pinataprivate")
+        config[CONF_IPFS_GATEWAY] = config_file_data.get("ipfsurl")
+        config[CONF_IPFS_GATEWAY_PORT] = config_file_data.get("ipfsport")
+        config[CONF_IPFS_GATEWAY_AUTH] = True
+        config[CONF_SENDING_TIMEOUT] = config_file_data.get("datalogtimeout")
+        _LOGGER.debug(f"Config: {config}")
         return config
 
 class OptionsFlowHandler(config_entries.OptionsFlow):

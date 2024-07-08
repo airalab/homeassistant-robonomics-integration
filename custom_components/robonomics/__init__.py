@@ -59,6 +59,7 @@ from .const import (
     HANDLE_TIME_CHANGE_LIBP2P,
     TIME_CHANGE_LIBP2P_UNSUB,
     CONTROLLER_ADDRESS,
+    CONF_CONTROLLER_TYPE,
 )
 from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import (
@@ -186,6 +187,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
         hass.data[DOMAIN][CONF_ADMIN_SEED],
+        conf.get(CONF_CONTROLLER_TYPE)
     )
     controller_account = hass.data[DOMAIN][ROBONOMICS].controller_account
 
