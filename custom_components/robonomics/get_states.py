@@ -241,7 +241,24 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
     libp2p_multiaddress = hass.data[DOMAIN].get(LIBP2P_MULTIADDRESS, []).copy()
     libp2p_multiaddress.append(local_libp2p_multiaddress)
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
+    last_config_encrypted, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
+    current_config_encrypted = await read_ipfs_local_file(hass, last_config_encrypted, IPFS_CONFIG_PATH)
+    if current_config_encrypted is None:
+        current_config_devices = []
+    else:
+        current_config_devices = list(current_config_encrypted.keys())
+        current_config_devices.remove("data")
+        current_config_devices.sort()
+    new_config_devices = hass.data[DOMAIN][
+        ROBONOMICS
+    ].devices_list.copy()
+    sender_acc = Account(
+        seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
+        crypto_type=KeypairType.ED25519,
+    )
+    new_config_devices.append(sender_acc.get_address())
+    new_config_devices.sort()
     if current_config is None:
         current_config = {}
     try:
@@ -253,23 +270,15 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             "peer_id": peer_id,
             "libp2p_multiaddress": libp2p_multiaddress,
         }
-        if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
-            if current_config != new_config:
-                _LOGGER.debug("Config was changed")
+        if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN] or current_config_devices != new_config_devices:
+            if current_config != new_config or current_config_devices != new_config_devices:
+                _LOGGER.debug(f"Config was changed: {current_config != new_config}, devices was changed: {current_config_devices != new_config_devices}")
                 dirname = tempfile.gettempdir()
                 config_filename = f"{dirname}/config-{time.time()}"
                 await hass.async_add_executor_job(write_file_data, config_filename, json.dumps(new_config))
-                sender_acc = Account(
-                    seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
-                    crypto_type=KeypairType.ED25519,
-                )
                 sender_kp = sender_acc.keypair
-                devices_list_with_admin = hass.data[DOMAIN][
-                    ROBONOMICS
-                ].devices_list.copy()
-                devices_list_with_admin.append(sender_acc.get_address())
                 encrypted_data = encrypt_for_devices(
-                    json.dumps(new_config), sender_kp, devices_list_with_admin
+                    json.dumps(new_config), sender_kp, new_config_devices
                 )
                 filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data, True)
                 _LOGGER.debug(f"Filename: {filename}")

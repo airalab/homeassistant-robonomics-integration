@@ -296,12 +296,6 @@ async def add_config_to_ipfs(
         last_file_info[1],
     )
 
-    new_hash = await get_hash(filename)
-    if new_hash == last_file_hash:
-        _LOGGER.debug(
-            f"Last config hash and the current are the same: {last_file_hash}"
-        )
-        return last_file_encrypted_hash
     await _add_to_local_node(hass, filename, False, IPFS_CONFIG_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
         hass,

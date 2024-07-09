@@ -242,6 +242,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "is_not_in_devices"
         except CantConnectToIPFS:
             errors["base"] = "can_connect_to_ipfs"
+        except InvalidConfigPassword:
+            errors["base"] = "wrong_password"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"

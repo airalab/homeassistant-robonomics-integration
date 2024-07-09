@@ -769,6 +769,9 @@ class Robonomics:
                 asyncio.run_coroutine_threadsafe(
                     UserManager(self.hass).update_users(data[1]), self.hass.loop
                 )
+                asyncio.run_coroutine_threadsafe(
+                    get_and_send_data(self.hass), self.hass.loop
+                )
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
 
