@@ -4,7 +4,7 @@
   "after_dependencies": ["mqtt"],
   "codeowners": ["@airalab"],
   "config_flow": true,
-  "dependencies": ["recorder", "lovelace", "notify"],
+  "dependencies": ["recorder", "lovelace", "notify", "file_upload"],
   "documentation": "https://wiki.robonomics.network/en/",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/airalab/homeassistant-robonomics-integration/issues",
