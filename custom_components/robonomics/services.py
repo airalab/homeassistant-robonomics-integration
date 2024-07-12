@@ -102,7 +102,7 @@ async def save_backup_service_call(
     """
 
     if is_hassio(hass):
-        encrypted_backup_path, backup_path = await create_secure_backup_hassio(
+        encrypted_backup_path = await create_secure_backup_hassio(
             hass, sub_admin_acc.keypair
         )
     else:
@@ -118,11 +118,11 @@ async def save_backup_service_call(
             full=full,
         )
     ipfs_hash = await add_backup_to_ipfs(
-        hass, str(backup_path), str(encrypted_backup_path)
+        hass, str(encrypted_backup_path)
     )
-    _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
+    _LOGGER.debug(f"Backup created with hash {ipfs_hash}")
     delete_temp_file(encrypted_backup_path)
-    delete_temp_file(backup_path)
+    # delete_temp_file(backup_path)
     await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(
         ipfs_hash, hass.data[DOMAIN][TWIN_ID]
     )

@@ -51,6 +51,8 @@ from .utils import (
     read_file_data,
 )
 
+from .encryption_utils import partial_encrypt, partial_decrypt
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -284,6 +286,7 @@ async def restore_backup_hassio(
     )
     try:
         resp = await response.json()
+        _LOGGER.debug(f"Backup upload responce: {resp}")
         slug = resp["data"]["slug"]
         _LOGGER.debug(f"Response upload: {resp}")
         _LOGGER.debug(f"Backup {slug} uploaded")
@@ -302,28 +305,30 @@ async def create_secure_backup_hassio(
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
-    try:
-        _LOGGER.debug("Start creating hassio backup")
-        resp_create = await async_create_backup(hass, {})
-        _LOGGER.debug(f"Hassio backup was created with response {resp_create}")
-        slug = resp_create["slug"]
-        response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
-        backup = await response.read()
-        _LOGGER.debug(f"Backup {slug} downloaded")
-        encrypted_data = encrypt_message(
-            backup, admin_keypair, admin_keypair.public_key
-        )
-        tarpath = await hass.async_add_executor_job(
-            write_data_to_temp_file, backup, False, f"{slug}.tar"
-        )
-        encrypted_tarpath = await hass.async_add_executor_job(
-            write_data_to_temp_file, encrypted_data, False, f"{slug}_encrypted"
-        )
-        _LOGGER.debug("Backup was encrypted")
-        return encrypted_tarpath, tarpath
-    except Exception as e:
-        _LOGGER.error(f"Exception in create_secure_backup_hassio: {e}")
-        return None, None
+    # try:
+    _LOGGER.debug("Start creating hassio backup")
+    resp_create = await async_create_backup(hass, {})
+    _LOGGER.debug(f"Hassio backup was created with response {resp_create}")
+    slug = resp_create["slug"]
+    response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
+    backup = await response.read()
+    _LOGGER.debug(f"Backup {slug} downloaded, len: {len(backup)}")
+    encrypted_data = await partial_encrypt(
+        hass, backup, admin_keypair, admin_keypair.public_key, f"{hass.config.path()}/{slug}_encrypted"
+    )
+    # encrypted_data = backup
+    _LOGGER.debug(f"Backup {slug} encrypted")
+    # tarpath = await hass.async_add_executor_job(
+    #     write_data_to_temp_file, backup, False, f"{slug}.tar"
+    # )
+    # encrypted_tarpath = await hass.async_add_executor_job(
+    #     write_data_to_temp_file, encrypted_data, False, f"{slug}_encrypted"
+    # )
+    _LOGGER.debug("Backup was encrypted")
+    return f"{hass.config.path()}/{slug}_encrypted"
+    # except Exception as e:
+    #     _LOGGER.error(f"Exception in create_secure_backup_hassio: {e}")
+    #     return None, None
 
 
 async def _send_command_hassio(
@@ -353,8 +358,9 @@ async def _send_command_hassio(
                 ),
                 "X-Hass-Source": "core.handler",
             },
-            timeout=aiohttp.ClientTimeout(total=10),
+            timeout=aiohttp.ClientTimeout(total=300),
         )
+        _LOGGER.debug(f"request to http://{hassio._ip}{command}, headers: {request.headers}")
         return request
     except Exception as e:
         _LOGGER.error(f"Exception in download backup hassio: {e}")

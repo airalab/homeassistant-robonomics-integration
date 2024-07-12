@@ -311,7 +311,7 @@ async def add_config_to_ipfs(
 
 
 async def add_backup_to_ipfs(
-    hass: HomeAssistant, filename: str, filename_encrypted: str
+    hass: HomeAssistant, filename_encrypted: str
 ) -> tp.Optional[str]:
     """Send backup file to IPFS
 
@@ -323,13 +323,6 @@ async def add_backup_to_ipfs(
     """
 
     last_file_info = await get_last_file_hash(
-        hass, IPFS_BACKUP_PATH, prefix=BACKUP_PREFIX
-    )
-    if last_file_info is None:
-        last_file_info = (None, None)
-    last_file_name, last_file_hash = last_file_info[0], last_file_info[1]
-
-    last_file_info = await get_last_file_hash(
         hass, IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX
     )
     if last_file_info is None:
@@ -339,13 +332,6 @@ async def add_backup_to_ipfs(
         last_file_info[1],
     )
 
-    new_hash = await get_hash(filename)
-    if new_hash == last_file_hash:
-        _LOGGER.debug(
-            f"Last backup hash and the current are the same: {last_file_hash}"
-        )
-        return last_file_encrypted_hash
-    await _add_to_local_node(hass, filename, False, IPFS_BACKUP_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
         hass,
         filename_encrypted,
