@@ -13,7 +13,6 @@ async def partial_encrypt(hass: HomeAssistant, message: tp.Union[bytes, str], se
     pieces_count = int(len(message) / PIECE_SIZE) + 1
     _LOGGER.debug(f"Start partial encrypt pieces count: {pieces_count}")
     await hass.async_add_executor_job(_clear_file, filename)
-    # encrypted = ""
     for i in range(pieces_count):
         first_index = i*PIECE_SIZE
         last_index = (i+1)*PIECE_SIZE if i+1 != pieces_count else None
@@ -21,9 +20,6 @@ async def partial_encrypt(hass: HomeAssistant, message: tp.Union[bytes, str], se
         encrypted_piece = sender_keypair.encrypt_message(data_piece, recipient_public_key)
         _LOGGER.debug(f"{round(i*100/pieces_count)} - Piece size: {len(data_piece)}, encrypted piece size: {len(encrypted_piece.hex())}")
         await hass.async_add_executor_job(_write_data_to_file, encrypted_piece.hex(), filename)
-        # encrypted += encrypted_piece.hex()
-        # await asyncio.sleep(0)
-    # return encrypted
 
 async def partial_decrypt(encrypted_message: tp.Union[bytes, str], receiver_keypair: Keypair, sender_public_key: bytes) -> bytes:
     decrypted = bytearray()

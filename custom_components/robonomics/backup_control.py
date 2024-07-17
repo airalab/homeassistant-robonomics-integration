@@ -313,22 +313,11 @@ async def create_secure_backup_hassio(
     response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
     backup = await response.read()
     _LOGGER.debug(f"Backup {slug} downloaded, len: {len(backup)}")
-    encrypted_data = await partial_encrypt(
+    await partial_encrypt(
         hass, backup, admin_keypair, admin_keypair.public_key, f"{hass.config.path()}/{slug}_encrypted"
     )
-    # encrypted_data = backup
     _LOGGER.debug(f"Backup {slug} encrypted")
-    # tarpath = await hass.async_add_executor_job(
-    #     write_data_to_temp_file, backup, False, f"{slug}.tar"
-    # )
-    # encrypted_tarpath = await hass.async_add_executor_job(
-    #     write_data_to_temp_file, encrypted_data, False, f"{slug}_encrypted"
-    # )
-    _LOGGER.debug("Backup was encrypted")
     return f"{hass.config.path()}/{slug}_encrypted"
-    # except Exception as e:
-    #     _LOGGER.error(f"Exception in create_secure_backup_hassio: {e}")
-    #     return None, None
 
 
 async def _send_command_hassio(
