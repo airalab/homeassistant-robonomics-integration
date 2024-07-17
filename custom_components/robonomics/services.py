@@ -147,14 +147,14 @@ async def restore_from_backup_service_call(
             hass.data[DOMAIN][TWIN_ID]
         )
         result = await get_ipfs_data(hass, ipfs_backup_hash)
-        backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
-        await hass.async_add_executor_job(write_file_data, backup_path, result)
         sub_admin_kp = Account(
             hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
         ).keypair
         if is_hassio(hass):
-            await restore_backup_hassio(hass, Path(backup_path), sub_admin_kp)
+            await restore_backup_hassio(hass, result, sub_admin_kp)
         else:
+            backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
+            await hass.async_add_executor_job(write_file_data, backup_path, result)
             config_path = Path(hass.config.path())
             zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
             if zigbee2mqtt_path is None:

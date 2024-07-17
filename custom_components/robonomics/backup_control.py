@@ -269,17 +269,15 @@ async def restore_from_backup(
 
 
 async def restore_backup_hassio(
-    hass: HomeAssistant, path_to_encrypted: Path, admin_keypair: Keypair
+    hass: HomeAssistant, encrypted_data: str, admin_keypair: Keypair
 ) -> None:
     """Restore superviser backup
     :param hass: Home Assistant instanse
     :param path_to_encrypted: Path to encrypted backup downloaded from IPFS
     :param admin_keypair: Controller Keypair
     """
-    _LOGGER.debug(f"Start decrypting backup {path_to_encrypted}")
-    hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-    encrypted = await hass.async_add_executor_job(read_file_data, path_to_encrypted)
-    decrypted = decrypt_message(encrypted, admin_keypair.public_key, admin_keypair)
+    _LOGGER.debug("Start decrypting backup")
+    decrypted = await partial_decrypt(encrypted_data, admin_keypair, admin_keypair.public_key)
     _LOGGER.error("Start uploading backup to hassio")
     response = await _send_command_hassio(
         hass, "/backups/new/upload", "post", {"file": decrypted}
