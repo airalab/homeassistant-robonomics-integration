@@ -231,7 +231,7 @@ class Robonomics:
         controller_seed: str,
         controller_type: KeypairType | None,
     ) -> None:
-        self.controller_type = controller_type if controller_type else KeypairType.ED25519
+        self.controller_type: KeypairType = controller_type if controller_type else KeypairType.ED25519
         self.current_wss = ROBONOMICS_WSS[0]
         self.hass: HomeAssistant = hass
         self.sub_owner_address: str = sub_owner_address
