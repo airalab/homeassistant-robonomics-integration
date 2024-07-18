@@ -680,6 +680,16 @@ def _add_to_pinata(
     """
 
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
+    if not pin:
+        try:
+            pinata.remove_pin_from_ipfs(last_file_hash)
+            _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
+            hass.data[DOMAIN][PINATA] = PinataPy(
+                hass.data[DOMAIN][CONF_PINATA_PUB],
+                hass.data[DOMAIN][CONF_PINATA_SECRET],
+            )
+        except Exception as e:
+            _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
     try:
         res = None
         res = pinata.pin_file_to_ipfs(filename, save_absolute_paths=False)
@@ -691,16 +701,6 @@ def _add_to_pinata(
         ipfs_hash = None
         ipfs_file_size = None
         return ipfs_hash, ipfs_file_size
-    if not pin:
-        try:
-            pinata.remove_pin_from_ipfs(last_file_hash)
-            _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
-            hass.data[DOMAIN][PINATA] = PinataPy(
-                hass.data[DOMAIN][CONF_PINATA_PUB],
-                hass.data[DOMAIN][CONF_PINATA_SECRET],
-            )
-        except Exception as e:
-            _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
     return ipfs_hash, ipfs_file_size
 
 
@@ -731,6 +731,23 @@ def _add_to_custom_gateway(
         url = url[:-1]
     _LOGGER.debug(f"Start adding {filename} to {url}, pin: {pin}, auth: {bool(seed)}")
     try:
+        if not pin:
+            try:
+                if seed is not None:
+                    usr, pwd = web_3_auth(seed)
+                    with ipfshttpclient2.connect(
+                        addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
+                    ) as client:
+                        client.pin.rm(last_file_hash)
+                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
+                else:
+                    with ipfshttpclient2.connect(
+                        addr=f"/dns4/{url}/tcp/{port}/https"
+                    ) as client:
+                        client.pin.rm(last_file_hash)
+                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
+            except Exception as e:
+                _LOGGER.warning(f"Can't unpin from custom gateway: {e}")
         if seed is not None:
             usr, pwd = web_3_auth(seed)
             with ipfshttpclient2.connect(
@@ -756,23 +773,6 @@ def _add_to_custom_gateway(
                 _LOGGER.debug(
                     f"File {filename} was added to {url} with cid: {ipfs_hash}"
                 )
-        if not pin:
-            try:
-                if seed is not None:
-                    usr, pwd = web_3_auth(seed)
-                    with ipfshttpclient2.connect(
-                        addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
-                    ) as client:
-                        client.pin.rm(last_file_hash)
-                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
-                else:
-                    with ipfshttpclient2.connect(
-                        addr=f"/dns4/{url}/tcp/{port}/https"
-                    ) as client:
-                        client.pin.rm(last_file_hash)
-                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
-            except Exception as e:
-                _LOGGER.warning(f"Can't unpin from custom gateway: {e}")
     except Exception as e:
         _LOGGER.error(f"Exception in pinning to custom gateway: {e}")
         ipfs_hash = None
