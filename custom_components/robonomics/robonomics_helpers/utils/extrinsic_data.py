@@ -4,6 +4,7 @@ from robonomicsinterface import SubEvent
 class ExtrinsicData:
     def __init__(self, extrinsic_type: SubEvent) -> None:
         self.extrinsic_type = extrinsic_type
+        self.sender = None
 
     @staticmethod
     def check(data: list) -> bool:
@@ -40,7 +41,7 @@ class LaunchData(ExtrinsicData):
 class TopicChangedData(ExtrinsicData):
     def __init__(self, data: list):
         super().__init__(SubEvent.TopicChanged)
-        self.owner: str = data[0]
+        self.sender: str = data[0]
         self.twin_id: int = data[1]
         self.topic_name: str = data[2]
         self.topic_account: str = data[3]
@@ -56,7 +57,7 @@ class TopicChangedData(ExtrinsicData):
 class NewDevicesData(ExtrinsicData):
     def __init__(self, data: list):
         super().__init__(SubEvent.NewDevices)
-        self.owner: str = data[0]
+        self.sender: str = data[0]
         self.devices: list[str] = data[1]
 
     @staticmethod

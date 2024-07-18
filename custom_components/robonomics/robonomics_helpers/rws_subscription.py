@@ -32,19 +32,32 @@ class RWSSubscriptionHelper(RetryUtil):
         )
         self._subscription_callbacks: dict[SubEvent, list[tp.Awaitable]] = {}
 
-    def add_callback(self, extrinsic_type: SubEvent, callback: tp.Awaitable) -> None:
+    def add_callback(
+        self,
+        extrinsic_type: SubEvent,
+        callback: tp.Awaitable,
+        sender: str | None = None,
+        receiver: str | None = None,
+    ) -> None:
+        callback_info = {"callback": callback, "sender": sender, "receiver": receiver}
         if extrinsic_type in self._subscription_callbacks:
-            self._subscription_callbacks[extrinsic_type].append(callback)
+            self._subscription_callbacks[extrinsic_type].append(callback_info)
         else:
-            self._subscription_callbacks[extrinsic_type] = [callback]
-    
+            self._subscription_callbacks[extrinsic_type] = [callback_info]
+
     def _subscription_callback(self, data: dict) -> None:
         format_data = self._get_format_data(data)
         if format_data.extrinsic_type in self._subscription_callbacks:
-            for callback in self._subscription_callbacks[format_data.extrinsic_type]:
-                asyncio.run_coroutine_threadsafe(
-                    callback(self._hass, format_data), self._hass.loop
-                )
+            for callback_info in self._subscription_callbacks[
+                format_data.extrinsic_type
+            ]:
+                if self._check_sender(
+                    format_data, callback_info["sender"]
+                ) and self._check_receiver(format_data, callback_info["receiver"]):
+                    asyncio.run_coroutine_threadsafe(
+                        callback_info["callback"](self._hass, format_data),
+                        self._hass.loop,
+                    )
 
     def _get_format_data(self, data: dict) -> ExtrinsicData:
         if DatalogData.check(data):
@@ -57,3 +70,15 @@ class RWSSubscriptionHelper(RetryUtil):
             return TopicChangedData(data)
         else:
             raise Exception("Got Robonomics event with unsupported type")
+
+    def _check_sender(self, extrinsic_data: ExtrinsicData, sender: str | None) -> bool:
+        if sender is None:
+            return True
+        return extrinsic_data.sender == sender
+
+    def _check_receiver(
+        self, extrinsic_data: ExtrinsicData, receiver: str | None
+    ) -> bool:
+        if receiver is None or not isinstance(extrinsic_data, LaunchData):
+            return True
+        return extrinsic_data.receiver == receiver
