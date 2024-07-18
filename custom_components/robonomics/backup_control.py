@@ -303,19 +303,32 @@ async def create_secure_backup_hassio(
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
-    # try:
     _LOGGER.debug("Start creating hassio backup")
+    _delete_found_backup_files(hass)
     resp_create = await async_create_backup(hass, {})
     _LOGGER.debug(f"Hassio backup was created with response {resp_create}")
     slug = resp_create["slug"]
+    encrypted_backup_filename = f"{hass.config.path()}/{slug}_encrypted_robonomics_backup"
     response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
     backup = await response.read()
     _LOGGER.debug(f"Backup {slug} downloaded, len: {len(backup)}")
+    _LOGGER.debug(f"Start deleting backup {slug}")
+    response = await _send_command_hassio(hass, f"/backups/{slug}", "delete")
+    _LOGGER.debug(f"Delete response: {response}")
     await partial_encrypt(
-        hass, backup, admin_keypair, admin_keypair.public_key, f"{hass.config.path()}/{slug}_encrypted"
+        hass, backup, admin_keypair, admin_keypair.public_key, encrypted_backup_filename
     )
     _LOGGER.debug(f"Backup {slug} encrypted")
-    return f"{hass.config.path()}/{slug}_encrypted"
+    return encrypted_backup_filename
+    
+    
+def _delete_found_backup_files(hass: HomeAssistant) -> None:
+    files = os.listdir(hass.config.path())
+    for filename in files:
+        if filename.endswith("_encrypted_robonomics_backup"):
+            _LOGGER.debug(f"Deleting {filename}")
+            os.remove(f"{hass.config.path()}/{filename}")
+            _LOGGER.debug(f"{filename} was deleted")
 
 
 async def _send_command_hassio(
