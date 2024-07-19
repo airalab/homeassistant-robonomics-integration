@@ -30,7 +30,6 @@ from .const import (
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     IPFS_CONFIG_PATH,
-    MAX_NUMBER_OF_REQUESTS,
     MEDIA_ACC,
     ROBONOMICS,
     ROBONOMICS_WSS,
@@ -130,7 +129,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
                         _LOGGER.debug(f"Last twin id is {twin_id}")
                         hass.data[DOMAIN][TWIN_ID] = twin_id
                     else:
-                        _LOGGER.debug(f"Start creating new digital twin")
+                        _LOGGER.debug("Start creating new digital twin")
                         new_twin_id = await hass.data[DOMAIN][
                             ROBONOMICS
                         ].create_digital_twin()
@@ -164,7 +163,7 @@ async def _run_launch_command(
 
     try:
         if encrypted_command is None:
-            _LOGGER.error(f"Can't get command")
+            _LOGGER.error("Can't get command")
             return
     except Exception as e:
         _LOGGER.error(f"Exception in get ipfs command: {e}")
@@ -176,9 +175,9 @@ async def _run_launch_command(
         kp_sender = Keypair(
             ss58_address=sender_address, crypto_type=KeypairType.ED25519
         )
-        sub_admin_kp = Keypair.create_from_mnemonic(
+        sub_admin_kp = Account(
             hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-        )
+        ).keypair
         try:
             decrypted = decrypt_message(
                 encrypted_command, kp_sender.public_key, sub_admin_kp
@@ -230,14 +229,16 @@ class Robonomics:
         hass: HomeAssistant,
         sub_owner_address: str,
         controller_seed: str,
+        controller_type: KeypairType | None,
     ) -> None:
+        self.controller_type: KeypairType = controller_type if controller_type else KeypairType.ED25519
         self.current_wss = ROBONOMICS_WSS[0]
         self.hass: HomeAssistant = hass
         self.sub_owner_address: str = sub_owner_address
         self.controller_seed: str = controller_seed
         self.controller_account: Account = Account(
             seed=self.controller_seed,
-            crypto_type=KeypairType.ED25519,
+            crypto_type=controller_type,
             remote_ws=self.current_wss,
         )
         self.controller_address: str = self.controller_account.get_address()
@@ -308,7 +309,7 @@ class Robonomics:
         _LOGGER.debug(f"New Robonomics ws is {self.current_wss}")
         self.controller_account: Account = Account(
             seed=self.controller_seed,
-            crypto_type=KeypairType.ED25519,
+            crypto_type=self.controller_type,
             remote_ws=self.current_wss,
         )
 
@@ -374,7 +375,7 @@ class Robonomics:
             else:
                 self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = 0
                 service_data = {
-                    "message": f"Your subscription has ended. You can renew it in [Robonomics DApp](https://robonomics.app/#/rws-buy).",
+                    "message": "Your subscription has ended. You can renew it in [Robonomics DApp](https://robonomics.app/#/rws-buy).",
                     "title": "Robonomics Subscription Expires",
                 }
                 await create_notification(self.hass, service_data)
@@ -627,7 +628,7 @@ class Robonomics:
                     except TimeoutError:
                         self._change_current_wss()
                         raise TimeoutError
-        except:
+        except Exception:
             return
         _LOGGER.debug(f"Last datalog: {last_datalog}")
         try:
@@ -639,7 +640,7 @@ class Robonomics:
                 ):
                     password = self.decrypt_message(data["admin"], address)
                     return password
-        except:
+        except Exception:
             pass
         for attempt in Retrying(
             wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
@@ -676,7 +677,7 @@ class Robonomics:
                     ):
                         password = self.decrypt_message(data["admin"], address)
                         return password
-            except Exception as e:
+            except Exception:
                 # _LOGGER.error(f"Exception in find password {e}")
                 continue
         else:
@@ -721,7 +722,7 @@ class Robonomics:
         self.subscriber.cancel()
         await self.subscribe()
 
-    @callback
+
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
         """Check the event and call handlers
 
@@ -768,16 +769,17 @@ class Robonomics:
                 asyncio.run_coroutine_threadsafe(
                     UserManager(self.hass).update_users(data[1]), self.hass.loop
                 )
+                asyncio.run_coroutine_threadsafe(
+                    get_and_send_data(self.hass), self.hass.loop
+                )
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
 
     @to_thread
-    def send_datalog(self, data: str, seed: str, subscription: bool) -> str:
+    def send_datalog(self, data: str) -> str:
         """Record datalog
 
         :param data: Data for Datalog recors
-        :param seed: Mnemonic or raw seed for account that will send the transaction
-        :param subscription: True if record datalog as RWS call
 
         :return: Exstrinsic hash
         """
@@ -787,9 +789,8 @@ class Robonomics:
         ):
             with attempt:
                 try:
-                    account = Account(seed=seed, crypto_type=KeypairType.ED25519)
-                    _LOGGER.debug(f"Start creating rws datalog")
-                    datalog = Datalog(account, rws_sub_owner=self.sub_owner_address)
+                    _LOGGER.debug("Start creating rws datalog")
+                    datalog = Datalog(self.controller_account, rws_sub_owner=self.sub_owner_address)
                     receipt = datalog.record(data)
                 except TimeoutError:
                     self._change_current_wss()
@@ -830,7 +831,7 @@ class Robonomics:
         else:
             self.sending_states = True
             self.on_queue = 0
-        receipt = await self.send_datalog(data, self.controller_seed, True)
+        receipt = await self.send_datalog(data)
         self.sending_states = False
         return receipt
 
@@ -862,7 +863,7 @@ class Robonomics:
                         self._change_current_wss()
                         raise TimeoutError
             _LOGGER.debug(f"Got devices list: {devices_list}")
-            if devices_list != None:
+            if devices_list is not None:
                 devices_list.remove(self.controller_address)
             self.devices_list = devices_list
             return self.devices_list

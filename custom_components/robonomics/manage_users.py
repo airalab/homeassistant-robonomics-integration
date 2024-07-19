@@ -351,7 +351,7 @@ class UserManager:
                 {"username": username}
             )
             await self.hass.auth.async_link_user(created_user, credentials)
-            _LOGGER.debug(f"User was created: {username}, password: {password}")
+            _LOGGER.debug(f"User was created: {username}")
             return True
         except Exception as e:
             _LOGGER.error(f"Exception in create user: {e}")

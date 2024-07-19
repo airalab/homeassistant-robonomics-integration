@@ -7,8 +7,6 @@ import tempfile
 import time
 import typing as tp
 from pathlib import Path
-import json
-import base64
 
 from homeassistant.components.camera.const import DOMAIN as CAMERA_DOMAIN
 from homeassistant.components.camera.const import SERVICE_RECORD
@@ -104,7 +102,7 @@ async def save_backup_service_call(
     """
 
     if is_hassio(hass):
-        encrypted_backup_path, backup_path = await create_secure_backup_hassio(
+        encrypted_backup_path = await create_secure_backup_hassio(
             hass, sub_admin_acc.keypair
         )
     else:
@@ -119,12 +117,12 @@ async def save_backup_service_call(
             admin_keypair=sub_admin_acc.keypair,
             full=full,
         )
+        delete_temp_file(backup_path)
     ipfs_hash = await add_backup_to_ipfs(
-        hass, str(backup_path), str(encrypted_backup_path)
+        hass, str(encrypted_backup_path)
     )
-    _LOGGER.debug(f"Backup created on {backup_path} with hash {ipfs_hash}")
+    _LOGGER.debug(f"Backup created with hash {ipfs_hash}")
     delete_temp_file(encrypted_backup_path)
-    delete_temp_file(backup_path)
     await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(
         ipfs_hash, hass.data[DOMAIN][TWIN_ID]
     )
@@ -149,14 +147,14 @@ async def restore_from_backup_service_call(
             hass.data[DOMAIN][TWIN_ID]
         )
         result = await get_ipfs_data(hass, ipfs_backup_hash)
-        backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
-        await hass.async_add_executor_job(write_file_data, backup_path, result)
-        sub_admin_kp = Keypair.create_from_mnemonic(
+        sub_admin_kp = Account(
             hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=KeypairType.ED25519
-        )
+        ).keypair
         if is_hassio(hass):
-            await restore_backup_hassio(hass, Path(backup_path), sub_admin_kp)
+            await restore_backup_hassio(hass, result, sub_admin_kp)
         else:
+            backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
+            await hass.async_add_executor_job(write_file_data, backup_path, result)
             config_path = Path(hass.config.path())
             zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
             if zigbee2mqtt_path is None:
@@ -168,6 +166,6 @@ async def restore_from_backup_service_call(
             await restore_from_backup(
                 hass, zigbee2mqtt_path, mosquitto_path, Path(hass.config.path())
             )
-            _LOGGER.debug(f"Config restored, restarting...")
+            _LOGGER.debug("Config restored, restarting...")
     except Exception as e:
         _LOGGER.error(f"Exception in restore from backup service call: {e}")
