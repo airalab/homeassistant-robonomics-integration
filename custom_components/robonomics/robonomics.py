@@ -238,7 +238,7 @@ class Robonomics:
         self.controller_seed: str = controller_seed
         self.controller_account: Account = Account(
             seed=self.controller_seed,
-            crypto_type=controller_type,
+            crypto_type=self.controller_type,
             remote_ws=self.current_wss,
         )
         self.controller_address: str = self.controller_account.get_address()
