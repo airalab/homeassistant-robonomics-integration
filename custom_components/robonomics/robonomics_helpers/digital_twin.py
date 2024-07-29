@@ -73,6 +73,7 @@ class DigitalTwinHelper(RetryUtil):
 
     def _create_digital_twin(self) -> None:
         self._twin_id, _ = self._digital_twin.create()
+        _LOGGER.debug(f"New digital twin was created with number {self._twin_id}")
 
     async def _remove_topic_async(self, bytes_hash: str) -> None:
         await self._set_topic_async(ZERO_ACC, bytes_hash)

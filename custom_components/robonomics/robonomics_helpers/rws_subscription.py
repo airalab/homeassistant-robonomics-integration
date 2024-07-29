@@ -36,10 +36,9 @@ class RWSSubscriptionHelper(RetryUtil):
         self,
         extrinsic_type: SubEvent,
         callback: tp.Awaitable,
-        sender: str | None = None,
-        receiver: str | None = None,
+        check_func: tp.Callable | None = None,
     ) -> None:
-        callback_info = {"callback": callback, "sender": sender, "receiver": receiver}
+        callback_info = {"callback": callback, "check_func": check_func}
         if extrinsic_type in self._subscription_callbacks:
             self._subscription_callbacks[extrinsic_type].append(callback_info)
         else:
@@ -51,9 +50,7 @@ class RWSSubscriptionHelper(RetryUtil):
             for callback_info in self._subscription_callbacks[
                 format_data.extrinsic_type
             ]:
-                if self._check_sender(
-                    format_data, callback_info["sender"]
-                ) and self._check_receiver(format_data, callback_info["receiver"]):
+                if callback_info["check_func"] is None or callback_info["check_func"](format_data):
                     asyncio.run_coroutine_threadsafe(
                         callback_info["callback"](self._hass, format_data),
                         self._hass.loop,
@@ -71,14 +68,3 @@ class RWSSubscriptionHelper(RetryUtil):
         else:
             raise Exception("Got Robonomics event with unsupported type")
 
-    def _check_sender(self, extrinsic_data: ExtrinsicData, sender: str | None) -> bool:
-        if sender is None:
-            return True
-        return extrinsic_data.sender == sender
-
-    def _check_receiver(
-        self, extrinsic_data: ExtrinsicData, receiver: str | None
-    ) -> bool:
-        if receiver is None or not isinstance(extrinsic_data, LaunchData):
-            return True
-        return extrinsic_data.receiver == receiver
