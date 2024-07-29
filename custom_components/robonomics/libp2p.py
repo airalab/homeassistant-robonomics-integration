@@ -3,6 +3,7 @@ import logging
 import json
 import typing as tp
 from homeassistant.core import HomeAssistant
+from homeassistant.components.hassio import is_hassio
 
 from .const import (
     LIBP2P_WS_SERVER,
@@ -16,7 +17,7 @@ from .const import (
     LIBP2P_RELAY_ADDRESSES,
     LIBP2P_MULTIADDRESS,
 )
-from .utils import verify_sign
+from .utils import verify_sign, create_notification
 from .manage_users import UserManager
 from .get_states import get_and_send_data
 
@@ -24,6 +25,8 @@ from pyproxy import Libp2pProxyAPI
 from pyproxy.utils.message import InitialMessage
 
 _LOGGER = logging.getLogger(__name__)
+
+LIBP2P_LISTEN_FEEDBACK_PROTOCOL = "/feedback"
 
 
 class LibP2P:
@@ -39,6 +42,24 @@ class LibP2P:
         await self.libp2p_proxy.subscribe_to_protocol_async(
             LIBP2P_LISTEN_TOKEN_REQUEST_PROTOCOL, self._send_token, reconnect=True
         )
+        await self.libp2p_proxy.subscribe_to_protocol_async(
+            LIBP2P_LISTEN_FEEDBACK_PROTOCOL, self._handle_libp2p_errors, reconnect=True
+        )
+
+    async def send_states_to_websocket(self, data: str):
+        if self.libp2p_proxy.is_connected():
+            await self.libp2p_proxy.send_msg_to_libp2p(
+                data, LIBP2P_SEND_STATES_PROTOCOL, save_data=True
+            )
+
+    async def send_token_to_libp2p(self, data: tp.Dict[str, str]) -> None:
+        if self.libp2p_proxy.is_connected():
+            await self.libp2p_proxy.send_msg_to_libp2p(
+                json.dumps(data), LIBP2P_SEND_TOKEN_PROTOCOL, save_data=False
+            )
+
+    async def close_connection(self) -> None:
+        await self.libp2p_proxy.unsubscribe_from_all_protocols()
 
     async def _run_command(self, received_data: tp.Union[str, dict]) -> None:
         if isinstance(received_data, str):
@@ -84,22 +105,21 @@ class LibP2P:
                 f"Signature for token request for address: {data['address']} wasn't verified"
             )
 
+    async def _handle_libp2p_errors(self, data: tp.Union[str, dict]) -> None:
+        _LOGGER.debug(f"Libp2p feedback: {data}")
+        if data["feedback"] != "ok":
+            if is_hassio(self.hass):
+                proxy_service = "add-on"
+            else:
+                proxy_service = "service"
+            service_data = {
+                "message": f"LibP2P <-> WS Proxy doesn't work as expected. Check the LibP2P <-> WS Proxy {proxy_service} (restart may help).\\ Error message: {data}",
+                "title": "LibP2P <-> WS Proxy Error",
+            }
+            await create_notification(self.hass, service_data, "libp2p")
+
     def _set_peer_id(self, message: InitialMessage) -> None:
         self.hass.data[DOMAIN][PEER_ID_LOCAL] = message.peer_id
         self.hass.data[DOMAIN][LIBP2P_MULTIADDRESS] = message.multi_addressess
         asyncio.ensure_future(get_and_send_data(self.hass))
 
-    async def send_states_to_websocket(self, data: str):
-        if self.libp2p_proxy.is_connected():
-            await self.libp2p_proxy.send_msg_to_libp2p(
-                data, LIBP2P_SEND_STATES_PROTOCOL, save_data=True
-            )
-
-    async def send_token_to_libp2p(self, data: tp.Dict[str, str]) -> None:
-        if self.libp2p_proxy.is_connected():
-            await self.libp2p_proxy.send_msg_to_libp2p(
-                json.dumps(data), LIBP2P_SEND_TOKEN_PROTOCOL, save_data=False
-            )
-
-    async def close_connection(self) -> None:
-        await self.libp2p_proxy.unsubscribe_from_all_protocols()
