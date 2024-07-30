@@ -51,18 +51,7 @@ from .utils import to_thread
 
 _LOGGER = logging.getLogger(__name__)
 
-# STEP_USER_DATA_SCHEMA = vol.Schema(
-#     {
-#         vol.Required(CONF_ADMIN_SEED): str,
-#         vol.Required(CONF_SUB_OWNER_ADDRESS): str,
-#         vol.Required(CONF_SENDING_TIMEOUT, default=10): int,
-#         vol.Optional(CONF_IPFS_GATEWAY): str,
-#         vol.Required(CONF_IPFS_GATEWAY_PORT, default=443): int,
-#         vol.Required(CONF_IPFS_GATEWAY_AUTH, default=False): bool,
-#         vol.Optional(CONF_PINATA_PUB): str,
-#         vol.Optional(CONF_PINATA_SECRET): str,
-#     }
-# )
+
 STEP_USER_DATA_SCHEMA_FIELDS = {}
 PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 STEP_USER_DATA_SCHEMA_FIELDS[CONF_CONFIG_FILE] = FileSelector(FileSelectorConfig(accept=".json,application/json"))
@@ -267,10 +256,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             config[CONF_ADMIN_SEED] = None
             config[CONF_CONTROLLER_TYPE] = None
         config[CONF_SUB_OWNER_ADDRESS] = config_file_data.get("owner")
-        config[CONF_PINATA_PUB] = config_file_data.get("pinatapublic")
-        config[CONF_PINATA_SECRET] = config_file_data.get("pinataprivate")
-        config[CONF_IPFS_GATEWAY] = config_file_data.get("ipfsurl")
-        config[CONF_IPFS_GATEWAY_PORT] = config_file_data.get("ipfsport")
+        if config_file_data.get("pinatapublic") and config_file_data.get("pinataprivate"):
+            config[CONF_PINATA_PUB] = config_file_data.get("pinatapublic")
+            config[CONF_PINATA_SECRET] = config_file_data.get("pinataprivate")
+        if config_file_data.get("ipfsurl") and config_file_data.get("ipfsport"):
+            config[CONF_IPFS_GATEWAY] = config_file_data.get("ipfsurl")
+            config[CONF_IPFS_GATEWAY_PORT] = config_file_data.get("ipfsport")
         config[CONF_IPFS_GATEWAY_AUTH] = True
         config[CONF_SENDING_TIMEOUT] = config_file_data.get("datalogtimeout")
         _LOGGER.debug(f"Config: {config}")
