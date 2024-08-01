@@ -259,9 +259,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if config_file_data.get("pinatapublic") and config_file_data.get("pinataprivate"):
             config[CONF_PINATA_PUB] = config_file_data.get("pinatapublic")
             config[CONF_PINATA_SECRET] = config_file_data.get("pinataprivate")
-        if config_file_data.get("ipfsurl") and config_file_data.get("ipfsport"):
+        if config_file_data.get("ipfsurl"):
             config[CONF_IPFS_GATEWAY] = config_file_data.get("ipfsurl")
-            config[CONF_IPFS_GATEWAY_PORT] = config_file_data.get("ipfsport")
+        config[CONF_IPFS_GATEWAY_PORT] = config_file_data.get("ipfsport") or 443
         config[CONF_IPFS_GATEWAY_AUTH] = True
         config[CONF_SENDING_TIMEOUT] = config_file_data.get("datalogtimeout")
         _LOGGER.debug(f"Config: {config}")
