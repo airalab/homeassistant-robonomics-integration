@@ -83,6 +83,7 @@ def decrypt_message(
         decrypted = recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
     else:
         decrypted = sr25519_decrypt(bytes_encrypted, recipient_keypair.private_key)
+        decrypted = decrypted[0]
 
     return decrypted
 
