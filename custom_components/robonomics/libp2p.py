@@ -119,7 +119,16 @@ class LibP2P:
             await create_notification(self.hass, service_data, "libp2p")
 
     def _set_peer_id(self, message: InitialMessage) -> None:
-        self.hass.data[DOMAIN][PEER_ID_LOCAL] = message.peer_id
-        self.hass.data[DOMAIN][LIBP2P_MULTIADDRESS] = message.multi_addressess
-        asyncio.ensure_future(get_and_send_data(self.hass))
+        if self._is_initial_data_new(message):
+            self.hass.data[DOMAIN][PEER_ID_LOCAL] = message.peer_id
+            self.hass.data[DOMAIN][LIBP2P_MULTIADDRESS] = message.multi_addressess
+            _LOGGER.debug("Start getting states because of new peer id")
+            asyncio.ensure_future(get_and_send_data(self.hass))
 
+    def _is_initial_data_new(self, message: InitialMessage) -> bool:
+        return (
+            (PEER_ID_LOCAL not in self.hass.data[DOMAIN])
+            or (self.hass.data[DOMAIN][PEER_ID_LOCAL] != message.peer_id)
+            or (LIBP2P_MULTIADDRESS not in self.hass.data[DOMAIN])
+            or (self.hass.data[DOMAIN][LIBP2P_MULTIADDRESS] != message.multi_addressess)
+        )

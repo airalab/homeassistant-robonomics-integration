@@ -346,6 +346,7 @@ class Robonomics:
                 _LOGGER.debug(f"Got call service command {json_result}")
                 await _run_launch_command(self.hass, result, data[0])
             # asyncio.ensure_future(get_and_send_data(self.hass))
+            _LOGGER.debug("Start getting states because of new launch")
             await get_and_send_data(self.hass)
         except Exception as e:
             _LOGGER.error(f"Exception in launch handler command: {e}")
@@ -769,6 +770,7 @@ class Robonomics:
                 asyncio.run_coroutine_threadsafe(
                     UserManager(self.hass).update_users(data[1]), self.hass.loop
                 )
+                _LOGGER.debug("Start getting states because of new devices")
                 asyncio.run_coroutine_threadsafe(
                     get_and_send_data(self.hass), self.hass.loop
                 )
