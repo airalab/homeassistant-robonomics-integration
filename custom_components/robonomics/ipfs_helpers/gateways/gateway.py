@@ -2,9 +2,23 @@ from abc import ABC, abstractmethod
 import typing as tp
 import logging
 from homeassistant.core import HomeAssistant
+from dataclasses import dataclass
 import typing as tp
 
 _LOGGER = logging.getLogger(__name__)
+
+@dataclass
+class UnpinArgs:
+    file_name: str
+    last_file_naem: str
+    last_file_hash: str
+    path: str
+
+@dataclass
+class PinArgs:
+    file_name: str
+    file_size: int
+    path: tp.Optional[str] = None
 
 
 class Gateway(ABC):
@@ -13,8 +27,13 @@ class Gateway(ABC):
         self.urls = urls
         self.websession = websession
 
+
     @abstractmethod
-    def add(filename: str, pin: bool, last_file_hash: tp.Optional[str] = None, file_size: tp.Optional[int] = None) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
+    def pin(args: PinArgs) -> tp.Optional[str]:
+        pass
+
+    @abstractmethod
+    def unpin(args: UnpinArgs) -> None:
         pass
 
     async def create_tasks_for_get(self, is_directory: bool, hash: str):
