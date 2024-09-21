@@ -10,7 +10,7 @@ _LOGGER = logging.getLogger(__name__)
 @dataclass
 class UnpinArgs:
     file_name: str
-    last_file_naem: str
+    last_file_name: str
     last_file_hash: str
     path: str
 
@@ -36,7 +36,7 @@ class Gateway(ABC):
     async def unpin(args: UnpinArgs) -> None:
         pass
 
-    async def create_tasks_for_get(self, is_directory: bool, hash: str):
+    def create_tasks_for_get(self, is_directory: bool, hash: str):
         tasks = []
         urls = self._format_urls_for_get(self.urls)
         if is_directory:

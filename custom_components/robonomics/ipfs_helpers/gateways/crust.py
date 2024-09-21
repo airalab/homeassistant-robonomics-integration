@@ -29,7 +29,7 @@ class Crust(Gateway):
             return file_stored
     
     def unpin(self, args: UnpinArgs) -> None:
-        """No unpin method for public gateways"""
+        """No unpin method for crust gateway"""
         pass
 
     def _setup_and_check_crust(self, file_size: int) -> tp.Optional[Mainnet]:
