@@ -14,12 +14,12 @@ class Pinata(Gateway):
         self.hass = hass
         super().__init__(self.hass, self.hass.data[DOMAIN][PINATA_GATEWAY], websession)
     
-    def pin(self, args: PinArgs) -> str:
+    async def pin(self, args: PinArgs) -> str:
         file_name: str = args.file_name
         _LOGGER.debug(f"Start adding {file_name} to Pinata")
         try:
             res = None
-            res = self.pinata_py.pin_file_to_ipfs(file_name, save_absolute_paths=False)
+            res = self.hass.async_add_executor_job(self._pin_to_pinata, file_name)
             ipfs_hash: tp.Optional[str] = res["IpfsHash"]
             _LOGGER.debug(f"File {file_name} was added to Pinata with cid: {ipfs_hash}")
         except Exception as e:
@@ -28,13 +28,18 @@ class Pinata(Gateway):
             return ipfs_hash
         return ipfs_hash
     
-    def unpin(self, args: UnpinArgs) -> None:
+    def _pin_to_pinata(self, file_name: str):
+        return self.pinata_py.pin_file_to_ipfs(file_name, save_absolute_paths=False)
+    
+    async def unpin(self, args: UnpinArgs) -> None:
         last_file_hash: str = args.last_file_hash
         try:
-            self.pinata_py.remove_pin_from_ipfs(last_file_hash)
+            self.hass.async_add_executor_job(self._unpin_from_pinata, last_file_hash)
         except Exception as e:
             _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
     
+    def _unpin_from_pinata(self, last_file_hash: str) -> None:
+        self.pinata_py.remove_pin_from_ipfs(last_file_hash)
     
 
         

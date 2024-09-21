@@ -17,15 +17,19 @@ class Custom(Gateway):
         self.seed = seed
         super().__init__(self.hass, self.hass.data[DOMAIN][CONF_IPFS_GATEWAY], websession)
     
-    def pin(self, args: PinArgs) -> str:
+    async def pin(self, args: PinArgs) -> str:
         file_name: str = args.file_name
         _LOGGER.debug(f"Start adding {file_name} to {self.url}, auth: {bool(self.seed)}")
         try:
             if self.seed is not None:
                 self._authorization()
-                ipfs_hash = self._pin_with_authorization(self.address, self.usr, self.pwd, file_name)
+                result = self.hass.async_add_executor_job(self._pin_with_authorization, file_name)
             else:
-                ipfs_hash = self._pin_without_authorization(self.address, file_name)
+                result = self.hass.async_add_executor_job(self._pin_without_authorization, file_name)
+                ipfs_hash = self._parse_result(result)
+                _LOGGER.debug(
+                f"File {file_name} was added to {self.address} with cid: {ipfs_hash}"
+            )
             return ipfs_hash
         except Exception as e:
             _LOGGER.error(f"Exception in pinning to custom gateway: {e}")
@@ -33,15 +37,15 @@ class Custom(Gateway):
             return ipfs_hash
             
 
-    def unpin(self, args: UnpinArgs) -> None:
+    async def unpin(self, args: UnpinArgs) -> None:
         last_file_hash: str = args.last_file_hash
         _LOGGER.debug(f"Start unpinning {last_file_hash} from custom gateway {self.url}")
         try:
             if self.seed is not None:
                 self._authorization()
-                self._unpin_with_authorization(self.address, self.usr, self.pwd, last_file_hash)
+                self.hass.async_add_executor_job(self._unpin_with_authorization, last_file_hash)
             else:
-                self._unpin_without_authorization(self.address, last_file_hash)
+                self.hass.async_add_executor_job(self._unpin_without_authorization, last_file_hash)
         except Exception as e:
             _LOGGER.warning(f"Can't unpin from custom gateway: {e}")
     
@@ -62,33 +66,25 @@ class Custom(Gateway):
     def _format_address_for_add_request(self, url: str) -> str:
         return f"/dns4/{url}/tcp/{self.hass.data[DOMAIN][CONF_IPFS_GATEWAY_PORT]}/https"
 
-    def _unpin_with_authorization(self, address: str, usr: str, pwd: str, last_file_hash: str) -> None:
-        with ipfshttpclient2.connect(addr=address, auth=(usr, pwd)) as client:
+    def _unpin_with_authorization(self, last_file_hash: str) -> None:
+        with ipfshttpclient2.connect(addr=self.address, auth=(self.usr, self.pwd)) as client:
             client.pin.rm(last_file_hash)
-            _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {address} with authorization")
+            _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {self.address} with authorization")
     
-    def _unpin_without_authorization(self, address: str, last_file_hash: str) -> None:
-        with ipfshttpclient2.connect(addr=address) as client:
+    def _unpin_without_authorization(self, last_file_hash: str) -> None:
+        with ipfshttpclient2.connect(addr=self.address) as client:
             client.pin.rm(last_file_hash)
-            _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {address}")
+            _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {self.address}")
     
-    def _pin_with_authorization(self, address: str, usr: str, pwd: str, filename: str) -> tp.Tuple[str, int]:
-        with ipfshttpclient2.connect(addr=address, auth=(usr, pwd)) as client:
+    def _pin_with_authorization(self, filename: str) -> tp.Tuple[str, int]:
+        with ipfshttpclient2.connect(addr=self.address, auth=(self.usr, self.pwd)) as client:
             result = client.add(filename)
-            ipfs_hash = self._parse_result(result)
-            _LOGGER.debug(
-                f"File {filename} was added to {address} with cid: {ipfs_hash}"
-            )
-        return ipfs_hash
+        return result
     
-    def _pin_without_authorization(self, address: str, filename: str) -> tp.Tuple[str, int]:
-        with ipfshttpclient2.connect(addr=address) as client:
+    def _pin_without_authorization(self, filename: str) -> tp.Tuple[str, int]:
+        with ipfshttpclient2.connect(addr=self.address) as client:
             result = client.add(filename)
-            ipfs_hash = self._parse_result(result)
-            _LOGGER.debug(
-                f"File {filename} was added to {address} with cid: {ipfs_hash}"
-            )
-        return ipfs_hash
+        return result
     
     def _parse_result(self, result) -> tp.Tuple[str, int]:
         if isinstance(result, list):

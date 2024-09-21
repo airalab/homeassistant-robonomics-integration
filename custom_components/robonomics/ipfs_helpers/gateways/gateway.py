@@ -29,11 +29,11 @@ class Gateway(ABC):
 
 
     @abstractmethod
-    def pin(args: PinArgs) -> tp.Optional[str]:
+    async def pin(args: PinArgs) -> tp.Optional[str]:
         pass
 
     @abstractmethod
-    def unpin(args: UnpinArgs) -> None:
+    async def unpin(args: UnpinArgs) -> None:
         pass
 
     async def create_tasks_for_get(self, is_directory: bool, hash: str):

@@ -14,14 +14,14 @@ class Crust(Gateway):
         self.hass = hass
         super().__init__(hass, [CRUST_GATEWAY_1, CRUST_GATEWAY_2], websession)
     
-    def pin(self, args: PinArgs) -> tp.Optional[str]:
+    async def pin(self, args: PinArgs) -> tp.Optional[str]:
         file_name: str = args.file_name
         file_size: int = args.file_size
         mainnet = self._setup_and_check_crust(file_size)
         if mainnet is not None:
             try:
                 _LOGGER.debug(f"Start adding {file_name} to crust with size {file_size}")
-                file_stored = mainnet.store_file(file_name, file_size)
+                file_stored = self.hass.async_add_executor_job(self._store_file, file_name, file_size)
                 _LOGGER.debug(f"file stored in Crust. Extrinsic data is  {file_stored}")
             except Exception as e:
                 _LOGGER.debug(f"error while uploading file to crust - {e}")
@@ -52,3 +52,5 @@ class Crust(Gateway):
             _LOGGER.warning("Not enough account balance to store the file in Crust Network")
             return None
     
+    def _store_file(self, mainnet: Mainnet, file_name: str, file_size: int) -> tp.Tuple[str, str]:
+        return mainnet.store_file(file_name, file_size)
