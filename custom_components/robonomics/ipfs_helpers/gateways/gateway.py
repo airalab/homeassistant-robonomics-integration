@@ -36,7 +36,7 @@ class Gateway(ABC):
     async def unpin(args: UnpinArgs) -> None:
         pass
 
-    def create_tasks_for_get(self, is_directory: bool, hash: str):
+    def create_tasks_for_get(self, ipfs_hash: str, is_directory: bool = False):
         tasks = []
         urls = self._format_urls_for_get(self.urls)
         if is_directory:
