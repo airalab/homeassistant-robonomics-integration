@@ -19,40 +19,6 @@ class Service:
             return result
         except ipfshttpclient2.exceptions.TimeoutError:
             _LOGGER.debug("IPFS Local Gateway: Timeout in add")
-    
-    @staticmethod
-    @catch_ipfs_errors("Exception in copy file in mfs")
-    def copy_mfs(ipfs_hash: str, path: str, file_name: str = None) -> None:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                if file_name is not None:
-                    client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{file_name}")
-                else:
-                    client.files.cp(f"/ipfs/{ipfs_hash}", fpath)
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in copy_mfs")
-
-    @staticmethod
-    @catch_ipfs_errors("Exception in stat file")
-    def stat_file(path: str, file_name: str) -> tp.Optional[dict]:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                try:
-                    file_info = client.files.stat(f"{path}/{file_name}")
-                except ipfshttpclient2.exceptions.ErrorResponse:
-                    file_info = None
-            return file_info
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in stat_file")
-    
-    @staticmethod
-    @catch_ipfs_errors("Exception in removing ipfs local file")
-    def remove_file(file_with_path: str, is_dir: bool) -> None:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                client.files.rm(file_with_path, recursive=is_dir) 
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in remove_file")
 
     @staticmethod
     @catch_ipfs_errors("Exception in get from local node by hash")
@@ -67,24 +33,6 @@ class Service:
             _LOGGER.debug("IPFS Local Gateway: Timeout in get_from_local_node_by_hash")
 
     @staticmethod
-    @catch_ipfs_errors("Exception in reading ipfs local file")
-    def read_file(filename_with_path: str) -> str:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                return client.files.read(filename_with_path)
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in read_file")
-
-    @staticmethod
-    @catch_ipfs_errors("Exception in ls")
-    def ls(path: str = "/") -> tp.List[str]:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                return client.files.ls(path)
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in ls")
-
-    @staticmethod
     @catch_ipfs_errors("Exception in ls")
     def pin_hash(ipfs_hash: str) -> dict:
         try:
@@ -92,6 +40,59 @@ class Service:
                 return client.pin.add(ipfs_hash)
         except ipfshttpclient2.exceptions.TimeoutError:
             _LOGGER.debug("IPFS Local Gateway: Timeout in pin_hash")   
+    
+    @staticmethod
+    @catch_ipfs_errors("Exception in copy file in mfs")
+    def mfs_cp(ipfs_hash: str, path: str, file_name: str = None) -> None:
+        try:
+            with ipfshttpclient2.connect(timeout=40) as client:
+                if file_name is not None:
+                    client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{file_name}")
+                else:
+                    client.files.cp(f"/ipfs/{ipfs_hash}", fpath)
+        except ipfshttpclient2.exceptions.TimeoutError:
+            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_cp")
+
+    @staticmethod
+    @catch_ipfs_errors("Exception in stat file")
+    def mfs_stat(path: str, file_name: str) -> tp.Optional[dict]:
+        try:
+            with ipfshttpclient2.connect(timeout=40) as client:
+                try:
+                    file_info = client.files.stat(f"{path}/{file_name}")
+                except ipfshttpclient2.exceptions.ErrorResponse:
+                    file_info = None
+            return file_info
+        except ipfshttpclient2.exceptions.TimeoutError:
+            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_stat")
+    
+    @staticmethod
+    @catch_ipfs_errors("Exception in removing ipfs local file")
+    def mfs_rm(file_with_path: str, is_dir: bool) -> None:
+        try:
+            with ipfshttpclient2.connect(timeout=40) as client:
+                client.files.rm(file_with_path, recursive=is_dir) 
+        except ipfshttpclient2.exceptions.TimeoutError:
+            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_rm")
+
+
+    @staticmethod
+    @catch_ipfs_errors("Exception in reading ipfs local file")
+    def mfs_read(filename_with_path: str) -> str:
+        try:
+            with ipfshttpclient2.connect(timeout=40) as client:
+                return client.files.read(filename_with_path)
+        except ipfshttpclient2.exceptions.TimeoutError:
+            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_read")
+
+    @staticmethod
+    @catch_ipfs_errors("Exception in ls")
+    def mfs_ls(path: str = "/") -> tp.List[str]:
+        try:
+            with ipfshttpclient2.connect(timeout=40) as client:
+                return client.files.ls(path)
+        except ipfshttpclient2.exceptions.TimeoutError:
+            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_ls")
 
     
     @staticmethod

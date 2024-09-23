@@ -31,7 +31,7 @@ class Local(Gateway):
         ipfs_hash: tp.Optional[str] = result["Hash"]
         _LOGGER.debug(f"File {file_name} was added to local node with cid: {ipfs_hash}")
         file_name = file_name.split("/")[-1]
-        await self.hass.async_add_executor_job(Service.copy_mfs, ipfs_hash, path, file_name)
+        await self.hass.async_add_executor_job(Service.mfs_cp, ipfs_hash, path, file_name)
         return ipfs_hash
 
     async def unpin(self, args: UnpinArgs) -> None:
@@ -39,9 +39,9 @@ class Local(Gateway):
         path: str = args.path
         if last_file_name is not None:
             file_with_path = f"{path}/{last_file_name}"
-            file_info = self.async_add_executor_job(Service.stat_file, path, last_file_name)
+            file_info = self.async_add_executor_job(Service.mfs_stat, path, last_file_name)
             is_dir = is_ipfs_path_dir(file_info)
-            await self.hass.async_add_executor_job(Service.remove_file, file_with_path, is_dir)
+            await self.hass.async_add_executor_job(Service.mfs_rm, file_with_path, is_dir)
             _LOGGER.debug(f"File {last_file_name} with was unpinned")
     
     def create_tasks_for_get(self, ipfs_hash: str, is_directory: bool = False):
@@ -66,11 +66,11 @@ class Local(Gateway):
     async def read_file(self, file_name: str, path: str) -> tp.Union[str, dict]:
         data = None
         filename_with_path = f"{path}/{file_name}"
-        file_info = await self.hass.async_add_executor_job(Service.stat_file, path, file_name)
+        file_info = await self.hass.async_add_executor_job(Service.mfs_stat, path, file_name)
         if file_info is None:
             _LOGGER.debug(f"File {filename_with_path} does not exist")
         else:
-            data = await self.hass.async_add_executor_job(Service.read_file, filename_with_path)
+            data = await self.hass.async_add_executor_job(Service.mfs_read, filename_with_path)
             try:
                 data_json = json.loads(data)
                 return data_json
@@ -83,18 +83,18 @@ class Local(Gateway):
     async def get_last_file_hash(self, path: str, prefix: tp.Optional[str] = None):
         last_file = None
         last_hash = None
-        files_list = await self.hass.async_add_executor_job(Service.ls, path)
+        files_list = await self.hass.async_add_executor_job(Service.mfs_ls, path)
         file_names_list = format_files_list(files_list)
         if len(file_names_list) > 0:
             if prefix is not None:
                 for filename in file_names_list:
                     if filename[: len(prefix)] == prefix:
                         last_file = filename
-                        file_info = await self.hass.async_add_executor_job(Service.stat_file, path, last_file)
+                        file_info = await self.hass.async_add_executor_job(Service.mfs_stat, path, last_file)
                         last_hash = file_info["Hash"]
                     else:
                         last_file = file_names_list[-1]
-                        file_info = await self.hass.async_add_executor_job(Service.stat_file, path, last_file)
+                        file_info = await self.hass.async_add_executor_job(Service.mfs_stat, path, last_file)
                         last_hash = file_info["Hash"]
                 _LOGGER.debug(f"Last {path} file {last_file}, with hash {last_hash}")
         return last_file, last_hash
@@ -102,7 +102,7 @@ class Local(Gateway):
 
     async def pin_by_hash(self, ipfs_hash: str, path: tp.Optional[str]) -> bool: 
         if path is not None:
-            await self.hass.async_add_executor_job(Service.copy_mfs, ipfs_hash, path)
+            await self.hass.async_add_executor_job(Service.mfs_cp, ipfs_hash, path)
             result = await self.hass.async_add_executor_job(Service.pin_hash, ipfs_hash)
             if "Pins" in result:
                 _LOGGER.debug(
@@ -115,13 +115,13 @@ class Local(Gateway):
 
     async def read_ipfs_local_file(self, file_name: str, path: str) -> tp.Union[str, dict]:
         _LOGGER.debug(f"Read data from local file: {path}/{file_name}")
-        file_info = await self.hass.async_add_executor_job(Service.stat_file, path, file_name)
+        file_info = await self.hass.async_add_executor_job(Service.mfs_stat, path, file_name)
         if file_info is None:
             _LOGGER.debug(f"File {path}/{file_name} does not exist")
             data = None
         else:
             filename_with_path = f"{path}/{file_name}"
-            data = await self.hass.async_add_executor_job(Service.read_file, filename_with_path)
+            data = await self.hass.async_add_executor_job(Service.mfs_read, filename_with_path)
             try:
                 json_data = json.loads(data)
                 return json_data
