@@ -12,6 +12,8 @@ from .digital_twin import DigitalTwinHelper
 from .rws_devices import RWSDevicesHelper
 from .rws_subscription import RWSSubscriptionHelper
 
+from ..const import LAUNCH_REGISTRATION_COMMAND
+
 _LOGGER = logging.getLogger(__name__)
 
 class Robonomcis:
@@ -42,6 +44,15 @@ class Robonomcis:
         sender_is_in_devices = data.sender in self._rws_devices_helper.get_devices()
         if not sender_is_in_devices:
             _LOGGER.debug(f"Got launch from not linked device: {data.sender}")
+        return receiver_is_controller and sender_is_in_devices
+    
+    def _check_password_change(self, data: LaunchData) -> bool:
+        receiver_is_controller = data.receiver == self._accounts.controller_address
+        sender_is_in_devices = data.sender in self._rws_devices_helper.get_devices()
+        if not sender_is_in_devices:
+            _LOGGER.debug(f"Got launch from not linked device: {data.sender}")
+        registration_request = data.data == LAUNCH_REGISTRATION_COMMAND
+        # registration_request_with_password = 
         return receiver_is_controller and sender_is_in_devices
         
 
