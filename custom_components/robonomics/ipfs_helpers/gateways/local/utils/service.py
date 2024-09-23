@@ -3,8 +3,8 @@ import typing as tp
 import time
 import logging
 from homeassistant.core import HomeAssistant
-from ...decorators import catch_ipfs_errors
-from ....const import DOMAIN, IPFS_STATUS, IPFS_STATUS_ENTITY
+from ....decorators import catch_ipfs_errors
+from .....const import DOMAIN, IPFS_STATUS, IPFS_STATUS_ENTITY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -13,87 +13,74 @@ class Service:
     @staticmethod
     @catch_ipfs_errors("Exception in adding file to local node")
     def add(file_name: str, is_dir: bool) -> dict:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                result = client.add(file_name, pin=False, recursive=is_dir)
-            return result
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in add")
+        with ipfshttpclient2.connect(timeout=40) as client:
+            result = client.add(file_name, pin=False, recursive=is_dir)
+        return result
 
     @staticmethod
     @catch_ipfs_errors("Exception in get from local node by hash")
     def get_from_local_node_by_hash(ipfs_hash: str) -> tp.Optional[str]:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                res = client.cat(ipfs_hash)
-                res_str = res.decode()
-                _LOGGER.debug(f"Got data {ipfs_hash} from local gateway")
-            return res_str
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in get_from_local_node_by_hash")
-
+        with ipfshttpclient2.connect(timeout=40) as client:
+            res = client.cat(ipfs_hash)
+            res_str = res.decode()
+            _LOGGER.debug(f"Got data {ipfs_hash} from local gateway")
+        return res_str
+    
     @staticmethod
-    @catch_ipfs_errors("Exception in ls")
+    @catch_ipfs_errors("Exception in pin_hash")
     def pin_hash(ipfs_hash: str) -> dict:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                return client.pin.add(ipfs_hash)
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in pin_hash")   
+        with ipfshttpclient2.connect(timeout=40) as client:
+            return client.pin.add(ipfs_hash)
     
     @staticmethod
-    @catch_ipfs_errors("Exception in copy file in mfs")
+    @catch_ipfs_errors("Exception in mfs_cp")
     def mfs_cp(ipfs_hash: str, path: str, file_name: str = None) -> None:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                if file_name is not None:
-                    client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{file_name}")
-                else:
-                    client.files.cp(f"/ipfs/{ipfs_hash}", fpath)
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_cp")
+        with ipfshttpclient2.connect(timeout=40) as client:
+            if file_name is not None:
+                client.files.cp(f"/ipfs/{ipfs_hash}", f"{path}/{file_name}")
+            else:
+                client.files.cp(f"/ipfs/{ipfs_hash}", path)
 
     @staticmethod
-    @catch_ipfs_errors("Exception in stat file")
-    def mfs_stat(path: str, file_name: str) -> tp.Optional[dict]:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                try:
+    @catch_ipfs_errors("Exception in mfs_stat")
+    def mfs_stat(path: str, file_name: str = None) -> tp.Optional[dict]:
+        with ipfshttpclient2.connect(timeout=40) as client:
+            try:
+                if file_name is not None:
                     file_info = client.files.stat(f"{path}/{file_name}")
-                except ipfshttpclient2.exceptions.ErrorResponse:
-                    file_info = None
-            return file_info
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_stat")
+                else:
+                    file_info = client.files.stat(f"{path}")
+            except ipfshttpclient2.exceptions.ErrorResponse:
+                file_info = None
+        return file_info
     
     @staticmethod
-    @catch_ipfs_errors("Exception in removing ipfs local file")
+    @catch_ipfs_errors("Exception in rmfs_rm")
     def mfs_rm(file_with_path: str, is_dir: bool) -> None:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                client.files.rm(file_with_path, recursive=is_dir) 
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_rm")
-
+        with ipfshttpclient2.connect(timeout=40) as client:
+            client.files.rm(file_with_path, recursive=is_dir) 
 
     @staticmethod
-    @catch_ipfs_errors("Exception in reading ipfs local file")
+    @catch_ipfs_errors("Exception in mfs_read")
     def mfs_read(filename_with_path: str) -> str:
-        try:
-            with ipfshttpclient2.connect(timeout=40) as client:
-                return client.files.read(filename_with_path)
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_read")
+        with ipfshttpclient2.connect(timeout=40) as client:
+            return client.files.read(filename_with_path)
 
     @staticmethod
-    @catch_ipfs_errors("Exception in ls")
+    @catch_ipfs_errors("Exception in mfs_ls")
     def mfs_ls(path: str = "/") -> tp.List[str]:
         try:
             with ipfshttpclient2.connect(timeout=40) as client:
-                return client.files.ls(path)
-        except ipfshttpclient2.exceptions.TimeoutError:
-            _LOGGER.debug("IPFS Local Gateway: Timeout in mfs_ls")
-
+                return client.files.ls(path)["Entries"]
+        except ipfshttpclient2.exceptions.ErrorResponse as e:
+            _LOGGER.debug(f"IPFS Local Gateway: mfs_ls: no direcotry {path}. Error: {e}")
+            return []
+    
+    @staticmethod
+    @catch_ipfs_errors("Exception in mfs_mkdir")
+    def mfs_mkdir(path: str) -> tp.List[str]:
+        with ipfshttpclient2.connect(timeout=40) as client:
+            return client.files.mkdir(path)
     
     @staticmethod
     def check_connection(hass: HomeAssistant) -> bool:

@@ -4,10 +4,10 @@ import typing as tp
 import logging
 import asyncio
 import json
-from .service import Service
+from .utils.service import Service
 from ....const import DOMAIN, WAIT_IPFS_DAEMON, IPFS_STATUS, IPFS_STATUS_ENTITY
 from ....utils import path_is_dir
-from .utils import is_ipfs_path_dir, format_files_list
+from .utils.utils import is_ipfs_path_dir, format_files_list
 
 _LOGGER = logging.getLogger(__name__)
 
