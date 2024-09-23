@@ -60,6 +60,7 @@ from .utils import (
 )
 from .ipfs_helpers.decorators import catch_ipfs_errors
 from .ipfs_helpers.get_data import GetIPFSData
+from .exceptions import CantConnectToIPFS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -224,13 +225,17 @@ async def handle_ipfs_status_change(hass: HomeAssistant, ipfs_daemon_ok: bool):
         await create_notification(hass, service_data, "ipfs")
 
 
-async def wait_ipfs_daemon(hass: HomeAssistant) -> None:
+async def wait_ipfs_daemon(hass: HomeAssistant, timeout: tp.Optional[int] = None) -> None:
     if hass.data[DOMAIN][WAIT_IPFS_DAEMON]:
         return
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = True
     _LOGGER.debug("Wait for IPFS local node connection...")
+    start_time = time.time()
     connected = await hass.async_add_executor_job(_check_connection, hass)
     while not connected:
+        if timeout:
+            if (time.time() - start_time) > timeout:
+                raise CantConnectToIPFS
         await asyncio.sleep(10)
         connected = await hass.async_add_executor_job(_check_connection, hass)
     hass.data[DOMAIN][IPFS_STATUS] = "OK"

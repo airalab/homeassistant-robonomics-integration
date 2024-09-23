@@ -165,7 +165,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await get_and_send_data(hass)
 
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, init_integration)
     _LOGGER.debug("Robonomics user control starting set up")
     conf = entry.data
     if CONF_IPFS_GATEWAY in conf:
@@ -212,12 +211,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if os.path.isdir(data_path):
         shutil.rmtree(data_path)
 
-    await wait_ipfs_daemon(hass)
+    await wait_ipfs_daemon(hass, timeout = 30)
     try:
         await create_folders(hass)
     except Exception as e:
         _LOGGER.error(f"Exception in create ipfs folders: {e}")
-        await wait_ipfs_daemon(hass)
+        await wait_ipfs_daemon(hass, timeout = 30)
     hass.states.async_set(
         f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS]
     )
@@ -377,6 +376,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     asyncio.ensure_future(hass.data[DOMAIN][ROBONOMICS].pin_dapp_to_local_node())
     if hass.state == CoreState.running:
         asyncio.ensure_future(init_integration())
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, init_integration)
 
     _LOGGER.debug(
         f"Robonomics user control successfuly set up, hass state: {hass.state}"
