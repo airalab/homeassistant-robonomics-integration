@@ -2,26 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import tarfile
 import typing as tp
+from io import BytesIO
 
 import ipfshttpclient2
 from aiohttp import ClientResponse
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import tarfile
-from io import BytesIO
 
 from ..const import (
     CONF_IPFS_GATEWAY,
+    CRUST_GATEWAY_1,
+    CRUST_GATEWAY_2,
     DOMAIN,
     IPFS_GATEWAY,
     MAX_NUMBER_OF_REQUESTS,
     MORALIS_GATEWAY,
     PINATA_GATEWAY,
-    CRUST_GATEWAY_1,
-    CRUST_GATEWAY_2,
 )
-from ..utils import to_thread, delete_temp_dir_if_exists
+from ..utils import delete_temp_dir_if_exists, to_thread
 from .decorators import catch_ipfs_errors
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,7 +63,9 @@ class GetIPFSData:
         res = await self._get_ipfs_data(is_directory=True)
         if res is not None:
             tar_content = await res.content.read()
-            await self.hass.async_add_executor_job(self._extract_archive, tar_content, dir_with_path)
+            await self.hass.async_add_executor_job(
+                self._extract_archive, tar_content, dir_with_path
+            )
             return True
         else:
             return False

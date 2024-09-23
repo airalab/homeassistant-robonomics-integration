@@ -16,20 +16,23 @@ from robonomicsinterface import (
     Account,
     Datalog,
     DigitalTwin,
+    ServiceFunctions,
     SubEvent,
     Subscriber,
-    ServiceFunctions,
 )
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
-from substrateinterface import Keypair, KeypairType
+from substrateinterface import Keypair
 from tenacity import AsyncRetrying, Retrying, stop_after_attempt, wait_fixed
 
 from .const import (
     CONF_ADMIN_SEED,
     CONFIG_PREFIX,
+    CRYPTO_TYPE,
+    DAPP_HASH_DATALOG_ADDRESS,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     IPFS_CONFIG_PATH,
+    LAUNCH_REGISTRATION_COMMAND,
     MEDIA_ACC,
     ROBONOMICS,
     ROBONOMICS_WSS,
@@ -37,26 +40,22 @@ from .const import (
     SUBSCRIPTION_LEFT_DAYS,
     TWIN_ID,
     ZERO_ACC,
-    LAUNCH_REGISTRATION_COMMAND,
-    DAPP_HASH_DATALOG_ADDRESS,
-    CRYPTO_TYPE,
-    CRYPTO_TYPE,
 )
 from .get_states import get_and_send_data
 from .ipfs import (
     get_ipfs_data,
     get_last_file_hash,
-    read_ipfs_local_file,
     pin_file_to_local_node_by_hash,
+    read_ipfs_local_file,
 )
 from .manage_users import UserManager
 from .utils import (
     create_notification,
     decrypt_message,
-    encrypt_for_devices,
-    to_thread,
     decrypt_message_devices,
+    encrypt_for_devices,
     encrypt_message,
+    to_thread,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -174,9 +173,7 @@ async def _run_launch_command(
     if "platform" in encrypted_command:
         message = literal_eval(encrypted_command)
     else:
-        kp_sender = Keypair(
-            ss58_address=sender_address, crypto_type=CRYPTO_TYPE
-        )
+        kp_sender = Keypair(ss58_address=sender_address, crypto_type=CRYPTO_TYPE)
         sub_admin_kp = Keypair.create_from_mnemonic(
             hass.data[DOMAIN][CONF_ADMIN_SEED], crypto_type=CRYPTO_TYPE
         )
@@ -723,7 +720,6 @@ class Robonomics:
         self.subscriber.cancel()
         await self.subscribe()
 
-
     def callback_new_event(self, data: tp.Tuple[tp.Union[str, tp.List[str]]]) -> None:
         """Check the event and call handlers
 
@@ -792,7 +788,9 @@ class Robonomics:
             with attempt:
                 try:
                     _LOGGER.debug("Start creating rws datalog")
-                    datalog = Datalog(self.controller_account, rws_sub_owner=self.sub_owner_address)
+                    datalog = Datalog(
+                        self.controller_account, rws_sub_owner=self.sub_owner_address
+                    )
                     receipt = datalog.record(data)
                 except TimeoutError:
                     self._change_current_wss()

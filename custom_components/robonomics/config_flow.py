@@ -5,29 +5,38 @@ which sets in `manifest.json`. This module allows to setup the integration from 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any, Optional
-from nacl.exceptions import CryptoError
-import json
 
 import homeassistant.helpers.config_validation as cv
 import ipfshttpclient2
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.selector import (
+    FileSelector,
+    FileSelectorConfig,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
+from nacl.exceptions import CryptoError
 from robonomicsinterface import RWS, Account
-from substrateinterface import KeypairType, Keypair
+from substrateinterface import Keypair, KeypairType
 from substrateinterface.utils.ss58 import is_valid_ss58_address
-from homeassistant.helpers.selector import FileSelector, FileSelectorConfig, TextSelector, TextSelectorConfig, TextSelectorType
-from homeassistant.components.file_upload import process_uploaded_file
 
 from .const import (
     CONF_ADMIN_SEED,
+    CONF_CONFIG_FILE,
+    CONF_CONTROLLER_TYPE,
     CONF_CUSTOM_GATEWAY_USE,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
     CONF_IPFS_GATEWAY_PORT,
+    CONF_PASSWORD,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
     CONF_PINATA_USE,
@@ -35,19 +44,16 @@ from .const import (
     CONF_SUB_OWNER_ADDRESS,
     CONF_WARN_ACCOUNT_MANAGMENT,
     CONF_WARN_DATA_SENDING,
-    CONF_PASSWORD,
-    CONF_CONFIG_FILE,
-    CONF_CONTROLLER_TYPE,
-    DOMAIN,
     CRYPTO_TYPE,
+    DOMAIN,
 )
 from .exceptions import (
     CantConnectToIPFS,
     ControllerNotInDevices,
+    InvalidConfigPassword,
     InvalidSubAdminSeed,
     InvalidSubOwnerAddress,
     NoSubscription,
-    InvalidConfigPassword,
     WrongControllerType,
 )
 from .utils import to_thread
@@ -57,7 +63,9 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA_FIELDS = {}
 PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
-STEP_USER_DATA_SCHEMA_FIELDS[CONF_CONFIG_FILE] = FileSelector(FileSelectorConfig(accept=".json,application/json"))
+STEP_USER_DATA_SCHEMA_FIELDS[CONF_CONFIG_FILE] = FileSelector(
+    FileSelectorConfig(accept=".json,application/json")
+)
 STEP_USER_DATA_SCHEMA_FIELDS[CONF_PASSWORD] = PASSWORD_SELECTOR
 STEP_USER_DATA_SCHEMA = vol.Schema(STEP_USER_DATA_SCHEMA_FIELDS)
 
@@ -83,7 +91,9 @@ def _is_ipfs_local_connected() -> bool:
         return False
 
 
-async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: str) -> bool:
+async def _has_sub_owner_subscription(
+    hass: HomeAssistant, sub_owner_address: str
+) -> bool:
     """Check if controller account is in subscription devices
 
     :param sub_owner_address: Subscription owner address
@@ -100,7 +110,9 @@ async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: st
         return True
 
 
-async def _is_sub_admin_in_subscription(hass: HomeAssistant, controller_seed: str, sub_owner_address: str) -> bool:
+async def _is_sub_admin_in_subscription(
+    hass: HomeAssistant, controller_seed: str, sub_owner_address: str
+) -> bool:
     """Check if controller account is in subscription devices
 
     :param sub_admin_seed: Controller's seed
@@ -136,6 +148,7 @@ def _is_valid_sub_owner_address(sub_owner_address: str) -> bool:
     """
 
     return is_valid_ss58_address(sub_owner_address, valid_ss58_format=32)
+
 
 def _is_valid_controller_type(controller_type: int) -> bool:
     return controller_type == KeypairType.SR25519
@@ -226,7 +239,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="conf", data_schema=STEP_USER_DATA_SCHEMA
             )
         _LOGGER.debug(f"User data: {user_input}")
-        config = self._parse_config_file(user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD])
+        config = self._parse_config_file(
+            user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD]
+        )
 
         errors = {}
         try:
@@ -262,14 +277,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_file_data = json.loads(config_file_data)
         config = {}
         try:
-            controller_kp = Keypair.create_from_encrypted_json(json.loads(config_file_data.get("controllerkey")), password)
+            controller_kp = Keypair.create_from_encrypted_json(
+                json.loads(config_file_data.get("controllerkey")), password
+            )
             config[CONF_ADMIN_SEED] = f"0x{controller_kp.private_key.hex()}"
             config[CONF_CONTROLLER_TYPE] = controller_kp.crypto_type
         except CryptoError:
             config[CONF_ADMIN_SEED] = None
             config[CONF_CONTROLLER_TYPE] = None
         config[CONF_SUB_OWNER_ADDRESS] = config_file_data.get("owner")
-        if config_file_data.get("pinatapublic") and config_file_data.get("pinataprivate"):
+        if config_file_data.get("pinatapublic") and config_file_data.get(
+            "pinataprivate"
+        ):
             config[CONF_PINATA_PUB] = config_file_data.get("pinatapublic")
             config[CONF_PINATA_SECRET] = config_file_data.get("pinataprivate")
         if config_file_data.get("ipfsurl"):
@@ -279,6 +298,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config[CONF_SENDING_TIMEOUT] = config_file_data.get("datalogtimeout")
         _LOGGER.debug(f"Config: {config}")
         return config
+
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:

@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import typing as tp
-import logging
 import functools
+import logging
+import typing as tp
 
 from homeassistant.core import HomeAssistant
 
-from ..const import (
-    DOMAIN,
-    IPFS_STATUS,
-    IPFS_STATUS_ENTITY,
-)
+from ..const import DOMAIN, IPFS_STATUS, IPFS_STATUS_ENTITY
 
 _LOGGER = logging.getLogger(__name__)
+
 
 def catch_ipfs_errors(error_message: str = ""):
     def catch_ipfs_errors_decorator(func: tp.Callable):

@@ -11,12 +11,12 @@ import shutil
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, Event, CoreState, callback
-from homeassistant.const import MATCH_ALL, EVENT_HOMEASSISTANT_STARTED
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, MATCH_ALL
+from homeassistant.core import CoreState, Event, HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.event import (
-    async_track_time_interval,
-    async_track_state_change_event,
     async_track_state_change,
+    async_track_state_change_event,
+    async_track_time_interval,
 )
 from homeassistant.helpers.typing import ConfigType
 from pinatapy import PinataPy
@@ -32,42 +32,42 @@ from .const import (
     CONF_PINATA_SECRET,
     CONF_SENDING_TIMEOUT,
     CONF_SUB_OWNER_ADDRESS,
+    CONTROLLER_ADDRESS,
     CREATE_BACKUP_SERVICE,
     DATA_PATH,
     DOMAIN,
+    GETTING_STATES,
+    GETTING_STATES_QUEUE,
     HANDLE_IPFS_REQUEST,
+    HANDLE_LIBP2P_STATE_CHANGED,
     HANDLE_TIME_CHANGE,
+    HANDLE_TIME_CHANGE_LIBP2P,
+    IPFS_CONFIG_PATH,
+    IPFS_DAEMON_OK,
+    IPFS_DAEMON_STATUS_STATE_CHANGE,
     IPFS_STATUS,
+    IPFS_STATUS_ENTITY,
+    LIBP2P,
+    LIBP2P_UNSUB,
     PINATA,
     PLATFORMS,
     RESTORE_BACKUP_SERVICE,
     ROBONOMICS,
     SAVE_VIDEO_SERVICE,
     TIME_CHANGE_COUNT,
+    TIME_CHANGE_LIBP2P_UNSUB,
     TIME_CHANGE_UNSUB,
     TWIN_ID,
-    GETTING_STATES_QUEUE,
-    GETTING_STATES,
-    IPFS_CONFIG_PATH,
-    IPFS_DAEMON_OK,
-    LIBP2P_UNSUB,
-    IPFS_STATUS_ENTITY,
-    IPFS_DAEMON_STATUS_STATE_CHANGE,
-    HANDLE_LIBP2P_STATE_CHANGED,
     WAIT_IPFS_DAEMON,
-    LIBP2P,
-    HANDLE_TIME_CHANGE_LIBP2P,
-    TIME_CHANGE_LIBP2P_UNSUB,
-    CONTROLLER_ADDRESS,
-    CRYPTO_TYPE,
 )
 from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import (
     create_folders,
-    wait_ipfs_daemon,
     delete_folder_from_local_node,
     handle_ipfs_status_change,
+    wait_ipfs_daemon,
 )
+from .libp2p import LibP2P
 from .manage_users import UserManager
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import (
@@ -75,7 +75,6 @@ from .services import (
     save_backup_service_call,
     save_video,
 )
-from .libp2p import LibP2P
 
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
@@ -185,7 +184,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][ROBONOMICS] = Robonomics(
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
-        hass.data[DOMAIN][CONF_ADMIN_SEED]
+        hass.data[DOMAIN][CONF_ADMIN_SEED],
     )
     controller_account = hass.data[DOMAIN][ROBONOMICS].controller_account
 
@@ -211,12 +210,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if os.path.isdir(data_path):
         shutil.rmtree(data_path)
 
-    await wait_ipfs_daemon(hass, timeout = 30)
+    await wait_ipfs_daemon(hass, timeout=30)
     try:
         await create_folders(hass)
     except Exception as e:
         _LOGGER.error(f"Exception in create ipfs folders: {e}")
-        await wait_ipfs_daemon(hass, timeout = 30)
+        await wait_ipfs_daemon(hass, timeout=30)
     hass.states.async_set(
         f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS]
     )

@@ -7,10 +7,10 @@ timeout and send it to Robonomics Network.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import tempfile
 import time
-import json
 import typing as tp
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -23,43 +23,42 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_get_all_descriptions
 from robonomicsinterface import Account
-from substrateinterface import KeypairType
 
 _LOGGER = logging.getLogger(__name__)
 
 from .const import (
     CONF_ADMIN_SEED,
+    CONF_SENDING_TIMEOUT,
     CONFIG_ENCRYPTED_PREFIX,
     CONFIG_PREFIX,
-    DOMAIN,
-    IPFS_CONFIG_PATH,
-    IPFS_HASH_CONFIG,
-    ROBONOMICS,
-    TWIN_ID,
+    CRYPTO_TYPE,
     DELETE_ATTRIBUTES,
-    IPFS_MEDIA_PATH,
-    CONF_SENDING_TIMEOUT,
+    DOMAIN,
     GETTING_STATES,
     GETTING_STATES_QUEUE,
-    PEER_ID_LOCAL,
+    IPFS_CONFIG_PATH,
+    IPFS_HASH_CONFIG,
+    IPFS_MEDIA_PATH,
     LIBP2P_MULTIADDRESS,
-    CRYPTO_TYPE,
-)
-from .utils import (
-    encrypt_for_devices,
-    get_hash,
-    delete_temp_file,
-    format_libp2p_node_multiaddress,
-    write_data_to_temp_file,
-    write_file_data,
+    PEER_ID_LOCAL,
+    ROBONOMICS,
+    TWIN_ID,
 )
 from .ipfs import (
     add_config_to_ipfs,
-    add_telemetry_to_ipfs,
     add_media_to_ipfs,
+    add_telemetry_to_ipfs,
     check_if_hash_in_folder,
     get_last_file_hash,
     read_ipfs_local_file,
+)
+from .utils import (
+    delete_temp_file,
+    encrypt_for_devices,
+    format_libp2p_node_multiaddress,
+    get_hash,
+    write_data_to_temp_file,
+    write_file_data,
 )
 
 
@@ -114,7 +113,9 @@ async def get_and_send_data(hass: HomeAssistant):
             str(data), sender_kp, devices_list_with_admin
         )
         await asyncio.sleep(2)
-        filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data)
+        filename = await hass.async_add_executor_job(
+            write_data_to_temp_file, encrypted_data
+        )
         ipfs_hash = await add_telemetry_to_ipfs(hass, filename)
         delete_temp_file(filename)
         await hass.data[DOMAIN][ROBONOMICS].send_datalog_states(ipfs_hash)
@@ -242,18 +243,20 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
     libp2p_multiaddress = hass.data[DOMAIN].get(LIBP2P_MULTIADDRESS, []).copy()
     libp2p_multiaddress.append(local_libp2p_multiaddress)
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
-    last_config_encrypted, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
+    last_config_encrypted, _ = await get_last_file_hash(
+        hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX
+    )
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
-    current_config_encrypted = await read_ipfs_local_file(hass, last_config_encrypted, IPFS_CONFIG_PATH)
+    current_config_encrypted = await read_ipfs_local_file(
+        hass, last_config_encrypted, IPFS_CONFIG_PATH
+    )
     if current_config_encrypted is None:
         current_config_devices = []
     else:
         current_config_devices = list(current_config_encrypted.keys())
         current_config_devices.remove("data")
         current_config_devices.sort()
-    new_config_devices = hass.data[DOMAIN][
-        ROBONOMICS
-    ].devices_list.copy()
+    new_config_devices = hass.data[DOMAIN][ROBONOMICS].devices_list.copy()
     sender_acc = Account(
         seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
         crypto_type=CRYPTO_TYPE,
@@ -271,17 +274,30 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             "peer_id": peer_id,
             "libp2p_multiaddress": libp2p_multiaddress,
         }
-        if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN] or current_config_devices != new_config_devices:
-            if current_config != new_config or current_config_devices != new_config_devices:
-                _LOGGER.debug(f"Config was changed: {current_config != new_config}, devices was changed: {current_config_devices != new_config_devices}")
+        if (
+            current_config != new_config
+            or IPFS_HASH_CONFIG not in hass.data[DOMAIN]
+            or current_config_devices != new_config_devices
+        ):
+            if (
+                current_config != new_config
+                or current_config_devices != new_config_devices
+            ):
+                _LOGGER.debug(
+                    f"Config was changed: {current_config != new_config}, devices was changed: {current_config_devices != new_config_devices}"
+                )
                 dirname = tempfile.gettempdir()
                 config_filename = f"{dirname}/config-{time.time()}"
-                await hass.async_add_executor_job(write_file_data, config_filename, json.dumps(new_config))
+                await hass.async_add_executor_job(
+                    write_file_data, config_filename, json.dumps(new_config)
+                )
                 sender_kp = sender_acc.keypair
                 encrypted_data = encrypt_for_devices(
                     json.dumps(new_config), sender_kp, new_config_devices
                 )
-                filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data, True)
+                filename = await hass.async_add_executor_job(
+                    write_data_to_temp_file, encrypted_data, True
+                )
                 _LOGGER.debug(f"Filename: {filename}")
                 hass.data[DOMAIN][IPFS_HASH_CONFIG] = await add_config_to_ipfs(
                     hass, config_filename, filename

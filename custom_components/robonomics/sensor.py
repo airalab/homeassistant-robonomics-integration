@@ -6,11 +6,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_SUB_OWNER_ADDRESS,
+    CONTROLLER_ADDRESS,
     DOMAIN,
     IPFS_STATUS,
     SUBSCRIPTION_LEFT_DAYS,
-    CONTROLLER_ADDRESS,
-    CONF_SUB_OWNER_ADDRESS,
 )
 
 IPFS_STATUS_ENTITY_UNIQUE_ID = "ipfs_status_entity"

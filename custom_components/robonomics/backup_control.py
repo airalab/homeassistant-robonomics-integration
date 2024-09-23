@@ -42,16 +42,14 @@ from .const import (
     Z2M_BACKUP_TOPIC_RESPONSE,
     Z2M_CONFIG_NAME,
 )
+from .encryption_utils import partial_decrypt, partial_encrypt
 from .utils import (
     decrypt_message,
     delete_temp_file,
     encrypt_message,
     to_thread,
     write_data_to_temp_file,
-    read_file_data,
 )
-
-from .encryption_utils import partial_encrypt, partial_decrypt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -277,7 +275,9 @@ async def restore_backup_hassio(
     :param admin_keypair: Controller Keypair
     """
     _LOGGER.debug("Start decrypting backup")
-    decrypted = await partial_decrypt(encrypted_data, admin_keypair, admin_keypair.public_key)
+    decrypted = await partial_decrypt(
+        encrypted_data, admin_keypair, admin_keypair.public_key
+    )
     _LOGGER.error("Start uploading backup to hassio")
     response = await _send_command_hassio(
         hass, "/backups/new/upload", "post", {"file": decrypted}
@@ -306,7 +306,9 @@ async def create_secure_backup_hassio(
     _LOGGER.debug("Start creating hassio backup")
     backup_name_time = str(datetime.now()).split()
     backup_name_time[1] = backup_name_time[1].split(".")[0]
-    backup_name = f"{BACKUP_ENCRYPTED_PREFIX}_{backup_name_time[0]}_{backup_name_time[1]}"
+    backup_name = (
+        f"{BACKUP_ENCRYPTED_PREFIX}_{backup_name_time[0]}_{backup_name_time[1]}"
+    )
     encrypted_backup_filepath = f"{hass.config.path()}/{backup_name}"
     _delete_found_backup_files(hass)
     resp_create = await async_create_backup(hass, {})
@@ -323,8 +325,8 @@ async def create_secure_backup_hassio(
     )
     _LOGGER.debug(f"Backup {slug} encrypted")
     return encrypted_backup_filepath
-    
-    
+
+
 def _delete_found_backup_files(hass: HomeAssistant) -> None:
     files = os.listdir(hass.config.path())
     for filename in files:
@@ -363,7 +365,9 @@ async def _send_command_hassio(
             },
             timeout=aiohttp.ClientTimeout(total=300),
         )
-        _LOGGER.debug(f"request to http://{hassio._ip}{command}, headers: {request.headers}")
+        _LOGGER.debug(
+            f"request to http://{hassio._ip}{command}, headers: {request.headers}"
+        )
         return request
     except Exception as e:
         _LOGGER.error(f"Exception in download backup hassio: {e}")

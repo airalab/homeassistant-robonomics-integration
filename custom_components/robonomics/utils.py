@@ -1,17 +1,15 @@
-from substrateinterface import Keypair, KeypairType
-from robonomicsinterface import Account
-import functools
 import asyncio
+import functools
+import json
 import logging
 import os
 import random
-import string
+import shutil
 import socket
+import string
 import tempfile
 import time
 import typing as tp
-import shutil
-import json
 
 import ipfshttpclient2
 from homeassistant.components.persistent_notification import DOMAIN as NOTIFY_DOMAIN
@@ -19,10 +17,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.json import JSONEncoder
 from homeassistant.helpers.storage import Store
+from robonomicsinterface import Account
+from substrateinterface import Keypair, KeypairType
 
-from .const import DOMAIN, CRYPTO_TYPE
-from .encryption_utils.sr25519.sr25519_encrypt import sr25519_encrypt
+from .const import CRYPTO_TYPE, DOMAIN
 from .encryption_utils.sr25519.sr25519_decrypt import sr25519_decrypt
+from .encryption_utils.sr25519.sr25519_encrypt import sr25519_encrypt
 
 _LOGGER = logging.getLogger(__name__)
 VERSION_STORAGE = 6
@@ -80,7 +80,9 @@ def decrypt_message(
     bytes_encrypted = bytes.fromhex(encrypted_message)
 
     if CRYPTO_TYPE == KeypairType.ED25519:
-        decrypted = recipient_keypair.decrypt_message(bytes_encrypted, sender_public_key)
+        decrypted = recipient_keypair.decrypt_message(
+            bytes_encrypted, sender_public_key
+        )
     else:
         decrypted = sr25519_decrypt(bytes_encrypted, recipient_keypair.private_key)
         decrypted = decrypted[0]
@@ -108,9 +110,7 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
         # _LOGGER.debug(f"Encrypt states for following devices: {devices}")
         for device in devices:
             try:
-                receiver_kp = Keypair(
-                    ss58_address=device, crypto_type=CRYPTO_TYPE
-                )
+                receiver_kp = Keypair(ss58_address=device, crypto_type=CRYPTO_TYPE)
                 encrypted_key = encrypt_message(
                     random_seed, sender_kp, receiver_kp.public_key
                 )
@@ -233,10 +233,12 @@ def write_data_to_temp_file(
                 f.write(data)
     return filepath
 
+
 def read_file_data(filename: str, keys: str = "r") -> tp.Union[str, bytes]:
     with open(filename, keys) as f:
         data = f.read()
     return data
+
 
 def write_file_data(filename: str, data: tp.Union[str, bytes], keys: str = "w") -> None:
     with open(filename, keys) as f:

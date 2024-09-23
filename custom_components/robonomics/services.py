@@ -13,24 +13,24 @@ from homeassistant.components.camera.const import SERVICE_RECORD
 from homeassistant.components.hassio import is_hassio
 from homeassistant.core import HomeAssistant, ServiceCall
 from robonomicsinterface import Account
-from substrateinterface import Keypair, KeypairType
+from substrateinterface import Keypair
 
 from .backup_control import (
     create_secure_backup,
-    restore_from_backup,
-    unpack_backup,
     create_secure_backup_hassio,
     restore_backup_hassio,
+    restore_from_backup,
+    unpack_backup,
 )
 from .const import (
     CONF_ADMIN_SEED,
+    CRYPTO_TYPE,
     DATA_BACKUP_ENCRYPTED_NAME,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     IPFS_MEDIA_PATH,
     ROBONOMICS,
     TWIN_ID,
-    CRYPTO_TYPE,
 )
 from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
 from .utils import delete_temp_file, encrypt_message, read_file_data, write_file_data
@@ -75,11 +75,15 @@ async def save_video(
     if os.path.isfile(f"{path}/{filename}"):
         _LOGGER.debug(f"Start encrypt video {filename}")
         admin_keypair: Keypair = sub_admin_acc.keypair
-        video_data = await hass.async_add_executor_job(read_file_data, f"{path}/{filename}", "rb")
+        video_data = await hass.async_add_executor_job(
+            read_file_data, f"{path}/{filename}", "rb"
+        )
         encrypted_data = encrypt_message(
             video_data, admin_keypair, admin_keypair.public_key
         )
-        await hass.async_add_executor_job(write_file_data, f"{path}/{filename}", encrypted_data)
+        await hass.async_add_executor_job(
+            write_file_data, f"{path}/{filename}", encrypted_data
+        )
         await add_media_to_ipfs(hass, f"{path}/{filename}")
         folder_ipfs_hash = await get_folder_hash(hass, IPFS_MEDIA_PATH)
         # delete file from system
@@ -119,9 +123,7 @@ async def save_backup_service_call(
             full=full,
         )
         delete_temp_file(backup_path)
-    ipfs_hash = await add_backup_to_ipfs(
-        hass, str(encrypted_backup_path)
-    )
+    ipfs_hash = await add_backup_to_ipfs(hass, str(encrypted_backup_path))
     _LOGGER.debug(f"Backup created with hash {ipfs_hash}")
     delete_temp_file(encrypted_backup_path)
     await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(

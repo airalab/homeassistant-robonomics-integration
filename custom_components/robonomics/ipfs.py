@@ -10,22 +10,20 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from pickle import NONE
+import time
 import typing as tp
 from datetime import datetime, timedelta
-import time
+from pickle import NONE
 
 import ipfshttpclient2
 from crustinterface import Mainnet
-from homeassistant.core import HomeAssistant
 from homeassistant.components.hassio import is_hassio
+from homeassistant.core import HomeAssistant
 from pinatapy import PinataPy
 from robonomicsinterface.utils import web_3_auth
-from substrateinterface import KeypairType
 
 from .const import (
     BACKUP_ENCRYPTED_PREFIX,
-    BACKUP_PREFIX,
     CONF_ADMIN_SEED,
     CONF_IPFS_GATEWAY,
     CONF_IPFS_GATEWAY_AUTH,
@@ -34,33 +32,32 @@ from .const import (
     CONF_PINATA_SECRET,
     CONFIG_ENCRYPTED_PREFIX,
     CONFIG_PREFIX,
+    CRYPTO_TYPE,
     DOMAIN,
     IPFS_BACKUP_PATH,
     IPFS_CONFIG_PATH,
+    IPFS_DAPP_FILE_NAME,
     IPFS_MAX_FILE_NUMBER,
     IPFS_MEDIA_PATH,
     IPFS_STATUS,
+    IPFS_STATUS_ENTITY,
     IPFS_TELEMETRY_PATH,
+    IPFS_USERS_PATH,
     MAX_NUMBER_OF_REQUESTS,
     PINATA,
     SECONDS_IN_DAY,
-    IPFS_STATUS_ENTITY,
     WAIT_IPFS_DAEMON,
-    IPFS_USERS_PATH,
-    IPFS_DAPP_FILE_NAME,
-    CRYPTO_TYPE,
 )
-from .utils import (
-    get_hash,
-    to_thread,
-    create_notification,
-    get_path_in_temp_dir,
-    delete_temp_dir,
-    path_is_dir,
-)
+from .exceptions import CantConnectToIPFS
 from .ipfs_helpers.decorators import catch_ipfs_errors
 from .ipfs_helpers.get_data import GetIPFSData
-from .exceptions import CantConnectToIPFS
+from .utils import (
+    create_notification,
+    delete_temp_dir,
+    get_path_in_temp_dir,
+    path_is_dir,
+    to_thread,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -225,7 +222,9 @@ async def handle_ipfs_status_change(hass: HomeAssistant, ipfs_daemon_ok: bool):
         await create_notification(hass, service_data, "ipfs")
 
 
-async def wait_ipfs_daemon(hass: HomeAssistant, timeout: tp.Optional[int] = None) -> None:
+async def wait_ipfs_daemon(
+    hass: HomeAssistant, timeout: tp.Optional[int] = None
+) -> None:
     if hass.data[DOMAIN][WAIT_IPFS_DAEMON]:
         return
     hass.data[DOMAIN][WAIT_IPFS_DAEMON] = True
