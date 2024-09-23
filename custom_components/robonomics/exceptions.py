@@ -21,3 +21,9 @@ class ControllerNotInDevices(HomeAssistantError):
 
 class CantConnectToIPFS(HomeAssistantError):
     """Can't connect to IPFS local node"""
+
+class InvalidConfigPassword(HomeAssistantError):
+    """Wrong password for config file"""
+
+class WrongControllerType(HomeAssistantError):
+    """Controller must be SR25519 type"""

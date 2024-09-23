@@ -214,14 +214,14 @@ async def handle_ipfs_status_change(hass: HomeAssistant, ipfs_daemon_ok: bool):
             "message": f"IPFS Daemon doesn't work as expected. Check the IPFS Daemon {ipfs_service} (restart may help).",
             "title": "IPFS Error",
         }
-        await create_notification(hass, service_data)
+        await create_notification(hass, service_data, "ipfs")
         await wait_ipfs_daemon(hass)
     else:
         service_data = {
             "message": "IPFS Daemon now works well.",
             "title": "IPFS OK",
         }
-        await create_notification(hass, service_data)
+        await create_notification(hass, service_data, "ipfs")
 
 
 async def wait_ipfs_daemon(hass: HomeAssistant) -> None:
@@ -297,12 +297,6 @@ async def add_config_to_ipfs(
         last_file_info[1],
     )
 
-    new_hash = await get_hash(filename)
-    if new_hash == last_file_hash:
-        _LOGGER.debug(
-            f"Last config hash and the current are the same: {last_file_hash}"
-        )
-        return last_file_encrypted_hash
     await _add_to_local_node(hass, filename, False, IPFS_CONFIG_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
         hass,
@@ -318,7 +312,7 @@ async def add_config_to_ipfs(
 
 
 async def add_backup_to_ipfs(
-    hass: HomeAssistant, filename: str, filename_encrypted: str
+    hass: HomeAssistant, filename_encrypted: str
 ) -> tp.Optional[str]:
     """Send backup file to IPFS
 
@@ -330,13 +324,6 @@ async def add_backup_to_ipfs(
     """
 
     last_file_info = await get_last_file_hash(
-        hass, IPFS_BACKUP_PATH, prefix=BACKUP_PREFIX
-    )
-    if last_file_info is None:
-        last_file_info = (None, None)
-    last_file_name, last_file_hash = last_file_info[0], last_file_info[1]
-
-    last_file_info = await get_last_file_hash(
         hass, IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX
     )
     if last_file_info is None:
@@ -346,13 +333,6 @@ async def add_backup_to_ipfs(
         last_file_info[1],
     )
 
-    new_hash = await get_hash(filename)
-    if new_hash == last_file_hash:
-        _LOGGER.debug(
-            f"Last backup hash and the current are the same: {last_file_hash}"
-        )
-        return last_file_encrypted_hash
-    await _add_to_local_node(hass, filename, False, IPFS_BACKUP_PATH, last_file_name)
     ipfs_hash, size = await _add_to_ipfs(
         hass,
         filename_encrypted,
@@ -701,6 +681,16 @@ def _add_to_pinata(
     """
 
     _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
+    if not pin:
+        try:
+            pinata.remove_pin_from_ipfs(last_file_hash)
+            _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
+            hass.data[DOMAIN][PINATA] = PinataPy(
+                hass.data[DOMAIN][CONF_PINATA_PUB],
+                hass.data[DOMAIN][CONF_PINATA_SECRET],
+            )
+        except Exception as e:
+            _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
     try:
         res = None
         res = pinata.pin_file_to_ipfs(filename, save_absolute_paths=False)
@@ -712,16 +702,6 @@ def _add_to_pinata(
         ipfs_hash = None
         ipfs_file_size = None
         return ipfs_hash, ipfs_file_size
-    if not pin:
-        try:
-            pinata.remove_pin_from_ipfs(last_file_hash)
-            _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
-            hass.data[DOMAIN][PINATA] = PinataPy(
-                hass.data[DOMAIN][CONF_PINATA_PUB],
-                hass.data[DOMAIN][CONF_PINATA_SECRET],
-            )
-        except Exception as e:
-            _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
     return ipfs_hash, ipfs_file_size
 
 
@@ -752,6 +732,23 @@ def _add_to_custom_gateway(
         url = url[:-1]
     _LOGGER.debug(f"Start adding {filename} to {url}, pin: {pin}, auth: {bool(seed)}")
     try:
+        if not pin:
+            try:
+                if seed is not None:
+                    usr, pwd = web_3_auth(seed)
+                    with ipfshttpclient2.connect(
+                        addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
+                    ) as client:
+                        client.pin.rm(last_file_hash)
+                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
+                else:
+                    with ipfshttpclient2.connect(
+                        addr=f"/dns4/{url}/tcp/{port}/https"
+                    ) as client:
+                        client.pin.rm(last_file_hash)
+                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
+            except Exception as e:
+                _LOGGER.warning(f"Can't unpin from custom gateway: {e}")
         if seed is not None:
             usr, pwd = web_3_auth(seed)
             with ipfshttpclient2.connect(
@@ -777,23 +774,6 @@ def _add_to_custom_gateway(
                 _LOGGER.debug(
                     f"File {filename} was added to {url} with cid: {ipfs_hash}"
                 )
-        if not pin:
-            try:
-                if seed is not None:
-                    usr, pwd = web_3_auth(seed)
-                    with ipfshttpclient2.connect(
-                        addr=f"/dns4/{url}/tcp/{port}/https", auth=(usr, pwd)
-                    ) as client:
-                        client.pin.rm(last_file_hash)
-                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
-                else:
-                    with ipfshttpclient2.connect(
-                        addr=f"/dns4/{url}/tcp/{port}/https"
-                    ) as client:
-                        client.pin.rm(last_file_hash)
-                        _LOGGER.debug(f"Hash {last_file_hash} was unpinned from {url}")
-            except Exception as e:
-                _LOGGER.warning(f"Can't unpin from custom gateway: {e}")
     except Exception as e:
         _LOGGER.error(f"Exception in pinning to custom gateway: {e}")
         ipfs_hash = None

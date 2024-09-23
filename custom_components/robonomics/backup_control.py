@@ -20,7 +20,6 @@ import time
 import typing as tp
 import zipfile
 from datetime import datetime
-from http import HTTPStatus
 from pathlib import Path
 
 import aiohttp
@@ -31,10 +30,6 @@ from homeassistant.components.mqtt.client import publish, subscribe
 from homeassistant.components.mqtt.util import mqtt_config_entry_enabled
 from homeassistant.core import HomeAssistant
 from substrateinterface import Keypair
-
-from homeassistant.components.hassio.const import DOMAIN as HASSIO_DOMAIN
-from homeassistant.components.hassio.handler import async_create_backup
-from http import HTTPStatus
 
 from .const import (
     BACKUP_ENCRYPTED_PREFIX,
@@ -56,6 +51,8 @@ from .utils import (
     read_file_data,
 )
 
+from .encryption_utils import partial_encrypt, partial_decrypt
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -66,7 +63,7 @@ def create_secure_backup(
     mosquitto_path: str,
     admin_keypair: Keypair,
     full: bool,
-) -> (str, str):
+) -> tuple[str, str]:
     """Create secure .tar.xz archive and returns the path to it
 
     :param hass: HomeAssistant instance
@@ -125,7 +122,7 @@ def create_secure_backup(
         )
         with open(encrypted_tar_path, "w") as f:
             f.write(encrypted_data)
-        _LOGGER.debug(f"Backup was encrypted")
+        _LOGGER.debug("Backup was encrypted")
         hass.states.async_set(f"{DOMAIN}.backup", "Saved")
         return encrypted_tar_path, tar_path
     except Exception as e:
@@ -264,7 +261,7 @@ async def restore_from_backup(
                 f"{path_to_old_config}/{Z2M_CONFIG_NAME}",
             )
         shutil.rmtree(path_to_new_config_dir)
-        _LOGGER.debug(f"Config was replaced")
+        _LOGGER.debug("Config was replaced")
         hass.states.async_set(f"{DOMAIN}.backup", "Restored")
         await hass.services.async_call("homeassistant", "restart")
     except Exception as e:
@@ -272,64 +269,69 @@ async def restore_from_backup(
 
 
 async def restore_backup_hassio(
-    hass: HomeAssistant, path_to_encrypted: Path, admin_keypair: Keypair
+    hass: HomeAssistant, encrypted_data: str, admin_keypair: Keypair
 ) -> None:
     """Restore superviser backup
     :param hass: Home Assistant instanse
     :param path_to_encrypted: Path to encrypted backup downloaded from IPFS
     :param admin_keypair: Controller Keypair
     """
-    _LOGGER.debug(f"Start decrypting backup {path_to_encrypted}")
-    hassio = hass.data[HASSIO_DOMAIN]
-    hass.states.async_set(f"{DOMAIN}.backup", "Restoring")
-    encrypted = await hass.async_add_executor_job(read_file_data, path_to_encrypted)
-    decrypted = decrypt_message(encrypted, admin_keypair.public_key, admin_keypair)
-    _LOGGER.error(f"Start uploading backup to hassio")
+    _LOGGER.debug("Start decrypting backup")
+    decrypted = await partial_decrypt(encrypted_data, admin_keypair, admin_keypair.public_key)
+    _LOGGER.error("Start uploading backup to hassio")
     response = await _send_command_hassio(
         hass, "/backups/new/upload", "post", {"file": decrypted}
     )
     try:
         resp = await response.json()
+        _LOGGER.debug(f"Backup upload responce: {resp}")
         slug = resp["data"]["slug"]
         _LOGGER.debug(f"Response upload: {resp}")
         _LOGGER.debug(f"Backup {slug} uploaded")
     except Exception as e:
-        _LOGGER.error(f"Exception in respose from backup upload request")
-    _LOGGER.debug(f"Start restoring backup hassio")
+        _LOGGER.error(f"Exception in respose from backup upload request: {e}")
+    _LOGGER.debug("Start restoring backup hassio")
     response = await _send_command_hassio(hass, f"/backups/{slug}/restore/full", "post")
 
 
 async def create_secure_backup_hassio(
     hass: HomeAssistant, admin_keypair: Keypair
-) -> (str, str):
+) -> tuple[str, str]:
     """Create superviser backup
     :param hass: Home Assistant instanse
     :param admin_keypair: Controller Keypair
 
     :return: Path to encrypted backup archive and for not encrypted backup
     """
-    try:
-        _LOGGER.debug("Start creating hassio backup")
-        resp_create = await async_create_backup(hass, {})
-        _LOGGER.debug(f"Hassio backup was created with response {resp_create}")
-        slug = resp_create["slug"]
-        response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
-        backup = await response.read()
-        _LOGGER.error(f"Backup {slug} downloaded")
-        encrypted_data = encrypt_message(
-            backup, admin_keypair, admin_keypair.public_key
-        )
-        tarpath = await hass.async_add_executor_job(
-            write_data_to_temp_file, backup, False, f"{slug}.tar"
-        )
-        encrypted_tarpath = await hass.async_add_executor_job(
-            write_data_to_temp_file, encrypted_data, False, f"{slug}_encrypted"
-        )
-        _LOGGER.debug(f"Backup was encrypted")
-        return encrypted_tarpath, tarpath
-    except Exception as e:
-        _LOGGER.error(f"Exception in create_secure_backup_hassio: {e}")
-        return None, None
+    _LOGGER.debug("Start creating hassio backup")
+    backup_name_time = str(datetime.now()).split()
+    backup_name_time[1] = backup_name_time[1].split(".")[0]
+    backup_name = f"{BACKUP_ENCRYPTED_PREFIX}_{backup_name_time[0]}_{backup_name_time[1]}"
+    encrypted_backup_filepath = f"{hass.config.path()}/{backup_name}"
+    _delete_found_backup_files(hass)
+    resp_create = await async_create_backup(hass, {})
+    _LOGGER.debug(f"Hassio backup was created with response {resp_create}")
+    slug = resp_create["slug"]
+    response = await _send_command_hassio(hass, f"/backups/{slug}/download", "get")
+    backup = await response.read()
+    _LOGGER.debug(f"Backup {slug} downloaded, len: {len(backup)}")
+    _LOGGER.debug(f"Start deleting backup {slug}")
+    response = await _send_command_hassio(hass, f"/backups/{slug}", "delete")
+    _LOGGER.debug(f"Delete response: {response}")
+    await partial_encrypt(
+        hass, backup, admin_keypair, admin_keypair.public_key, encrypted_backup_filepath
+    )
+    _LOGGER.debug(f"Backup {slug} encrypted")
+    return encrypted_backup_filepath
+    
+    
+def _delete_found_backup_files(hass: HomeAssistant) -> None:
+    files = os.listdir(hass.config.path())
+    for filename in files:
+        if filename.startswith(BACKUP_ENCRYPTED_PREFIX):
+            _LOGGER.debug(f"Deleting {filename}")
+            os.remove(f"{hass.config.path()}/{filename}")
+            _LOGGER.debug(f"{filename} was deleted")
 
 
 async def _send_command_hassio(
@@ -359,8 +361,9 @@ async def _send_command_hassio(
                 ),
                 "X-Hass-Source": "core.handler",
             },
-            timeout=aiohttp.ClientTimeout(total=10),
+            timeout=aiohttp.ClientTimeout(total=300),
         )
+        _LOGGER.debug(f"request to http://{hassio._ip}{command}, headers: {request.headers}")
         return request
     except Exception as e:
         _LOGGER.error(f"Exception in download backup hassio: {e}")

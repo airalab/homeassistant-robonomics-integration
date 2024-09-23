@@ -10,6 +10,7 @@ import asyncio
 import logging
 import tempfile
 import time
+import json
 import typing as tp
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -17,20 +18,14 @@ from datetime import datetime, timedelta
 import homeassistant.util.dt as dt_util
 from homeassistant.components.lovelace.const import DOMAIN as LOVELACE_DOMAIN
 from homeassistant.components.recorder import get_instance, history
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_get_all_descriptions
-import homeassistant.util.dt as dt_util
 from robonomicsinterface import Account
-import typing as tp
-import os
-from datetime import timedelta, datetime
 from substrateinterface import KeypairType
 
 _LOGGER = logging.getLogger(__name__)
-
-import json
 
 from .const import (
     CONF_ADMIN_SEED,
@@ -66,7 +61,6 @@ from .ipfs import (
     get_last_file_hash,
     read_ipfs_local_file,
 )
-import json
 
 
 async def get_and_send_data(hass: HomeAssistant):
@@ -76,7 +70,7 @@ async def get_and_send_data(hass: HomeAssistant):
     """
 
     if TWIN_ID not in hass.data[DOMAIN]:
-        _LOGGER.warning("Trying to send data before creating twin id")
+        _LOGGER.debug("Trying to send data before creating twin id")
         return
     _LOGGER.debug(
         f"Get states request, another getting states: {hass.data[DOMAIN][GETTING_STATES]}"
@@ -248,7 +242,24 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
     libp2p_multiaddress = hass.data[DOMAIN].get(LIBP2P_MULTIADDRESS, []).copy()
     libp2p_multiaddress.append(local_libp2p_multiaddress)
     last_config, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
+    last_config_encrypted, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
     current_config = await read_ipfs_local_file(hass, last_config, IPFS_CONFIG_PATH)
+    current_config_encrypted = await read_ipfs_local_file(hass, last_config_encrypted, IPFS_CONFIG_PATH)
+    if current_config_encrypted is None:
+        current_config_devices = []
+    else:
+        current_config_devices = list(current_config_encrypted.keys())
+        current_config_devices.remove("data")
+        current_config_devices.sort()
+    new_config_devices = hass.data[DOMAIN][
+        ROBONOMICS
+    ].devices_list.copy()
+    sender_acc = Account(
+        seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
+        crypto_type=CRYPTO_TYPE,
+    )
+    new_config_devices.append(sender_acc.get_address())
+    new_config_devices.sort()
     if current_config is None:
         current_config = {}
     try:
@@ -260,23 +271,15 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             "peer_id": peer_id,
             "libp2p_multiaddress": libp2p_multiaddress,
         }
-        if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN]:
-            if current_config != new_config:
-                _LOGGER.debug("Config was changed")
+        if current_config != new_config or IPFS_HASH_CONFIG not in hass.data[DOMAIN] or current_config_devices != new_config_devices:
+            if current_config != new_config or current_config_devices != new_config_devices:
+                _LOGGER.debug(f"Config was changed: {current_config != new_config}, devices was changed: {current_config_devices != new_config_devices}")
                 dirname = tempfile.gettempdir()
                 config_filename = f"{dirname}/config-{time.time()}"
                 await hass.async_add_executor_job(write_file_data, config_filename, json.dumps(new_config))
-                sender_acc = Account(
-                    seed=hass.data[DOMAIN][CONF_ADMIN_SEED],
-                    crypto_type=CRYPTO_TYPE,
-                )
                 sender_kp = sender_acc.keypair
-                devices_list_with_admin = hass.data[DOMAIN][
-                    ROBONOMICS
-                ].devices_list.copy()
-                devices_list_with_admin.append(sender_acc.get_address())
                 encrypted_data = encrypt_for_devices(
-                    json.dumps(new_config), sender_kp, devices_list_with_admin
+                    json.dumps(new_config), sender_kp, new_config_devices
                 )
                 filename = await hass.async_add_executor_job(write_data_to_temp_file, encrypted_data, True)
                 _LOGGER.debug(f"Filename: {filename}")
@@ -294,6 +297,10 @@ async def _get_dashboard_and_services(hass: HomeAssistant) -> None:
             _LOGGER.debug(
                 f"New config IPFS hash: {hass.data[DOMAIN][IPFS_HASH_CONFIG]}"
             )
+            await hass.data[DOMAIN][ROBONOMICS].set_config_topic(
+                hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID]
+            )
+        else:
             await hass.data[DOMAIN][ROBONOMICS].set_config_topic(
                 hass.data[DOMAIN][IPFS_HASH_CONFIG], hass.data[DOMAIN][TWIN_ID]
             )
@@ -321,7 +328,7 @@ async def _get_states(hass: HomeAssistant, with_history: bool = True) -> tp.Dict
     for entity in entity_registry.entities:
         entity_data = entity_registry.async_get(entity)
         entity_state = hass.states.get(entity)
-        if entity_state != None:
+        if entity_state is not None:
             units = str(entity_state.attributes.get("unit_of_measurement", "None"))
             entity_attributes = {}
             for attr in entity_state.attributes:
@@ -344,13 +351,13 @@ async def _get_states(hass: HomeAssistant, with_history: bool = True) -> tp.Dict
             if with_history:
                 history = await _get_state_history(hass, entity_data.entity_id)
                 entity_info["history"] = history
-            if entity_data.device_id != None:
+            if entity_data.device_id is not None:
                 if entity_data.device_id not in devices_data:
                     device = registry.async_get(entity_data.device_id)
                     if device is not None:
                         device_name = (
                             str(device.name_by_user)
-                            if device.name_by_user != None
+                            if device.name_by_user is not None
                             else str(device.name)
                         )
                         devices_data[entity_data.device_id] = {

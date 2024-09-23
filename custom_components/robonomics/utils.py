@@ -30,14 +30,14 @@ SERVICE_PERSISTENT_NOTIFICATION = "create"
 
 
 async def create_notification(
-    hass: HomeAssistant, service_data: tp.Dict[str, str]
+    hass: HomeAssistant, service_data: tp.Dict[str, str], notification_id: str = ""
 ) -> None:
     """Create HomeAssistant notification.
 
     :param hass: HomeAssistant instance
     :param service_data: Message for notification
     """
-    service_data["notification_id"] = DOMAIN
+    service_data["notification_id"] = f"{DOMAIN}/notification_id"
     await hass.services.async_call(
         domain=NOTIFY_DOMAIN,
         service=SERVICE_PERSISTENT_NOTIFICATION,
