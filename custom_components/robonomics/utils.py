@@ -266,7 +266,9 @@ def delete_temp_file(filename: str) -> None:
 
     :param filename: the name of the file to delete
     """
-    os.remove(filename)
+    if os.path.exists(filename):
+        os.remove(filename)
+        _LOGGER.debug(f"Temp file {filename} was removed")
 
 
 def _get_store_for_key(hass: HomeAssistant, key: str):

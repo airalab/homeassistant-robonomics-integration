@@ -39,6 +39,7 @@ from .const import (
     ZERO_ACC,
     LAUNCH_REGISTRATION_COMMAND,
     DAPP_HASH_DATALOG_ADDRESS,
+    TELEMETRY_SENDER,
 )
 from .get_states import get_and_send_data
 from .ipfs import (
@@ -347,7 +348,8 @@ class Robonomics:
                 await _run_launch_command(self.hass, result, data[0])
             # asyncio.ensure_future(get_and_send_data(self.hass))
             _LOGGER.debug("Start getting states because of new launch")
-            await get_and_send_data(self.hass)
+            # await get_and_send_data(self.hass)
+            await self.hass.data[DOMAIN][TELEMETRY_SENDER].send()
         except Exception as e:
             _LOGGER.error(f"Exception in launch handler command: {e}")
             return
@@ -772,7 +774,7 @@ class Robonomics:
                 )
                 _LOGGER.debug("Start getting states because of new devices")
                 asyncio.run_coroutine_threadsafe(
-                    get_and_send_data(self.hass), self.hass.loop
+                    self.hass.data[DOMAIN][TELEMETRY_SENDER].send(), self.hass.loop
                 )
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")

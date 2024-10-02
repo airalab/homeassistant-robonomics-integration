@@ -325,6 +325,7 @@ async def _get_states(hass: HomeAssistant, with_history: bool = True) -> tp.Dict
     all_data = {}
 
     for entity in entity_registry.entities:
+        _LOGGER.debug(f"Entity: {entity}")
         entity_data = entity_registry.async_get(entity)
         entity_state = hass.states.get(entity)
         if entity_state is not None:

@@ -41,6 +41,7 @@ ROBONOMICS_WSS = [
 
 SENDING_TIMEOUT = "sending_timeout"
 ROBONOMICS = "robonomics"
+TELEMETRY_SENDER = "telemetry_sender"
 PINATA = "pinata"
 IPFS_API = "ipfs_api"
 HANDLE_TIME_CHANGE = "hadle_time_change"
