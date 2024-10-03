@@ -20,7 +20,6 @@ from .const import (
 )
 from .utils import verify_sign, create_notification
 from .manage_users import UserManager
-# from .get_states import get_and_send_data
 
 from pyproxy import Libp2pProxyAPI
 from pyproxy.utils.message import InitialMessage

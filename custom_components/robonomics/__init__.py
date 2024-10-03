@@ -63,7 +63,6 @@ from .const import (
     CONF_CONTROLLER_TYPE,
     TELEMETRY_SENDER,
 )
-from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import (
     create_folders,
     wait_ipfs_daemon,
@@ -155,7 +154,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if DOMAIN not in hass.data:
             return
         try:
-            # msg = await get_states_libp2p(hass)
             states = await HassStatesHelper(hass).get_states(with_history=False)
             msg = hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(json.dumps(states))
             await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
@@ -283,7 +281,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         It calls every timeout from config to get and send telemtry.
         """
         try:
-            # msg = await get_states_libp2p(hass)
             states = await HassStatesHelper(hass).get_states(with_history=False)
             msg = hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(json.dumps(states))
             async with lock:

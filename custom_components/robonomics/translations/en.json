@@ -13,7 +13,8 @@
             "has_no_subscription": "Subscription owner address has no subscription",
             "is_not_in_devices": "Controller address is not in subscription devices",
             "can_connect_to_ipfs": "Integration can't connect to IPFS local node",
-            "wrong_password": "Can't decrypt setting with given password"
+            "wrong_password": "Can't decrypt setting with given password",
+            "file_not_found": "File not found. Upload it again"
         },
         "step": {
             "user": {

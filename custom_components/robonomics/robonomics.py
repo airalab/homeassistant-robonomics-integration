@@ -41,7 +41,6 @@ from .const import (
     DAPP_HASH_DATALOG_ADDRESS,
     TELEMETRY_SENDER,
 )
-from .get_states import get_and_send_data
 from .ipfs import (
     get_ipfs_data,
     get_last_file_hash,
@@ -346,9 +345,7 @@ class Robonomics:
             elif "platform" in json_result:
                 _LOGGER.debug(f"Got call service command {json_result}")
                 await _run_launch_command(self.hass, result, data[0])
-            # asyncio.ensure_future(get_and_send_data(self.hass))
             _LOGGER.debug("Start getting states because of new launch")
-            # await get_and_send_data(self.hass)
             await self.hass.data[DOMAIN][TELEMETRY_SENDER].send()
         except Exception as e:
             _LOGGER.error(f"Exception in launch handler command: {e}")

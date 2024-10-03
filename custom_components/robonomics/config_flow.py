@@ -216,28 +216,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="conf", data_schema=STEP_USER_DATA_SCHEMA
             )
         _LOGGER.debug(f"User data: {user_input}")
-        config = self._parse_config_file(user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD])
-
         errors = {}
-        try:
-            info = await _validate_config(self.hass, config)
-        except InvalidSubAdminSeed:
-            errors["base"] = "invalid_sub_admin_seed"
-        except InvalidSubOwnerAddress:
-            errors["base"] = "invalid_sub_owner_address"
-        except NoSubscription:
-            errors["base"] = "has_no_subscription"
-        except ControllerNotInDevices:
-            errors["base"] = "is_not_in_devices"
-        except CantConnectToIPFS:
-            errors["base"] = "can_connect_to_ipfs"
-        except InvalidConfigPassword:
-            errors["base"] = "wrong_password"
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
-            errors["base"] = "unknown"
+        if CONF_CONFIG_FILE in user_input:
+            config = self._parse_config_file(user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD])
+
+            try:
+                info = await _validate_config(self.hass, config)
+            except InvalidSubAdminSeed:
+                errors["base"] = "invalid_sub_admin_seed"
+            except InvalidSubOwnerAddress:
+                errors["base"] = "invalid_sub_owner_address"
+            except NoSubscription:
+                errors["base"] = "has_no_subscription"
+            except ControllerNotInDevices:
+                errors["base"] = "is_not_in_devices"
+            except CantConnectToIPFS:
+                errors["base"] = "can_connect_to_ipfs"
+            except InvalidConfigPassword:
+                errors["base"] = "wrong_password"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(title=info["title"], data=config)
         else:
-            return self.async_create_entry(title=info["title"], data=config)
+            errors["base"] = "file_not_found"
 
         return self.async_show_form(
             step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors

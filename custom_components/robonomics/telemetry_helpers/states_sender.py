@@ -10,7 +10,6 @@ from ..const import DOMAIN, ROBONOMICS
 from ..utils import delete_temp_file, write_data_to_temp_file
 from ..ipfs import add_telemetry_to_ipfs
 from ..hass_helpers import HassStatesHelper
-from ..get_states import _get_states
 
 class StatesSender:
     def __init__(self, hass: HomeAssistant) -> None:
@@ -20,7 +19,6 @@ class StatesSender:
     async def send(self) -> None:
         _LOGGER.debug("Start send states")
         states_json = await HassStatesHelper(self._hass).get_states()
-        # states_json = await _get_states(self._hass)
         encrypted_states = self._robonomics.encrypt_for_devices(json.dumps(states_json))
         filename = await self._hass.async_add_executor_job(
             write_data_to_temp_file, encrypted_states
