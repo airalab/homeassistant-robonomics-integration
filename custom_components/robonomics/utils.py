@@ -58,6 +58,17 @@ def encrypt_message(
     encrypted = sender_keypair.encrypt_message(message, recipient_public_key)
     return f"0x{encrypted.hex()}"
 
+def check_if_address_is_ed(address: str) -> bool:
+    try:
+        test_kp = Keypair.create_from_mnemonic(Keypair.generate_mnemonic(), crypto_type=KeypairType.ED25519)
+        receiver_kp = Keypair(
+                    ss58_address=address, crypto_type=KeypairType.ED25519
+                )
+        encrypt_message("test", test_kp, receiver_kp.public_key)
+        return True
+    except Exception as e:
+        _LOGGER.warning(f"Address {address} is not ED25519 type")
+        return False
 
 def decrypt_message(
     encrypted_message: str, sender_public_key: bytes, recipient_keypair: Keypair

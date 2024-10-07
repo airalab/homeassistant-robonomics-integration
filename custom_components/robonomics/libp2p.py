@@ -28,6 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 
 LIBP2P_LISTEN_FEEDBACK_PROTOCOL = "/feedback"
 
+NON_TRACKED_ERRORS = ["The operation was aborted", "protocol selection failed"]
 
 class LibP2P:
     def __init__(self, hass: HomeAssistant):
@@ -106,8 +107,8 @@ class LibP2P:
             )
 
     async def _handle_libp2p_errors(self, data: tp.Union[str, dict]) -> None:
-        _LOGGER.debug(f"Libp2p feedback: {data}")
-        if data["feedback"] != "ok":
+        # _LOGGER.debug(f"Libp2p feedback: {data}")
+        if data["feedback"] != "ok" and data["feedback"] not in NON_TRACKED_ERRORS:
             if is_hassio(self.hass):
                 proxy_service = "add-on"
             else:

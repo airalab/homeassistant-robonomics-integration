@@ -18,9 +18,17 @@ from homeassistant.data_entry_flow import FlowResult
 from robonomicsinterface import RWS, Account
 from substrateinterface import KeypairType, Keypair
 from substrateinterface.utils.ss58 import is_valid_ss58_address
-from homeassistant.helpers.selector import FileSelector, FileSelectorConfig, TextSelector, TextSelectorConfig, TextSelectorType
+from homeassistant.helpers.selector import (
+    FileSelector,
+    FileSelectorConfig,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 from homeassistant.components.file_upload import process_uploaded_file
-
 
 from .const import (
     CONF_ADMIN_SEED,
@@ -38,6 +46,11 @@ from .const import (
     CONF_PASSWORD,
     CONF_CONFIG_FILE,
     CONF_CONTROLLER_TYPE,
+    CONF_NETWORK,
+    CONF_KUSAMA,
+    CONF_POLKADOT,
+    ROBONOMICS_WSS_POLKADOT,
+    ROBONOMICS_WSS_KUSAMA,
     DOMAIN,
 )
 from .exceptions import (
@@ -55,9 +68,23 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA_FIELDS = {}
 PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
-STEP_USER_DATA_SCHEMA_FIELDS[CONF_CONFIG_FILE] = FileSelector(FileSelectorConfig(accept=".json,application/json"))
-STEP_USER_DATA_SCHEMA_FIELDS[CONF_PASSWORD] = PASSWORD_SELECTOR
-STEP_USER_DATA_SCHEMA = vol.Schema(STEP_USER_DATA_SCHEMA_FIELDS)
+NETWORK_SELECTOR = SelectSelector(
+    SelectSelectorConfig(
+        options=[CONF_KUSAMA, CONF_POLKADOT],
+        mode=SelectSelectorMode.DROPDOWN,
+        translation_key="network",
+    )
+)
+
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_CONFIG_FILE): FileSelector(
+            FileSelectorConfig(accept=".json,application/json")
+        ),
+        vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR,
+        vol.Required(CONF_NETWORK, default=CONF_KUSAMA): NETWORK_SELECTOR,
+    }
+)
 
 STEP_WARN_DATA_SCHEMA = vol.Schema(
     {
@@ -66,6 +93,11 @@ STEP_WARN_DATA_SCHEMA = vol.Schema(
     }
 )
 
+def get_network_ws(network_key: str) -> str:
+    if network_key == CONF_KUSAMA:
+        return ROBONOMICS_WSS_KUSAMA[0]
+    elif network_key == CONF_POLKADOT:
+        return ROBONOMICS_WSS_POLKADOT[0]
 
 @to_thread
 def _is_ipfs_local_connected() -> bool:
@@ -81,7 +113,9 @@ def _is_ipfs_local_connected() -> bool:
         return False
 
 
-async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: str) -> bool:
+async def _has_sub_owner_subscription(
+    hass: HomeAssistant, sub_owner_address: str, network: str
+) -> bool:
     """Check if controller account is in subscription devices
 
     :param sub_owner_address: Subscription owner address
@@ -89,7 +123,7 @@ async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: st
     :return: True if ledger is not None, false otherwise
     """
 
-    rws = RWS(Account())
+    rws = RWS(Account(remote_ws = get_network_ws(network)))
     res = await hass.async_add_executor_job(rws.get_ledger, sub_owner_address)
     if res is None:
         return False
@@ -97,7 +131,9 @@ async def _has_sub_owner_subscription(hass: HomeAssistant, sub_owner_address: st
         return True
 
 
-async def _is_sub_admin_in_subscription(hass: HomeAssistant, controller_seed: str, sub_owner_address: str) -> bool:
+async def _is_sub_admin_in_subscription(
+    hass: HomeAssistant, controller_seed: str, sub_owner_address: str, network: str
+) -> bool:
     """Check if controller account is in subscription devices
 
     :param sub_admin_seed: Controller's seed
@@ -106,7 +142,7 @@ async def _is_sub_admin_in_subscription(hass: HomeAssistant, controller_seed: st
     :return: True if controller account is in subscription devices, false otherwise
     """
 
-    rws = RWS(Account(controller_seed, crypto_type=KeypairType.ED25519))
+    rws = RWS(Account(controller_seed, crypto_type=KeypairType.ED25519, remote_ws = get_network_ws(network)))
     res = await hass.async_add_executor_job(rws.is_in_sub, sub_owner_address)
     return res
 
@@ -149,10 +185,12 @@ async def _validate_config(hass: HomeAssistant, data: dict[str, Any]) -> dict[st
         raise InvalidSubAdminSeed
     if not _is_valid_sub_owner_address(data[CONF_SUB_OWNER_ADDRESS]):
         raise InvalidSubOwnerAddress
-    if not await _has_sub_owner_subscription(hass, data[CONF_SUB_OWNER_ADDRESS]):
+    if not await _has_sub_owner_subscription(
+        hass, data[CONF_SUB_OWNER_ADDRESS], data[CONF_NETWORK]
+    ):
         raise NoSubscription
     if not await _is_sub_admin_in_subscription(
-        hass, data[CONF_ADMIN_SEED], data[CONF_SUB_OWNER_ADDRESS]
+        hass, data[CONF_ADMIN_SEED], data[CONF_SUB_OWNER_ADDRESS], data[CONF_NETWORK]
     ):
         raise ControllerNotInDevices
     if not await _is_ipfs_local_connected():
@@ -219,7 +257,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         _LOGGER.debug(f"User data: {user_input}")
         errors = {}
         if CONF_CONFIG_FILE in user_input:
-            config = self._parse_config_file(user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD])
+            config = self._parse_config_file(
+                user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD]
+            )
+            config[CONF_NETWORK] = user_input[CONF_NETWORK]
 
             try:
                 info = await _validate_config(self.hass, config)
@@ -253,14 +294,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_file_data = json.loads(config_file_data)
         config = {}
         try:
-            controller_kp = Keypair.create_from_encrypted_json(json.loads(config_file_data.get("controllerkey")), password)
+            controller_kp = Keypair.create_from_encrypted_json(
+                json.loads(config_file_data.get("controllerkey")), password
+            )
             config[CONF_ADMIN_SEED] = f"0x{controller_kp.private_key.hex()}"
             config[CONF_CONTROLLER_TYPE] = controller_kp.crypto_type
         except CryptoError:
             config[CONF_ADMIN_SEED] = None
             config[CONF_CONTROLLER_TYPE] = None
         config[CONF_SUB_OWNER_ADDRESS] = config_file_data.get("owner")
-        if config_file_data.get("pinatapublic") and config_file_data.get("pinataprivate"):
+        if config_file_data.get("pinatapublic") and config_file_data.get(
+            "pinataprivate"
+        ):
             config[CONF_PINATA_PUB] = config_file_data.get("pinatapublic")
             config[CONF_PINATA_SECRET] = config_file_data.get("pinataprivate")
         if config_file_data.get("ipfsurl"):
@@ -270,6 +315,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config[CONF_SENDING_TIMEOUT] = config_file_data.get("datalogtimeout")
         _LOGGER.debug(f"Config: {config}")
         return config
+
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:

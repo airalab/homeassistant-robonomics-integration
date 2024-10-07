@@ -33,6 +33,14 @@
             }
         }
     },
+    "selector": {
+        "network": {
+            "options": {
+                "kusama": "Kusama Парачейн",
+                "polkadot": "Polkadot Парачейн"
+            }
+        }
+    },
     "options": {
         "step": {
             "init": {

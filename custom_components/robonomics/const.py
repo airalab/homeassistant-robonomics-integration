@@ -25,6 +25,9 @@ CONF_CUSTOM_GATEWAY_USE = "custom_gateway_use"
 CONF_PASSWORD = "password"
 CONF_CONFIG_FILE = "config_file"
 CONF_CONTROLLER_TYPE = "controller_type"
+CONF_NETWORK = "parachain_network"
+CONF_KUSAMA = "kusama"
+CONF_POLKADOT = "polkadot"
 
 CONTROLLER_ADDRESS = "controller_address"
 
@@ -34,10 +37,12 @@ PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 CRUST_GATEWAY_1 = "https://ipfs.living/ipfs/"
 CRUST_GATEWAY_2 = "https://crustipfs.live/ipfs/"
 
-ROBONOMICS_WSS = [
+ROBONOMICS_WSS_KUSAMA = [
     "wss://kusama.rpc.robonomics.network/",
     "wss://robonomics.0xsamsara.com/",
 ]
+
+ROBONOMICS_WSS_POLKADOT = ["wss://polkadot.rpc.robonomics.network/"]
 
 SENDING_TIMEOUT = "sending_timeout"
 ROBONOMICS = "robonomics"

@@ -33,6 +33,14 @@
             }
         }
     },
+    "selector": {
+        "network": {
+            "options": {
+                "kusama": "Kusama Parachain",
+                "polkadot": "Polkadot Parachain"
+            }
+        }
+    },
     "options": {
         "step": {
             "init": {

@@ -32,7 +32,10 @@ from .const import (
     IPFS_CONFIG_PATH,
     MEDIA_ACC,
     ROBONOMICS,
-    ROBONOMICS_WSS,
+    ROBONOMICS_WSS_KUSAMA,
+    ROBONOMICS_WSS_POLKADOT,
+    CONF_KUSAMA,
+    CONF_POLKADOT,
     RWS_DAYS_LEFT_NOTIFY,
     SUBSCRIPTION_LEFT_DAYS,
     TWIN_ID,
@@ -55,6 +58,7 @@ from .utils import (
     to_thread,
     decrypt_message_devices,
     encrypt_message,
+    check_if_address_is_ed,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,7 +67,7 @@ _LOGGER = logging.getLogger(__name__)
 def retry_with_change_wss_async(func: tp.Callable):
     async def wrapper(obj, *args, **kwargs):
         async for attempt in AsyncRetrying(
-            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+            wait=wait_fixed(2), stop=stop_after_attempt(len(obj.robonomics_ws_list))
         ):
             with attempt:
                 try:
@@ -230,9 +234,12 @@ class Robonomics:
         sub_owner_address: str,
         controller_seed: str,
         controller_type: KeypairType | None,
+        network: str,
     ) -> None:
         self.controller_type: KeypairType = controller_type if controller_type else KeypairType.ED25519
-        self.current_wss = ROBONOMICS_WSS[0]
+        self.robonomics_ws_list = ROBONOMICS_WSS_POLKADOT if network == CONF_POLKADOT else ROBONOMICS_WSS_KUSAMA
+        self.current_wss = self.robonomics_ws_list[0]
+        _LOGGER.debug(f"Use endpoint {self.current_wss}")
         self.hass: HomeAssistant = hass
         self.sub_owner_address: str = sub_owner_address
         self.controller_seed: str = controller_seed
@@ -300,12 +307,12 @@ class Robonomics:
     def _change_current_wss(self) -> None:
         """Set next current wss"""
 
-        current_index = ROBONOMICS_WSS.index(self.current_wss)
-        if current_index == (len(ROBONOMICS_WSS) - 1):
+        current_index = self.robonomics_ws_list.index(self.current_wss)
+        if current_index == (len(self.robonomics_ws_list) - 1):
             next_index = 0
         else:
             next_index = current_index + 1
-        self.current_wss = ROBONOMICS_WSS[next_index]
+        self.current_wss = self.robonomics_ws_list[next_index]
         _LOGGER.debug(f"New Robonomics ws is {self.current_wss}")
         self.controller_account: Account = Account(
             seed=self.controller_seed,
@@ -324,7 +331,8 @@ class Robonomics:
         _LOGGER.debug("Start handle launch")
         if data[2] == LAUNCH_REGISTRATION_COMMAND:
             _LOGGER.debug(f"Got registration request from {data[0]}")
-            await UserManager(self.hass).create_user(data[0])
+            if check_if_address_is_ed(data[0]):
+                await UserManager(self.hass).create_user(data[0])
             return
         self.hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = True
         try:
@@ -339,9 +347,10 @@ class Robonomics:
                 json_result = json.loads(self.decrypt_message(result, data[0]))
             if "password" in json_result:
                 _LOGGER.debug(f"Got registration command with password from {data[0]}")
-                await UserManager(self.hass).create_user(
-                    data[0], json_result["password"]
-                )
+                if check_if_address_is_ed(data[0]):
+                    await UserManager(self.hass).create_user(
+                        data[0], json_result["password"]
+                    )
             elif "platform" in json_result:
                 _LOGGER.debug(f"Got call service command {json_result}")
                 await _run_launch_command(self.hass, result, data[0])
@@ -398,7 +407,7 @@ class Robonomics:
 
         try:
             for attempt in Retrying(
-                wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+                wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
             ):
                 with attempt:
                     try:
@@ -425,7 +434,7 @@ class Robonomics:
         """
 
         for attempt in Retrying(
-            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+            wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
         ):
             with attempt:
                 try:
@@ -446,7 +455,7 @@ class Robonomics:
 
     @to_thread
     def get_identity_display_name(self, address: str) -> tp.Optional[str]:
-        service_functions = ServiceFunctions(Account())
+        service_functions = ServiceFunctions(Account(remote_ws=self.current_wss))
         identity = service_functions.chainstate_query("Identity", "IdentityOf", address)
         if identity is not None:
             key = list(identity["info"]["display"].keys())[0]
@@ -551,7 +560,7 @@ class Robonomics:
     @to_thread
     def _get_twin_info(self, twin_number: int):
         for attempt in Retrying(
-            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+            wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
         ):
             with attempt:
                 try:
@@ -568,7 +577,7 @@ class Robonomics:
     @to_thread
     def _set_twin_topic(self, bytes_hash: str, twin_number: int, address: str):
         for attempt in Retrying(
-            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+            wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
         ):
             with attempt:
                 try:
@@ -619,7 +628,7 @@ class Robonomics:
         _LOGGER.debug(f"Start look for password for {address}")
         try:
             for attempt in Retrying(
-                wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+                wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
             ):
                 with attempt:
                     try:
@@ -643,7 +652,7 @@ class Robonomics:
         except Exception:
             pass
         for attempt in Retrying(
-            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+            wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
         ):
             with attempt:
                 try:
@@ -657,7 +666,7 @@ class Robonomics:
         for i in range(5):
             try:
                 for attempt in Retrying(
-                    wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+                    wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
                 ):
                     with attempt:
                         try:
@@ -767,7 +776,7 @@ class Robonomics:
             ):  ## New Device in subscription
                 self._update_devices_list(data[1])
                 asyncio.run_coroutine_threadsafe(
-                    UserManager(self.hass).update_users(data[1]), self.hass.loop
+                    UserManager(self.hass).update_users(self.devices_list), self.hass.loop
                 )
                 _LOGGER.debug("Start getting states because of new devices")
                 asyncio.run_coroutine_threadsafe(
@@ -786,7 +795,7 @@ class Robonomics:
         """
 
         for attempt in Retrying(
-            wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+            wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
         ):
             with attempt:
                 try:
@@ -840,8 +849,11 @@ class Robonomics:
         new_devices = devices_list.copy()
         if self.controller_address in new_devices:
             new_devices.remove(self.controller_address)
-        _LOGGER.debug(f"New devices list: {new_devices}")
-        self.devices_list = new_devices
+        self.devices_list = []
+        for device in new_devices:
+            if check_if_address_is_ed(device):
+                self.devices_list.append(device)
+        _LOGGER.debug(f"New devices list: {self.devices_list}")
 
     @to_thread
     def get_devices_list(self):
@@ -853,7 +865,7 @@ class Robonomics:
         try:
             _LOGGER.debug("Start getting devices list")
             for attempt in Retrying(
-                wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+                wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
             ):
                 with attempt:
                     try:
@@ -866,7 +878,10 @@ class Robonomics:
             _LOGGER.debug(f"Got devices list: {devices_list}")
             if devices_list is not None:
                 devices_list.remove(self.controller_address)
-            self.devices_list = devices_list
+            self.devices_list = []
+            for device in devices_list:
+                if check_if_address_is_ed(device):
+                    self.devices_list.append(device)
             return self.devices_list
         except Exception as e:
             print(f"error while getting rws devices list {e}")
@@ -904,7 +919,7 @@ class Robonomics:
                 }
             }
             for attempt in Retrying(
-                wait=wait_fixed(2), stop=stop_after_attempt(len(ROBONOMICS_WSS))
+                wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
             ):
                 with attempt:
                     try:

@@ -62,6 +62,7 @@ from .const import (
     CONTROLLER_ADDRESS,
     CONF_CONTROLLER_TYPE,
     TELEMETRY_SENDER,
+    CONF_NETWORK,
 )
 from .ipfs import (
     create_folders,
@@ -192,7 +193,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
         hass.data[DOMAIN][CONF_ADMIN_SEED],
-        conf.get(CONF_CONTROLLER_TYPE)
+        conf.get(CONF_CONTROLLER_TYPE),
+        conf.get(CONF_NETWORK)
     )
     hass.data[DOMAIN][TELEMETRY_SENDER] = Telemetry(hass)
     hass.data[DOMAIN][TELEMETRY_SENDER].setup(hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
