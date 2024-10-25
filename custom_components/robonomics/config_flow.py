@@ -82,7 +82,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
             FileSelectorConfig(accept=".json,application/json")
         ),
         vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR,
-        vol.Required(CONF_NETWORK, default=CONF_KUSAMA): NETWORK_SELECTOR,
+        vol.Required(CONF_NETWORK, default=CONF_POLKADOT): NETWORK_SELECTOR,
     }
 )
 
