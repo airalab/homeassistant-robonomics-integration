@@ -16,10 +16,10 @@ from .const import (
     ROBONOMICS,
     LIBP2P_RELAY_ADDRESSES,
     LIBP2P_MULTIADDRESS,
+    TELEMETRY_SENDER,
 )
 from .utils import verify_sign, create_notification
 from .manage_users import UserManager
-from .get_states import get_and_send_data
 
 from pyproxy import Libp2pProxyAPI
 from pyproxy.utils.message import InitialMessage
@@ -28,6 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 
 LIBP2P_LISTEN_FEEDBACK_PROTOCOL = "/feedback"
 
+NON_TRACKED_ERRORS = ["The operation was aborted", "protocol selection failed"]
 
 class LibP2P:
     def __init__(self, hass: HomeAssistant):
@@ -106,8 +107,8 @@ class LibP2P:
             )
 
     async def _handle_libp2p_errors(self, data: tp.Union[str, dict]) -> None:
-        _LOGGER.debug(f"Libp2p feedback: {data}")
-        if data["feedback"] != "ok":
+        # _LOGGER.debug(f"Libp2p feedback: {data}")
+        if data["feedback"] != "ok" and data["feedback"] not in NON_TRACKED_ERRORS:
             if is_hassio(self.hass):
                 proxy_service = "add-on"
             else:
@@ -123,7 +124,7 @@ class LibP2P:
             self.hass.data[DOMAIN][PEER_ID_LOCAL] = message.peer_id
             self.hass.data[DOMAIN][LIBP2P_MULTIADDRESS] = message.multi_addressess
             _LOGGER.debug("Start getting states because of new peer id")
-            asyncio.ensure_future(get_and_send_data(self.hass))
+            asyncio.ensure_future(self.hass.data[DOMAIN][TELEMETRY_SENDER].send())
 
     def _is_initial_data_new(self, message: InitialMessage) -> bool:
         return (

@@ -800,8 +800,8 @@ def _upload_to_crust(
     """
 
     seed: str = hass.data[DOMAIN][CONF_ADMIN_SEED]
-    mainnet = Mainnet(seed=seed, crypto_type=KeypairType.ED25519)
     try:
+        mainnet = Mainnet(seed=seed, crypto_type=KeypairType.ED25519)
         # Check balance
         balance = mainnet.get_balance()
         _LOGGER.debug(f"Actual balance in crust network - {balance}")

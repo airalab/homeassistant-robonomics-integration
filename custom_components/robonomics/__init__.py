@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import json
 import shutil
 from datetime import timedelta
 
@@ -60,8 +61,9 @@ from .const import (
     TIME_CHANGE_LIBP2P_UNSUB,
     CONTROLLER_ADDRESS,
     CONF_CONTROLLER_TYPE,
+    TELEMETRY_SENDER,
+    CONF_NETWORK,
 )
-from .get_states import get_and_send_data, get_states_libp2p
 from .ipfs import (
     create_folders,
     wait_ipfs_daemon,
@@ -76,6 +78,8 @@ from .services import (
     save_video,
 )
 from .libp2p import LibP2P
+from .telemetry_helpers import Telemetry
+from .hass_helpers import HassStatesHelper
 
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
@@ -107,6 +111,7 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
         else:
             hass.data[DOMAIN][PINATA] = None
             _LOGGER.debug("Use local node to pin files")
+        hass.data[DOMAIN][TELEMETRY_SENDER].setup(hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
         hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
         hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(
             hass,
@@ -150,7 +155,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if DOMAIN not in hass.data:
             return
         try:
-            msg = await get_states_libp2p(hass)
+            states = await HassStatesHelper(hass).get_states(with_history=False)
+            msg = hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(json.dumps(states))
             await hass.data[DOMAIN][LIBP2P].send_states_to_websocket(msg)
         except Exception as e:
             _LOGGER.error(f"Exception in first send libp2p states {e}")
@@ -162,8 +168,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         except Exception as e:
             _LOGGER.error(f"Exception in first check devices {e}")
+        await hass.data[DOMAIN][TELEMETRY_SENDER].send()
 
-        await get_and_send_data(hass)
+        # await get_and_send_data(hass)
 
     _LOGGER.debug("Robonomics user control starting set up")
     conf = entry.data
@@ -186,8 +193,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         hass.data[DOMAIN][CONF_SUB_OWNER_ADDRESS],
         hass.data[DOMAIN][CONF_ADMIN_SEED],
-        conf.get(CONF_CONTROLLER_TYPE)
+        conf.get(CONF_CONTROLLER_TYPE),
+        conf.get(CONF_NETWORK)
     )
+    hass.data[DOMAIN][TELEMETRY_SENDER] = Telemetry(hass)
+    hass.data[DOMAIN][TELEMETRY_SENDER].setup(hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
     controller_account = hass.data[DOMAIN][ROBONOMICS].controller_account
 
     hass.data[DOMAIN][CONTROLLER_ADDRESS] = hass.data[DOMAIN][
@@ -252,7 +262,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.data[DOMAIN][TIME_CHANGE_COUNT] = 0
                 await hass.data[DOMAIN][ROBONOMICS].check_subscription_left_days()
             _LOGGER.debug(f"Time changed: {event}")
-            await get_and_send_data(hass)
+            # await get_and_send_data(hass)
         except Exception as e:
             _LOGGER.error(f"Exception in handle_time_changed: {e}")
 
@@ -273,7 +283,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         It calls every timeout from config to get and send telemtry.
         """
         try:
-            msg = await get_states_libp2p(hass)
+            states = await HassStatesHelper(hass).get_states(with_history=False)
+            msg = hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(json.dumps(states))
             async with lock:
                 if len(libp2p_message_queue) == 0:
                     libp2p_message_queue.append(msg)
@@ -401,6 +412,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     :return: True when integration is unloaded
     """
 
+    hass.data[DOMAIN][TELEMETRY_SENDER].unload()
     hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
     hass.data[DOMAIN][TIME_CHANGE_LIBP2P_UNSUB]()
     await hass.data[DOMAIN][LIBP2P].close_connection()
