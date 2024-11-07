@@ -174,8 +174,8 @@ async def restore_from_backup_service_call(
 async def send_datalog_service_call(hass: HomeAssistant, call: ServiceCall) -> None:
     try:
         datalog_text = call.data.get("record_text", "Default Text")
-        _LOGGER.error(f"Send datalog service call with text: {datalog_text}")
+        _LOGGER.debug(f"Send datalog service call with text: {datalog_text}")
         res = await hass.data[DOMAIN][ROBONOMICS].send_datalog(datalog_text)
-        _LOGGER.error(f"Datalog from service was sent: {res}")
+        _LOGGER.debug(f"Datalog from service was sent: {res}")
     except Exception as e:
         _LOGGER.error(f"Exception in send datalog service call: {e}")

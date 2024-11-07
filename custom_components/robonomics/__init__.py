@@ -327,7 +327,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     async def handle_send_datalog(call: ServiceCall) -> None:
-        await send_datalog_service_call(hass, call, controller_account)
+        await send_datalog_service_call(hass, call)
 
     async def handle_save_backup(call: ServiceCall) -> None:
         """Callback for save_backup_to_robonomics service.
