@@ -60,3 +60,15 @@ save_video_to_robonomics:
         number:
           min: 1
           max: 90
+
+send_datalog:
+  name: Datalog
+  description: Send Datalog Record
+  fields:
+    record_text:
+      description: Text for Datalog record
+      name: Record Text
+      required: true
+      example: "Hello, Robonomics!"
+      selector:
+        text:

@@ -8,6 +8,7 @@ PLATFORMS = [Platform.BUTTON, Platform.SENSOR]
 CREATE_BACKUP_SERVICE = "save_backup_to_robonomics"
 RESTORE_BACKUP_SERVICE = "restore_from_robonomics_backup"
 SAVE_VIDEO_SERVICE = "save_video_to_robonomics"
+SEND_DATALOG_SERVICE = "send_datalog"
 
 CONF_ADMIN_SEED = "admin_seed_secret"
 CONF_SUB_OWNER_ADDRESS = "sub_owner_address"

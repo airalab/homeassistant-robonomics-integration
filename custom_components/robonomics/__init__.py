@@ -63,6 +63,7 @@ from .const import (
     CONF_CONTROLLER_TYPE,
     TELEMETRY_SENDER,
     CONF_NETWORK,
+    SEND_DATALOG_SERVICE,
 )
 from .ipfs import (
     create_folders,
@@ -76,6 +77,7 @@ from .services import (
     restore_from_backup_service_call,
     save_backup_service_call,
     save_video,
+    send_datalog_service_call,
 )
 from .libp2p import LibP2P
 from .telemetry_helpers import Telemetry
@@ -324,6 +326,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
     )
 
+    async def handle_send_datalog(call: ServiceCall) -> None:
+        await send_datalog_service_call(hass, call, controller_account)
+
     async def handle_save_backup(call: ServiceCall) -> None:
         """Callback for save_backup_to_robonomics service.
         It creates secure backup, adds to IPFS and updates
@@ -361,6 +366,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await get_or_create_twin_id(hass)
         await save_video(hass, target, path, duration, controller_account)
 
+    hass.services.async_register(DOMAIN, SEND_DATALOG_SERVICE, handle_send_datalog)
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
     hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
     hass.services.async_register(
