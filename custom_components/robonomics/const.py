@@ -36,6 +36,7 @@ MORALIS_GATEWAY = "https://gateway.moralisipfs.com/ipfs/"
 PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/"
 CRUST_GATEWAY_1 = "https://ipfs.living/ipfs/"
 CRUST_GATEWAY_2 = "https://crustipfs.live/ipfs/"
+DAPP_GATEWAY = "https://ipfs.url.today/ipfs/"
 
 ROBONOMICS_WSS_KUSAMA = [
     "wss://kusama.rpc.robonomics.network/",

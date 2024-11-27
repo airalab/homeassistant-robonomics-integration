@@ -232,6 +232,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         f"sensor.{IPFS_STATUS_ENTITY}", hass.data[DOMAIN][IPFS_STATUS]
     )
 
+    hass.data[DOMAIN][LIBP2P] = LibP2P(hass)
+    asyncio.ensure_future(hass.data[DOMAIN][LIBP2P].connect_to_websocket())
+
     hass.data[DOMAIN][HANDLE_IPFS_REQUEST] = False
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
@@ -380,8 +383,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await hass.data[DOMAIN][ROBONOMICS].subscribe()
-    hass.data[DOMAIN][LIBP2P] = LibP2P(hass)
-    await hass.data[DOMAIN][LIBP2P].connect_to_websocket()
     if TWIN_ID not in hass.data[DOMAIN]:
         await get_or_create_twin_id(hass)
 
