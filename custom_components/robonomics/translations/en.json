@@ -10,11 +10,12 @@
             "invalid_sub_admin_seed": "Invalid controller seed",
             "invalid_sub_owner_address": "Invalid subscription owner address",
             "warnings": "You should tick all points before using Robonomics Integration",
-            "has_no_subscription": "Subscription owner address has no subscription",
+            "has_no_subscription": "Subscription owner address has no subscription (check that you have selected the correct parachain)",
             "is_not_in_devices": "Controller address is not in subscription devices",
             "can_connect_to_ipfs": "Integration can't connect to IPFS local node",
             "wrong_password": "Can't decrypt setting with given password",
-            "file_not_found": "File not found. Upload it again"
+            "file_not_found": "File not found. Upload it again",
+            "wrong_config_format": "Config file is in wrong format"
         },
         "step": {
             "user": {
@@ -27,9 +28,15 @@
             "conf": {
                 "data": {
                     "config_file": "Setup File",
-                    "password": "Password"
+                    "password": "Controller Password"
                 },
                 "description": "Upload the file with setup settings from the [Robonomics App](https://robonomics.app/#/rws-setup)"
+            },
+            "owner": {
+                "data": {
+                    "sub_owner_address": "RWS Owner Address"
+                },
+                "description": "Provided file contains only information about Controller account without additional parameters. Fill in the RWS Owner address and continue without other parameters or restart setup with another file"
             }
         }
     },
