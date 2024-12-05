@@ -24,3 +24,6 @@ class CantConnectToIPFS(HomeAssistantError):
 
 class InvalidConfigPassword(HomeAssistantError):
     """Wrong password for config file"""
+
+class InvalidConfigFormat(HomeAssistantError):
+    """Invalid config file structure"""
