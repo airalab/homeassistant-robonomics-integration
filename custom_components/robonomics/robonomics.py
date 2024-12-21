@@ -55,7 +55,6 @@ from .utils import (
     create_notification,
     decrypt_message,
     encrypt_for_devices,
-    to_thread,
     decrypt_message_devices,
     encrypt_message,
     check_if_address_is_ed,
@@ -392,14 +391,19 @@ class Robonomics:
             _LOGGER.error(f"Exception in requesting subscription left days: {e}")
 
     @retry_with_change_wss_async
-    @to_thread
-    def _get_rws_left_days(self) -> int:
+    async def _get_rws_left_days(self) -> int:
+        return await self.hass.async_add_executor_job(self._get_rws_left_days_sync)
+
+    def _get_rws_left_days_sync(self) -> int:
         rws = RWS(Account(remote_ws=self.current_wss))
         rws_days_left = rws.get_days_left(addr=self.sub_owner_address)
         return rws_days_left
 
-    @to_thread
-    def get_last_telemetry_hash(self) -> tp.Optional[str]:
+    async def get_last_telemetry_hash(self) -> tp.Optional[str]:
+        return await self.hass.async_add_executor_job(self._get_last_telemetry_hash)
+
+
+    def _get_last_telemetry_hash(self) -> tp.Optional[str]:
         """Getting the last hash with telemetry from Datalog.
 
         :return: Last IPFS hash if success, None otherwise
@@ -425,8 +429,10 @@ class Robonomics:
         except Exception as e:
             _LOGGER.debug(f"Exception in getting last telemetry hash: {e}")
 
-    @to_thread
-    def create_digital_twin(self) -> int:
+    async def create_digital_twin(self) -> int:
+        return await self.hass.async_add_executor_job(self._create_digital_twin)
+
+    def _create_digital_twin(self) -> int:
         """
         Create new digital twin
 
@@ -452,8 +458,10 @@ class Robonomics:
             f"Digital twin number {dt_it} was created with transaction hash {tr_hash}"
         )
         return dt_it
+    
+    async def get_identity_display_name(self, address: str) -> tp.Optional[str]:
+        return await self.hass.async_add_executor_job(self.get_identity_display_name, address)
 
-    @to_thread
     def get_identity_display_name(self, address: str) -> tp.Optional[str]:
         service_functions = ServiceFunctions(Account(remote_ws=self.current_wss))
         identity = service_functions.chainstate_query("Identity", "IdentityOf", address)
@@ -557,8 +565,10 @@ class Robonomics:
                     await self._set_twin_topic(topic[0], twin_number, ZERO_ACC)
         await self._set_twin_topic(bytes_hash, twin_number, address)
 
-    @to_thread
-    def _get_twin_info(self, twin_number: int):
+    async def _get_twin_info(self, twin_number: int):
+        return await self.hass.async_add_executor_job(self._get_twin_info_sync, twin_number)
+
+    def _get_twin_info_sync(self, twin_number: int):
         for attempt in Retrying(
             wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
         ):
@@ -573,9 +583,11 @@ class Robonomics:
                     self._change_current_wss()
                     raise TimeoutError
         return info
+    
+    async def _set_twin_topic(self, bytes_hash: str, twin_number: int, address: str):
+        return await self.hass.async_add_executor_job(self._set_twin_topic_sync, bytes_hash, twin_number, address)
 
-    @to_thread
-    def _set_twin_topic(self, bytes_hash: str, twin_number: int, address: str):
+    def _set_twin_topic_sync(self, bytes_hash: str, twin_number: int, address: str):
         for attempt in Retrying(
             wait=wait_fixed(2), stop=stop_after_attempt(len(self.robonomics_ws_list))
         ):
@@ -602,8 +614,10 @@ class Robonomics:
             await pin_file_to_local_node_by_hash(self.hass, ipfs_hash)
 
     @retry_with_change_wss_async
-    @to_thread
-    def _find_dapp_hash(self) -> tp.Optional[str]:
+    async def _find_dapp_hash(self):
+        return await self.hass.async_add_executor_job(self._find_dapp_hash_sync)
+
+    def _find_dapp_hash_sync(self) -> tp.Optional[str]:
         _LOGGER.debug("Start looking for DApp ipfs hash")
         datalog = Datalog(Account())
         last_datalog_item = datalog.get_index(DAPP_HASH_DATALOG_ADDRESS)["end"]
@@ -615,9 +629,11 @@ class Robonomics:
             return ipfs_hash
         else:
             return None
+        
+    async def find_password(self, address: str):
+        return await self.hass.async_add_executor_job(self._find_password, address)
 
-    @to_thread
-    def find_password(self, address: str) -> tp.Optional[str]:
+    def _find_password(self, address: str) -> tp.Optional[str]:
         """Look for encrypted password in the datalog of the given account and decrypt it
 
         :param address: The address of the account
@@ -785,8 +801,10 @@ class Robonomics:
         except Exception as e:
             _LOGGER.warning(f"Exception in subscription callback: {e}")
 
-    @to_thread
-    def send_datalog(self, data: str) -> str:
+    async def send_datalog(self, data: str) -> str:
+        return await self.hass.async_add_executor_job(self._send_datalog_sync, data)
+
+    def _send_datalog_sync(self, data: str) -> str:
         """Record datalog
 
         :param data: Data for Datalog recors
@@ -855,8 +873,10 @@ class Robonomics:
                 self.devices_list.append(device)
         _LOGGER.debug(f"New devices list: {self.devices_list}")
 
-    @to_thread
-    def get_devices_list(self):
+    async def get_devices_list(self) -> tp.Optional[list]:
+        return await self.hass.async_add_executor_job(self._get_devices_list_sync)
+
+    def _get_devices_list_sync(self) -> tp.Optional[list]:
         """Return devices list for sub owner account
 
         :return: List of devices
@@ -886,8 +906,10 @@ class Robonomics:
         except Exception as e:
             print(f"error while getting rws devices list {e}")
 
-    @to_thread
-    def get_last_digital_twin(self, account: str = None) -> tp.Optional[int]:
+    async def get_last_digital_twin(self, account: str = None) -> tp.Optional[int]:
+        return await self.hass.async_add_executor_job(self._get_last_digital_twin_sync, account)
+
+    def _get_last_digital_twin_sync(self, account: str = None) -> tp.Optional[int]:
         """Find the last digital twin belongint to the given account
 
         :param account: Address of the account that own the Digital Twin
