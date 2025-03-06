@@ -89,8 +89,8 @@ class HassStatesHelper:
                 if device is not None:
                     device_info = self._create_device_info(device, entity_id)
                     self._devices_data[entity_data.device_id] = device_info
-                else:
-                    self._devices_data[entity_data.device_id]["entities"].append(entity_id)
+            else:
+                self._devices_data[entity_data.device_id]["entities"].append(entity_id)
 
 
     def _create_device_info(self, device: dr.DeviceEntry, entity_id: str) -> dict:

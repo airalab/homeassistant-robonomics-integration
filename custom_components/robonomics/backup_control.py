@@ -49,6 +49,8 @@ from .utils import (
     to_thread,
     write_data_to_temp_file,
     read_file_data,
+    async_listdir,
+    async_remove_file,
 )
 
 from .encryption_utils import partial_encrypt, partial_decrypt
@@ -308,7 +310,7 @@ async def create_secure_backup_hassio(
     backup_name_time[1] = backup_name_time[1].split(".")[0]
     backup_name = f"{BACKUP_ENCRYPTED_PREFIX}_{backup_name_time[0]}_{backup_name_time[1]}"
     encrypted_backup_filepath = f"{hass.config.path()}/{backup_name}"
-    _delete_found_backup_files(hass)
+    await _delete_found_backup_files(hass)
     resp_create = await async_create_backup(hass, {})
     _LOGGER.debug(f"Hassio backup was created with response {resp_create}")
     slug = resp_create["slug"]
@@ -325,12 +327,12 @@ async def create_secure_backup_hassio(
     return encrypted_backup_filepath
     
     
-def _delete_found_backup_files(hass: HomeAssistant) -> None:
-    files = os.listdir(hass.config.path())
+async def _delete_found_backup_files(hass: HomeAssistant) -> None:
+    files = await async_listdir(hass, hass.config.path())
     for filename in files:
         if filename.startswith(BACKUP_ENCRYPTED_PREFIX):
             _LOGGER.debug(f"Deleting {filename}")
-            os.remove(f"{hass.config.path()}/{filename}")
+            await async_remove_file(hass, f"{hass.config.path()}/{filename}")
             _LOGGER.debug(f"{filename} was deleted")
 
 

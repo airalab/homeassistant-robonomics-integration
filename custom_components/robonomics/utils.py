@@ -383,3 +383,11 @@ def format_libp2p_node_multiaddress(peer_id: str) -> tp.Optional[str]:
     if (ip_address is not None) and (peer_id):
         multiaddress = f"/ip4/{ip_address}/tcp/9999/ws/p2p/{peer_id}"
         return multiaddress
+
+async def async_listdir(hass: HomeAssistant, path: str) -> tp.List[str]:
+    """List directory content."""
+    return await hass.async_add_executor_job(os.listdir, path)
+
+async def async_remove_file(hass: HomeAssistant, path: str) -> None:
+    """Remove file."""
+    return await hass.async_add_executor_job(os.remove, path)
