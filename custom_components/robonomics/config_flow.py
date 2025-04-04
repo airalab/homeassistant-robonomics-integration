@@ -1,4 +1,4 @@
-"""Config flow for Robonomics Control integration. It is service module for HomeAssistant, 
+"""Config flow for Robonomics Control integration. It is service module for HomeAssistant,
 which sets in `manifest.json`. This module allows to setup the integration from the web interface.
 """
 
@@ -45,12 +45,9 @@ from .const import (
     CONF_WARN_DATA_SENDING,
     CONF_PASSWORD,
     CONF_CONFIG_FILE,
-    CONF_CONTROLLER_TYPE,
     CONF_NETWORK,
     CONF_KUSAMA,
     CONF_POLKADOT,
-    ROBONOMICS_WSS_POLKADOT,
-    ROBONOMICS_WSS_KUSAMA,
     DOMAIN,
 )
 from .config_flow_helpers import ConfigFileParser, ConfigValidator
@@ -61,6 +58,16 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA_FIELDS = {}
 PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_CONFIG_FILE): FileSelector(
+            FileSelectorConfig(accept=".json,application/json")
+        ),
+        vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR,
+    }
+)
+
 NETWORK_SELECTOR = SelectSelector(
     SelectSelectorConfig(
         options=[CONF_KUSAMA, CONF_POLKADOT],
@@ -69,19 +76,11 @@ NETWORK_SELECTOR = SelectSelector(
     )
 )
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_MANUAL_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_CONFIG_FILE): FileSelector(
-            FileSelectorConfig(accept=".json,application/json")
-        ),
-        vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR,
-        vol.Required(CONF_NETWORK, default=CONF_POLKADOT): NETWORK_SELECTOR,
-    }
-)
-
-STEP_OWNER_DATA_SCHEMA = vol.Schema(
-    {
+        vol.Required(CONF_ADMIN_SEED): str,
         vol.Required(CONF_SUB_OWNER_ADDRESS): str,
+        vol.Required(CONF_NETWORK, default=CONF_POLKADOT): NETWORK_SELECTOR,
     }
 )
 
@@ -153,15 +152,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if CONF_CONFIG_FILE in user_input:
             try:
                 self.config = await ConfigFileParser(self.hass, user_input[CONF_CONFIG_FILE], user_input[CONF_PASSWORD]).parse()
-                self.config[CONF_NETWORK] = user_input[CONF_NETWORK]
             except Exception as e:
                 _LOGGER.error(f"Exception in file parse: {e}")
                 errors["base"] = ConfigValidator.get_error_key(e)
                 return self.async_show_form(
                     step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
                 )
-            if not CONF_SUB_OWNER_ADDRESS in self.config:
-                return await self.async_step_owner()
+            if not CONF_ADMIN_SEED in self.config or not CONF_SUB_OWNER_ADDRESS in self.config or not CONF_NETWORK in self.config:
+                return await self.async_step_manual()
 
             try:
                 await ConfigValidator(self.hass, self.config).validate()
@@ -177,16 +175,24 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="conf", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    async def async_step_owner(
+    async def async_step_manual(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         if user_input is None:
             return self.async_show_form(
-                step_id="owner", data_schema=STEP_OWNER_DATA_SCHEMA
+                step_id="manual", data_schema=STEP_MANUAL_DATA_SCHEMA
             )
+        errors = {}
         _LOGGER.debug(f"User data: {user_input}")
         self.config[CONF_SUB_OWNER_ADDRESS] = user_input[CONF_SUB_OWNER_ADDRESS]
-        errors = {}
+        self.config[CONF_NETWORK] = user_input[CONF_NETWORK]
+        try:
+            self.config[CONF_ADMIN_SEED] = ConfigValidator.get_raw_seed_from_config(user_input[CONF_ADMIN_SEED])
+        except Exception as e:
+            _LOGGER.error(f"Exception in seed parsing: {e}")
+            return self.async_show_form(
+                step_id="manual", data_schema=STEP_MANUAL_DATA_SCHEMA, errors={"base": "invalid_sub_admin_seed"}
+            )
         try:
             await ConfigValidator(self.hass, self.config).validate()
         except Exception as e:
@@ -195,7 +201,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title="Robonomics", data=self.config)
 
         return self.async_show_form(
-            step_id="conf", data_schema=STEP_OWNER_DATA_SCHEMA, errors=errors
+            step_id="manual", data_schema=STEP_MANUAL_DATA_SCHEMA, errors=errors
         )
 
 

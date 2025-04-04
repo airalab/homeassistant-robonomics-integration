@@ -32,11 +32,13 @@
                 },
                 "description": "Загрузите файл с настройками из [Robonomics App](https://robonomics.app/#/rws-setup)"
             },
-            "owner": {
+            "manual": {
                 "data": {
-                    "sub_owner_address": "Адрес владельца подписки"
+                    "admin_seed_secret": "Приватный ключ контроллера",
+                    "sub_owner_address": "Адрес владельца RWS",
+                    "parachain_network": "Сеть Robonomics"
                 },
-                "description": "Полученный файл сожержит информацию только об аккаунте контроллера без дополнительных параметров. Введите адрес владельца подписки и продолжите настройку без дополнительных параметров или начните настройку заново с другим файлом."
+                "description": "Provided file don'contain the setup settings. You can enter them manually."
             }
         }
     },

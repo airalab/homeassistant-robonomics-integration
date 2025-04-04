@@ -32,11 +32,13 @@
                 },
                 "description": "Upload the file with setup settings from the [Robonomics App](https://robonomics.app/#/rws-setup)"
             },
-            "owner": {
+            "manual": {
                 "data": {
-                    "sub_owner_address": "RWS Owner Address"
+                    "admin_seed_secret": "Controller Private Key",
+                    "sub_owner_address": "RWS Owner Address",
+                    "parachain_network": "Network"
                 },
-                "description": "Provided file contains only information about Controller account without additional parameters. Fill in the RWS Owner address and continue without other parameters or restart setup with another file"
+                "description": "Provided file don'contain the setup settings. You can enter them manually."
             }
         }
     },

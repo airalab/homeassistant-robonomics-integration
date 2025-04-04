@@ -215,10 +215,10 @@ async def handle_ipfs_status_change(hass: HomeAssistant, ipfs_daemon_ok: bool):
             "title": "IPFS Error",
         }
         await create_notification(hass, service_data, "ipfs")
-        await wait_ipfs_daemon(hass)
+        # await wait_ipfs_daemon(hass)
     else:
         service_data = {
-            "message": "IPFS Daemon now works well.",
+            "message": "IPFS Daemon works well.",
             "title": "IPFS OK",
         }
         await create_notification(hass, service_data, "ipfs")

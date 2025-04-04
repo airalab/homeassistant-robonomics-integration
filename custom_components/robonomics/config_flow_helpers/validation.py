@@ -50,8 +50,23 @@ class ConfigValidator:
             return "wrong_config_format"
         return "unknown"
 
-    async def validate(self) -> tp.Optional[str]:
-        """Validate input from Config Flow
+    @staticmethod
+    def get_raw_seed_from_config(config_seed: str) -> str:
+        """Extract and return the raw seed from the provided configuration seed.
+
+        :param config_seed: The seed string from the configuration.
+        :return: The raw seed in hexadecimal format.
+        """
+        if config_seed.startswith("0x"):
+            return config_seed
+        if " " in config_seed:
+            acc = Account(config_seed, crypto_type=KeypairType.ED25519)
+            return f"0x{acc.keypair.private_key.hex()}"
+        else:
+            return f"0x{config_seed}"
+
+    async def validate(self) -> str | None:
+        """Validate input from Config Flow.
 
         :return: None if the input is correct, othervese raise an exception
         """
@@ -69,7 +84,7 @@ class ConfigValidator:
         if not await self._is_sub_admin_in_subscription():
             raise ControllerNotInDevices
 
-    
+
     def _is_ipfs_local_connected(self) -> bool:
         try:
             ipfshttpclient2.connect()
@@ -98,7 +113,7 @@ class ConfigValidator:
 
     def _is_valid_sub_owner_address(self) -> None:
         return is_valid_ss58_address(self.data[CONF_SUB_OWNER_ADDRESS], valid_ss58_format=32)
-    
+
     def _get_network_ws(self) -> str:
         if self.data[CONF_NETWORK] == CONF_KUSAMA:
             return ROBONOMICS_WSS_KUSAMA[0]

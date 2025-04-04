@@ -5,22 +5,29 @@ Entry point for integration.
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
+import json
 import logging
 import os
-import json
 import shutil
-from datetime import timedelta
+
+from pinatapy import PinataPy
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, Event, CoreState, callback
-from homeassistant.const import MATCH_ALL, EVENT_HOMEASSISTANT_STARTED
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, MATCH_ALL, EVENT_STATE_CHANGED
+from homeassistant.core import (
+    CoreState,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    ServiceCall,
+    callback,
+)
 from homeassistant.helpers.event import (
-    async_track_time_interval,
     async_track_state_change_event,
-    async_track_state_change,
+    async_track_time_interval,
 )
 from homeassistant.helpers.typing import ConfigType
-from pinatapy import PinataPy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -163,8 +170,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             hass.create_task(UserManager(hass).update_users(start_devices_list))
             _LOGGER.debug("Start track state change")
-            hass.data[DOMAIN][LIBP2P_UNSUB] = async_track_state_change(
-                hass, MATCH_ALL, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
+            hass.data[DOMAIN][LIBP2P_UNSUB] = hass.bus.async_listen(
+                EVENT_STATE_CHANGED, hass.data[DOMAIN][HANDLE_LIBP2P_STATE_CHANGED]
             )
         except Exception as e:
             _LOGGER.error(f"Exception in first check devices {e}")
@@ -272,7 +279,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][HANDLE_TIME_CHANGE] = handle_time_changed_callback
 
     @callback
-    def libp2p_state_changed(changed_entity: str, old_state, new_state):
+    def libp2p_state_changed(event: Event[EventStateChangedData]):
+        # _LOGGER.debug(f"Libp2p state changed: {event}")
+        old_state = event.data["old_state"]
+        new_state = event.data["new_state"]
         if LIBP2P not in hass.data[DOMAIN]:
             return
         if old_state is None or new_state is None:
@@ -311,21 +321,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P] = libp2p_time_changed
 
-    @callback
-    def ipfs_daemon_state_changed(event: Event):
-        old_state = event.data["old_state"]
-        new_state = event.data["new_state"]
-        _LOGGER.debug(
-            f"IPFS Status entity changed state from {old_state} to {new_state}"
-        )
-        if old_state.state != new_state.state:
-            hass.loop.create_task(
-                handle_ipfs_status_change(hass, new_state.state == "OK")
-            )
+    # @callback
+    # def ipfs_daemon_state_changed(event: Event):
+    #     old_state = event.data["old_state"]
+    #     new_state = event.data["new_state"]
+    #     _LOGGER.debug(
+    #         f"IPFS Status entity changed state from {old_state} to {new_state}"
+    #     )
+    #     # if old_state.state != new_state.state:
+    #     #     hass.loop.create_task(
+    #     #         handle_ipfs_status_change(hass, new_state.state == "OK")
+    #     #     )
 
-    hass.data[DOMAIN][IPFS_DAEMON_STATUS_STATE_CHANGE] = async_track_state_change_event(
-        hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
-    )
+    # hass.data[DOMAIN][IPFS_DAEMON_STATUS_STATE_CHANGE] = async_track_state_change_event(
+    #     hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
+    # )
 
     async def handle_save_backup(call: ServiceCall) -> None:
         """Callback for save_backup_to_robonomics service.
