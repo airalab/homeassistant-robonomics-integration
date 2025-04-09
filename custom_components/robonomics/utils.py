@@ -1,19 +1,20 @@
-from substrateinterface import Keypair, KeypairType
-from robonomicsinterface import Account
-import functools
 import asyncio
+import functools
+import json
 import logging
 import os
 import random
-import string
+import shutil
 import socket
+import string
 import tempfile
 import time
 import typing as tp
-import shutil
-import json
 
-import ipfshttpclient2
+import aioipfs
+from robonomicsinterface import Account
+from substrateinterface import Keypair, KeypairType
+
 from homeassistant.components.persistent_notification import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -28,7 +29,7 @@ SERVICE_PERSISTENT_NOTIFICATION = "create"
 
 
 async def create_notification(
-    hass: HomeAssistant, service_data: tp.Dict[str, str], notification_id: str = ""
+    hass: HomeAssistant, service_data: dict[str, str], notification_id: str = ""
 ) -> None:
     """Create HomeAssistant notification.
 
@@ -90,8 +91,7 @@ def decrypt_message(
 
 
 def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) -> str:
-    """
-    Encrypt data for random generated private key, then encrypt this key for device from the list
+    """Encrypt data for random generated private key, then encrypt this key for device from the list.
 
     :param data: Data to encrypt
     :param sender_kp: ED25519 account keypair that encrypts the data
@@ -128,9 +128,9 @@ def encrypt_for_devices(data: str, sender_kp: Keypair, devices: tp.List[str]) ->
 
 
 def decrypt_message_devices(
-    data: tp.Union[str, dict], sender_public_key: bytes, recipient_keypair: Keypair
+    data: str | dict, sender_public_key: bytes, recipient_keypair: Keypair
 ) -> str:
-    """Decrypt message that was encrypted fo devices
+    """Decrypt message that was encrypted fo devices.
 
     :param data: Ancrypted data
     :param sender_public_key: Sender address
@@ -162,7 +162,7 @@ def decrypt_message_devices(
 
 
 def generate_password(length: int = 10) -> str:
-    """Generate random string with the given length
+    """Generate random string with the given length.
 
     :param lenght: Password length
 
@@ -181,9 +181,8 @@ def to_thread(func: tp.Callable) -> tp.Coroutine:
     return wrapper
 
 
-@to_thread
-def get_hash(filename: str) -> tp.Optional[str]:
-    """Getting file's IPFS hash
+async def get_hash(filename: str) -> str | None:
+    """Get file's IPFS hash.
 
     :param filename: Path to the backup file
 
@@ -191,95 +190,13 @@ def get_hash(filename: str) -> tp.Optional[str]:
     """
 
     try:
-        with ipfshttpclient2.connect() as client:
-            ipfs_hash_local = client.add(filename, pin=False)["Hash"]
+        async with aioipfs.AsyncIPFS() as client:
+            async for added in client.add([filename], pin=False):
+                ipfs_hash_local = added["Hash"]
     except Exception as e:
         _LOGGER.error(f"Exception in get_hash with local node: {e}")
         ipfs_hash_local = None
     return ipfs_hash_local
-
-
-def write_data_to_temp_file(
-    data: tp.Union[str, bytes], config: bool = False, filename: str = None
-) -> str:
-    """
-    Create file and store data in it
-
-    :param data: data, which to be written to the file
-    :param config: is file fo config (True) or for telemetry (False)
-    :param filename: Name of the file if not config or z2m backup
-
-    :return: path to created file
-    """
-    dirname = tempfile.gettempdir()
-    if filename is not None:
-        filepath = f"{dirname}/{filename}"
-        if isinstance(data, str):
-            with open(filepath, "w") as f:
-                f.write(data)
-        else:
-            with open(filepath, "wb") as f:
-                f.write(data)
-    else:
-        if isinstance(data, str):
-            if config:
-                filepath = f"{dirname}/config_encrypted-{time.time()}"
-            else:
-                filepath = f"{dirname}/data-{time.time()}"
-            with open(filepath, "w") as f:
-                f.write(data)
-        else:
-            filepath = f"{dirname}/z2m-backup.zip"
-            with open(filepath, "wb") as f:
-                f.write(data)
-    return filepath
-
-def read_file_data(filename: str, keys: str = "r") -> tp.Union[str, bytes]:
-    with open(filename, keys) as f:
-        data = f.read()
-    return data
-
-def write_file_data(filename: str, data: tp.Union[str, bytes], keys: str = "w") -> None:
-    with open(filename, keys) as f:
-        data = f.write(data)
-
-
-def get_path_in_temp_dir(filename: str = None) -> str:
-    temp_dir = tempfile.gettempdir()
-    if filename is not None:
-        final_path = f"{temp_dir}/{filename}"
-    else:
-        final_path = temp_dir
-    return final_path
-
-
-def path_is_dir(path: str) -> bool:
-    return os.path.isdir(path)
-
-
-def delete_temp_dir(dirpath: str) -> None:
-    """
-    Delete temporary directory
-
-    :param dirpath: the path to the directory
-    """
-    shutil.rmtree(dirpath)
-
-
-def delete_temp_dir_if_exists(dirpath: str) -> None:
-    if os.path.exists(dirpath) and os.path.isdir(dirpath):
-        delete_temp_dir(dirpath)
-
-
-def delete_temp_file(filename: str) -> None:
-    """
-    Delete temporary file
-
-    :param filename: the name of the file to delete
-    """
-    if os.path.exists(filename):
-        os.remove(filename)
-        _LOGGER.debug(f"Temp file {filename} was removed")
 
 
 def _get_store_for_key(hass: HomeAssistant, key: str):
@@ -391,3 +308,105 @@ async def async_listdir(hass: HomeAssistant, path: str) -> tp.List[str]:
 async def async_remove_file(hass: HomeAssistant, path: str) -> None:
     """Remove file."""
     return await hass.async_add_executor_job(os.remove, path)
+
+class FileSystemUtils:
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+        self._temp_dir = tempfile.gettempdir()
+
+    async def write_data_to_temp_file(
+        self, data: str | bytes, config: bool = False, filename: str | None = None
+    ) -> str:
+        """Create file and store data in it.
+
+        :param data: data, which to be written to the file
+        :param config: is file fo config (True) or for telemetry (False)
+        :param filename: Name of the file if not config or z2m backup
+
+        :return: path to created file
+        """
+        return await self.hass.async_add_executor_job(self._write_data_to_temp_file, data, config, filename)
+
+    async def read_file_data(self, filename: str, keys: str = "r") -> str | bytes:
+        """Read data from a file asynchronously.
+
+        :param filename: The name of the file to read.
+        :param keys: The mode in which the file is opened (default is "r").
+
+        :return: The content of the file as a string or bytes.
+        """
+        return await self.hass.async_add_executor_job(self._read_file_data, filename, keys)
+
+    async def write_file_data(self, filename: str, data: str | bytes, keys: str = "w") -> None:
+        await self.hass.async_add_executor_job(self._write_file_data, filename, data, keys)
+
+    def get_path_in_temp_dir(self, filename: str | None = None) -> str:
+        if filename is not None:
+            final_path = f"{self._temp_dir}/{filename}"
+        else:
+            final_path = self._temp_dir
+        return final_path
+
+    async def path_is_dir(self, path: str) -> bool:
+        return await self.hass.async_add_executor_job(self._path_is_dir, path)
+
+    async def delete_temp_dir(self, dirpath: str) -> None:
+        """Delete temporary directory.
+
+        :param dirpath: the path to the directory
+        """
+        return await self.hass.async_add_executor_job(self._delete_temp_dir, dirpath)
+
+    async def delete_temp_file(self, filename: str) -> None:
+        """Delete temporary file.
+
+        :param filename: the name of the file to delete
+        """
+        return await self.hass.async_add_executor_job(self._delete_temp_file, filename)
+
+    def _delete_temp_file(self, filename: str) -> None:
+        if os.path.exists(filename):
+            os.remove(filename)
+            _LOGGER.debug(f"Temp file {filename} was removed")
+
+    def _delete_temp_dir(self, dirpath: str) -> None:
+        if os.path.exists(dirpath) and os.path.isdir(dirpath):
+            shutil.rmtree(dirpath)
+
+    def _path_is_dir(self, path: str) -> bool:
+        return os.path.isdir(path)
+
+    def _write_file_data(self, filename: str, data: str | bytes, keys: str = "w") -> None:
+        with open(filename, keys) as f:
+            data = f.write(data)
+
+    def _read_file_data(self, filename: str, keys: str = "r") -> str | bytes:
+        with open(filename, keys) as f:
+            data = f.read()
+        return data
+
+    def _write_data_to_temp_file(
+        self, data: str | bytes, config: bool = False, filename: str | None = None
+    ) -> str:
+        dirname = tempfile.gettempdir()
+        if filename is not None:
+            filepath = f"{dirname}/{filename}"
+            if isinstance(data, str):
+                with open(filepath, "w") as f:
+                    f.write(data)
+            else:
+                with open(filepath, "wb") as f:
+                    f.write(data)
+        else:
+            if isinstance(data, str):
+                if config:
+                    filepath = f"{dirname}/config_encrypted-{time.time()}"
+                else:
+                    filepath = f"{dirname}/data-{time.time()}"
+                with open(filepath, "w") as f:
+                    f.write(data)
+            else:
+                filepath = f"{dirname}/z2m-backup.zip"
+                with open(filepath, "wb") as f:
+                    f.write(data)
+        return filepath

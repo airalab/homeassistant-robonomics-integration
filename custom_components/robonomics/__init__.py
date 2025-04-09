@@ -10,8 +10,10 @@ import json
 import logging
 import os
 import shutil
+from collections.abc import Callable
 
 from pinatapy import PinataPy
+from homeassistant.util.hass_dict import HassKey
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, MATCH_ALL, EVENT_STATE_CHANGED
@@ -74,9 +76,9 @@ from .const import (
 from .ipfs import (
     create_folders,
     wait_ipfs_daemon,
-    delete_folder_from_local_node,
     handle_ipfs_status_change,
 )
+from .ipfs_helpers.utils import IPFSLocalUtils
 from .manage_users import UserManager
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import (
@@ -87,6 +89,10 @@ from .services import (
 from .libp2p import LibP2P
 from .telemetry_helpers import Telemetry
 from .hass_helpers import HassStatesHelper
+
+DATA_BACKUP_AGENT_LISTENERS: HassKey[list[Callable[[], None]]] = HassKey(
+    f"{DOMAIN}.backup_agent_listeners"
+)
 
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
@@ -321,21 +327,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P] = libp2p_time_changed
 
-    # @callback
-    # def ipfs_daemon_state_changed(event: Event):
-    #     old_state = event.data["old_state"]
-    #     new_state = event.data["new_state"]
-    #     _LOGGER.debug(
-    #         f"IPFS Status entity changed state from {old_state} to {new_state}"
-    #     )
-    #     # if old_state.state != new_state.state:
-    #     #     hass.loop.create_task(
-    #     #         handle_ipfs_status_change(hass, new_state.state == "OK")
-    #     #     )
+    @callback
+    def ipfs_daemon_state_changed(event: Event):
+        old_state = event.data["old_state"]
+        new_state = event.data["new_state"]
+        _LOGGER.debug(
+            f"IPFS Status entity changed state from {old_state} to {new_state}"
+        )
+        if old_state.state != new_state.state:
+            hass.loop.create_task(
+                handle_ipfs_status_change(hass, new_state.state == "OK")
+            )
 
-    # hass.data[DOMAIN][IPFS_DAEMON_STATUS_STATE_CHANGE] = async_track_state_change_event(
-    #     hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
-    # )
+    hass.data[DOMAIN][IPFS_DAEMON_STATUS_STATE_CHANGE] = async_track_state_change_event(
+        hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
+    )
 
     async def handle_save_backup(call: ServiceCall) -> None:
         """Callback for save_backup_to_robonomics service.
@@ -430,7 +436,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if LIBP2P_UNSUB in hass.data[DOMAIN]:
         hass.data[DOMAIN][LIBP2P_UNSUB]()
     hass.data[DOMAIN][ROBONOMICS].subscriber.cancel()
-    await delete_folder_from_local_node(hass, IPFS_CONFIG_PATH)
+    await IPFSLocalUtils(hass).delete_folder(IPFS_CONFIG_PATH)
     hass.data.pop(DOMAIN)
     await asyncio.gather(
         *(

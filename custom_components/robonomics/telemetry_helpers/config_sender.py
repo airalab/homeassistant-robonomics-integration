@@ -12,17 +12,15 @@ from copy import deepcopy
 from ..ipfs import (
     add_config_to_ipfs,
     add_media_to_ipfs,
-    check_if_hash_in_folder,
-    get_last_file_hash,
     read_ipfs_local_file,
 )
 
+from ..ipfs_helpers.utils import IPFSLocalUtils
+
 from ..utils import (
     get_hash,
-    delete_temp_file,
     format_libp2p_node_multiaddress,
-    write_data_to_temp_file,
-    write_file_data,
+    FileSystemUtils,
 )
 
 from ..const import (
@@ -60,8 +58,8 @@ class ConfigSender:
             ipfs_hash = await self._add_config_to_ipfs(new_config)
         else:
             _LOGGER.debug("Config wasn't changed")
-            _, ipfs_hash = await get_last_file_hash(
-                self._hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX
+            _, ipfs_hash = await IPFSLocalUtils(self._hass).get_last_file_hash(
+                IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX
             )
         await self._robonomics.set_config_topic(ipfs_hash, self._hass.data[DOMAIN][TWIN_ID])
 
@@ -100,21 +98,21 @@ class ConfigSender:
                             filename = f"{self._hass.config.path()}/www/{image_path}"
                             ipfs_hash_media = await get_hash(filename)
                             card["image"] = ipfs_hash_media
-                            if not await check_if_hash_in_folder(
-                                self._hass, ipfs_hash_media, IPFS_MEDIA_PATH
+                            if not await IPFSLocalUtils(self._hass).check_if_hash_in_folder(
+                                ipfs_hash_media, IPFS_MEDIA_PATH
                             ):
                                 await add_media_to_ipfs(self._hass, filename)
         except Exception as e:
             _LOGGER.warning(f"Exception in saving media from dashboard: {e}")
         return dashboard_json
-    
+
     def _get_libp2p_multiaddress_and_peer_id(self) -> tuple[list, str]:
         peer_id = self._hass.data[DOMAIN].get(PEER_ID_LOCAL, "")
         local_libp2p_multiaddress = format_libp2p_node_multiaddress(peer_id)
         libp2p_multiaddress = self._hass.data[DOMAIN].get(LIBP2P_MULTIADDRESS, []).copy()
         libp2p_multiaddress.append(local_libp2p_multiaddress)
         return libp2p_multiaddress, peer_id
-    
+
     def _format_new_config(self) -> dict:
         new_config = {
             "services": self._services_json,
@@ -132,22 +130,22 @@ class ConfigSender:
         return last_config != new_config
 
     async def _get_last_config_data(self) -> dict:
-        last_config_hash, _ = await get_last_file_hash(self._hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
+        last_config_hash, _ = await IPFSLocalUtils(self._hass).get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
         if last_config_hash is None:
             return {}
         last_config_data = await read_ipfs_local_file(self._hass, last_config_hash, IPFS_CONFIG_PATH)
         if last_config_data is None:
             last_config_data = {}
         return last_config_data
-    
+
     async def _devices_changed(self) -> bool:
         last_devices = await self._get_last_config_devices()
         new_devices = self._get_new_config_devices()
         _LOGGER.debug(f"Devices changed: {last_devices != new_devices}")
         return last_devices != new_devices
-    
+
     async def _get_last_config_devices(self) -> list:
-        last_config_encrypted_hash, _ = await get_last_file_hash(self._hass, IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
+        last_config_encrypted_hash, _ = await IPFSLocalUtils(self._hass).get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_ENCRYPTED_PREFIX)
         if last_config_encrypted_hash is None:
             return []
         last_config_encrypted_data = await read_ipfs_local_file(self._hass, last_config_encrypted_hash, IPFS_CONFIG_PATH)
@@ -158,14 +156,14 @@ class ConfigSender:
             last_config_devices.remove("data")
             last_config_devices.sort()
         return last_config_devices
-    
+
     def _get_new_config_devices(self) -> list:
         new_config_devices = self._robonomics.devices_list.copy()
         controller_address = self._robonomics.controller_address
         new_config_devices.append(controller_address)
         new_config_devices.sort()
         return new_config_devices
-    
+
     async def _add_config_to_ipfs(self, config: dict) -> str | None:
         try:
             config_filename = await self._write_config_to_file(config)
@@ -180,15 +178,15 @@ class ConfigSender:
     async def _write_config_to_file(self, config: dict) -> str:
         dirname = tempfile.gettempdir()
         config_filename = f"{dirname}/config-{time.time()}"
-        await self._hass.async_add_executor_job(write_file_data, config_filename, json.dumps(config))
+        await FileSystemUtils(self._hass).write_file_data(config_filename, json.dumps(config))
         return config_filename
 
     async def _encrypt_config_and_write_to_file(self, config: dict) -> str:
         encrypted_config = self._robonomics.encrypt_for_devices(json.dumps(config))
-        filename = await self._hass.async_add_executor_job(write_data_to_temp_file, encrypted_config, True)
+        filename = await FileSystemUtils(self._hass).write_data_to_temp_file(encrypted_config, True)
         _LOGGER.debug(f"Encrypted config filename: {filename}")
         return filename
-    
+
     async def _delete_temp_files(self, filename1: str, filename2: str) -> None:
-        await self._hass.async_add_executor_job(delete_temp_file, filename1)
-        await self._hass.async_add_executor_job(delete_temp_file, filename2)
+        await FileSystemUtils(self._hass).delete_temp_file(filename1)
+        await FileSystemUtils(self._hass).delete_temp_file(filename2)

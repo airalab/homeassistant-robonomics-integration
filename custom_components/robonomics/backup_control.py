@@ -1,7 +1,7 @@
 """
-Script for managing backups. It containts methods to create HASS configurations' backups and 
-restores configuration from uploaded or local backups. 
-This file is imported as a module to `__init__.py` to create two services. 
+Script for managing backups. It containts methods to create HASS configurations' backups and
+restores configuration from uploaded or local backups.
+This file is imported as a module to `__init__.py` to create two services.
 `save_backup_to_robonomics` service uses following function:
     * create_secure_backup - returns the path to backup
 `restore_from_robonomics_backup` service uses following functions:
@@ -44,13 +44,11 @@ from .const import (
 )
 from .utils import (
     decrypt_message,
-    delete_temp_file,
     encrypt_message,
     to_thread,
-    write_data_to_temp_file,
-    read_file_data,
     async_listdir,
     async_remove_file,
+    FileSystemUtils
 )
 
 from .encryption_utils import partial_encrypt, partial_decrypt
@@ -66,7 +64,7 @@ def create_secure_backup(
     admin_keypair: Keypair,
     full: bool,
 ) -> tuple[str, str]:
-    """Create secure .tar.xz archive and returns the path to it
+    """Create secure .tar.xz archive and returns the path to it.
 
     :param hass: HomeAssistant instance
     :param config_path: Path to the configuration file
@@ -104,7 +102,7 @@ def create_secure_backup(
                 z2m_backup_path = _BackupZ2M(hass)._create_z2m_backup()
                 if z2m_backup_path is not None:
                     tar.add(z2m_backup_path, arcname=Z2M_CONFIG_NAME)
-                    delete_temp_file(z2m_backup_path)
+                    # delete_temp_file(z2m_backup_path)
             if os.path.isdir(mosquitto_path) and os.path.isfile(
                 f"{mosquitto_path}passwd"
             ):
@@ -325,8 +323,8 @@ async def create_secure_backup_hassio(
     )
     _LOGGER.debug(f"Backup {slug} encrypted")
     return encrypted_backup_filepath
-    
-    
+
+
 async def _delete_found_backup_files(hass: HomeAssistant) -> None:
     files = await async_listdir(hass, hass.config.path())
     for filename in files:
@@ -380,7 +378,7 @@ class _BackupZ2M:
         self.received: bool = False
         self.z2m_backup_path: tp.Optional[str] = None
 
-    def _z2m_backup_callback(self, msg: ReceiveMessage) -> None:
+    async def _z2m_backup_callback(self, msg: ReceiveMessage) -> None:
         """Callback on response topic for z2m backup.
         It will create a zip file anc close subscription to the topic.
         :param msg: MQTT message
@@ -389,7 +387,7 @@ class _BackupZ2M:
         payload = json.loads(msg.payload)
         zip_arc_b64 = payload["data"]["zip"]
         zip_arc_bytes = base64.b64decode(zip_arc_b64)
-        self.z2m_backup_path = write_data_to_temp_file(zip_arc_bytes)
+        self.z2m_backup_path = await FileSystemUtils(self.hass).write_data_to_temp_file(zip_arc_bytes)
         _LOGGER.debug(f"z2m archive was written to {self.z2m_backup_path}")
         self.remove_mqtt_subscribe()
         _LOGGER.debug("Subscription to response topic was removed")

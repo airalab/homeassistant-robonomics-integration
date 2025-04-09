@@ -32,7 +32,7 @@ from .utils import (
     remove_from_store,
     async_post_request,
     get_ip_address,
-    write_data_to_temp_file,
+    FileSystemUtils,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -198,7 +198,7 @@ class UserManager:
         encrypted_data = self.hass.data[DOMAIN][ROBONOMICS].encrypt_for_devices(
             json.dumps({"password": password}), [address]
         )
-        filename = await self.hass.async_add_executor_job(write_data_to_temp_file, encrypted_data, False, address)
+        filename = await FileSystemUtils(self.hass).write_data_to_temp_file(encrypted_data, False, address)
         ipfs_hash = await add_user_info_to_ipfs(self.hass, filename)
         await self.hass.data[DOMAIN][ROBONOMICS].set_twin_topic_with_remove_old(
             ipfs_hash, self.hass.data[DOMAIN][TWIN_ID], address

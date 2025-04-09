@@ -4,12 +4,14 @@ import asyncio
 import logging
 import typing as tp
 
-import ipfshttpclient2
+import async_timeout
 from aiohttp import ClientResponse
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import tarfile
 from io import BytesIO
+
+import aioipfs
 
 from ..const import (
     CONF_IPFS_GATEWAY,
@@ -22,8 +24,8 @@ from ..const import (
     CRUST_GATEWAY_2,
     DAPP_GATEWAY,
 )
-from ..utils import to_thread, delete_temp_dir_if_exists
-from .decorators import catch_ipfs_errors
+from ..utils import FileSystemUtils
+from .decorators import catch_ipfs_errors_async
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ class GetIPFSData:
     async def get_directory_to_given_path(
         self, dir_with_path: str
     ) -> tp.Optional[bool]:
-        delete_temp_dir_if_exists(dir_with_path)
+        await FileSystemUtils(self.hass).delete_temp_dir(dir_with_path)
         res = await self._get_ipfs_data(is_directory=True)
         if res is not None:
             tar_content = await res.content.read()
@@ -125,11 +127,11 @@ class GetIPFSData:
         url = f"{gateway_url}{self.ipfs_hash}"
         return url
 
-    @to_thread
-    @catch_ipfs_errors("Exception in get from local node by hash")
-    def _get_from_local_node_by_hash(self) -> tp.Optional[str]:
-        with ipfshttpclient2.connect() as client:
-            res = client.cat(self.ipfs_hash)
+    @catch_ipfs_errors_async("Exception in get from local node by hash")
+    async def _get_from_local_node_by_hash(self) -> tp.Optional[str]:
+        async with aioipfs.AsyncIPFS() as client:
+            async with async_timeout.timeout(60):
+                res = await client.cat(self.ipfs_hash)
             res_str = res.decode()
             _LOGGER.debug(f"Got data {self.ipfs_hash} from local gateway")
             return res_str

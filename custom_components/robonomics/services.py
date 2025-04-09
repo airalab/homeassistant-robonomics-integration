@@ -31,8 +31,9 @@ from .const import (
     ROBONOMICS,
     TWIN_ID,
 )
-from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_folder_hash, get_ipfs_data
-from .utils import delete_temp_file, encrypt_message, read_file_data, write_file_data
+from .ipfs import add_backup_to_ipfs, add_media_to_ipfs, get_ipfs_data
+from .utils import encrypt_message, FileSystemUtils
+from .ipfs_helpers.utils import IPFSLocalUtils
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,13 +75,13 @@ async def save_video(
     if os.path.isfile(f"{path}/{filename}"):
         _LOGGER.debug(f"Start encrypt video {filename}")
         admin_keypair: Keypair = sub_admin_acc.keypair
-        video_data = await hass.async_add_executor_job(read_file_data, f"{path}/{filename}", "rb")
+        video_data = await FileSystemUtils(hass).read_file_data(f"{path}/{filename}", "rb")
         encrypted_data = encrypt_message(
             video_data, admin_keypair, admin_keypair.public_key
         )
-        await hass.async_add_executor_job(write_file_data, f"{path}/{filename}", encrypted_data)
+        await FileSystemUtils(hass).write_file_data(f"{path}/{filename}", encrypted_data)
         await add_media_to_ipfs(hass, f"{path}/{filename}")
-        folder_ipfs_hash = await get_folder_hash(hass, IPFS_MEDIA_PATH)
+        folder_ipfs_hash = await IPFSLocalUtils(hass).get_folder_hash(IPFS_MEDIA_PATH)
         # delete file from system
         _LOGGER.debug(f"delete original video {filename}")
         os.remove(f"{path}/{filename}")
@@ -117,12 +118,12 @@ async def save_backup_service_call(
             admin_keypair=sub_admin_acc.keypair,
             full=full,
         )
-        delete_temp_file(backup_path)
+        await FileSystemUtils(hass).delete_temp_file(backup_path)
     ipfs_hash = await add_backup_to_ipfs(
         hass, str(encrypted_backup_path)
     )
     _LOGGER.debug(f"Backup created with hash {ipfs_hash}")
-    delete_temp_file(encrypted_backup_path)
+    await FileSystemUtils(hass).delete_temp_file(encrypted_backup_path)
     await hass.data[DOMAIN][ROBONOMICS].set_backup_topic(
         ipfs_hash, hass.data[DOMAIN][TWIN_ID]
     )
@@ -154,7 +155,7 @@ async def restore_from_backup_service_call(
             await restore_backup_hassio(hass, result, sub_admin_kp)
         else:
             backup_path = f"{tempfile.gettempdir()}/{DATA_BACKUP_ENCRYPTED_NAME}"
-            await hass.async_add_executor_job(write_file_data, backup_path, result)
+            await FileSystemUtils(hass).write_file_data(backup_path, result)
             config_path = Path(hass.config.path())
             zigbee2mqtt_path = call.data.get("zigbee2mqtt_path")
             if zigbee2mqtt_path is None:
