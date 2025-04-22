@@ -1,65 +1,65 @@
 """This module contain methods to communicate with Robonomics blockchain"""
 
+from ast import literal_eval
 import asyncio
 import json
 import logging
+from threading import Thread
 import time
 import typing as tp
-from ast import literal_eval
-from threading import Thread
 
-import substrateinterface as substrate
 from aenum import extend_enum
-from homeassistant.core import HomeAssistant, callback
 from robonomicsinterface import (
     RWS,
     Account,
     Datalog,
     DigitalTwin,
+    ServiceFunctions,
     SubEvent,
     Subscriber,
-    ServiceFunctions,
 )
 from robonomicsinterface.utils import ipfs_32_bytes_to_qm_hash, ipfs_qm_hash_to_32_bytes
+import substrateinterface as substrate
 from substrateinterface import Keypair, KeypairType
 from tenacity import AsyncRetrying, Retrying, stop_after_attempt, wait_fixed
 
+from homeassistant.core import HomeAssistant, callback
+
 from .const import (
     CONF_ADMIN_SEED,
+    CONF_POLKADOT,
     CONFIG_PREFIX,
+    DAPP_HASH_DATALOG_ADDRESS,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
     IPFS_CONFIG_PATH,
+    LAUNCH_REGISTRATION_COMMAND,
     MEDIA_ACC,
     ROBONOMICS,
     ROBONOMICS_WSS_KUSAMA,
     ROBONOMICS_WSS_POLKADOT,
-    CONF_KUSAMA,
-    CONF_POLKADOT,
     RWS_DAYS_LEFT_NOTIFY,
     SUBSCRIPTION_LEFT_DAYS,
+    TELEMETRY_SENDER,
     TWIN_ID,
     ZERO_ACC,
-    LAUNCH_REGISTRATION_COMMAND,
-    DAPP_HASH_DATALOG_ADDRESS,
-    TELEMETRY_SENDER,
 )
 from .ipfs import (
     get_ipfs_data,
-    get_last_file_hash,
-    read_ipfs_local_file,
     pin_file_to_local_node_by_hash,
+    read_ipfs_local_file,
 )
 from .manage_users import UserManager
 from .utils import (
+    check_if_address_is_ed,
     create_notification,
     decrypt_message,
-    encrypt_for_devices,
-    to_thread,
     decrypt_message_devices,
+    encrypt_for_devices,
     encrypt_message,
-    check_if_address_is_ed,
+    to_thread,
 )
+from .ipfs_helpers.utils import IPFSLocalUtils
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ async def get_or_create_twin_id(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant instance
     """
     try:
-        config_name, _ = await get_last_file_hash(hass, IPFS_CONFIG_PATH, CONFIG_PREFIX)
+        config_name, _ = await IPFSLocalUtils(hass).get_last_file_hash(IPFS_CONFIG_PATH, CONFIG_PREFIX)
         current_config = await read_ipfs_local_file(hass, config_name, IPFS_CONFIG_PATH)
         _LOGGER.debug(f"Current twin id is {current_config['twin_id']}")
         hass.data[DOMAIN][TWIN_ID] = current_config["twin_id"]
@@ -208,21 +208,6 @@ async def _run_launch_command(
         )
     except Exception as e:
         _LOGGER.error(f"Exception in sending command: {e}")
-
-
-@callback
-async def _handle_backup_change(hass: HomeAssistant) -> None:
-    """Handle change a backup hash in digital twin.
-
-    :param hass: HomeAssistant instance
-    """
-
-    _LOGGER.debug("Start handle backup change")
-    service_data = {
-        "message": "Backup was updated in Robonomics",
-        "title": "Update Backup",
-    }
-    await create_notification(hass, service_data)
 
 
 class Robonomics:
@@ -376,7 +361,7 @@ class Robonomics:
                 self.hass.data[DOMAIN][SUBSCRIPTION_LEFT_DAYS] = rws_days_left
                 if rws_days_left <= RWS_DAYS_LEFT_NOTIFY:
                     service_data = {
-                        "message": f"""Your subscription will end soon. You can use it for another {rws_days_left} days, 
+                        "message": f"""Your subscription will end soon. You can use it for another {rws_days_left} days,
                                         after that it should be renewed. You can do it in [Robonomics DApp](https://robonomics.app/#/rws-buy).""",
                         "title": "Robonomics Subscription Expires",
                     }
@@ -462,7 +447,7 @@ class Robonomics:
             return identity["info"]["display"][key]
 
     async def get_backup_hash(self, twin_number: int) -> tp.Optional[str]:
-        """Getting hash for backup file from Datalog.
+        """Get hash for backup file from Datalog.
 
         :param twin_number: Twin number where hash for backup file stores
 
@@ -485,7 +470,7 @@ class Robonomics:
             return None
 
     async def set_backup_topic(self, ipfs_hash: str, twin_number: int) -> None:
-        """Create new topic in Digital Twin for updated backup
+        """Create new topic in Digital Twin for updated backup.
 
         :param ipfs_hash: Hash for current backup file
         :param twin_number: Twin number where hash for backup file stores
@@ -498,8 +483,21 @@ class Robonomics:
         except Exception as e:
             _LOGGER.error(f"Exception in set backup topic {e}")
 
+    async def remove_backup_topic(self, twin_number: int) -> None:
+        """Remove backup topic in Digital Twin.
+
+        :param twin_number: Twin number where hash for backup file stores
+        """
+
+        try:
+            await self.remove_twin_topic_for_address(
+                twin_number, self.sub_owner_address
+            )
+        except Exception as e:
+            _LOGGER.error(f"Exception in remove backup topic {e}")
+
     async def set_config_topic(self, ipfs_hash: str, twin_number: int) -> None:
-        """Create new topic in Digital Twin for updated config
+        """Create new topic in Digital Twin for updated config.
 
         :param ipfs_hash: Hash for current config file
         :param twin_number: Twin number where hash for config file stores
@@ -513,7 +511,7 @@ class Robonomics:
             _LOGGER.error(f"Exception in set config topic {e}")
 
     async def set_media_topic(self, ipfs_hash: str, twin_number: int) -> None:
-        """Create new topic in Digital Twin for updated media folder
+        """Create new topic in Digital Twin for updated media folder.
 
         :param ipfs_hash: Hash for the media folder
         :param twin_number: Twin number where hash stores
@@ -535,7 +533,7 @@ class Robonomics:
             else:
                 _LOGGER.debug(f"Twin topic for address {address} does not exist")
                 return
-        await self._set_twin_topic(bytes_hash, twin_number, address)
+        await self._set_twin_topic(bytes_hash, twin_number, ZERO_ACC)
 
     async def set_twin_topic_with_remove_old(
         self, ipfs_hash: str, twin_number: int, address: str
@@ -749,15 +747,15 @@ class Robonomics:
                     )
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
-            elif isinstance(data[1], int) and len(data) == 4:
-                if TWIN_ID in self.hass.data[DOMAIN]:
-                    if (
-                        data[1] == self.hass.data[DOMAIN][TWIN_ID]
-                        and data[3] == self.sub_owner_address
-                    ):  ## Change backup topic in Digital Twin
-                        asyncio.run_coroutine_threadsafe(
-                            _handle_backup_change(self.hass), self.hass.loop
-                        )
+            # elif isinstance(data[1], int) and len(data) == 4:
+            #     if TWIN_ID in self.hass.data[DOMAIN]:
+            #         if (
+            #             data[1] == self.hass.data[DOMAIN][TWIN_ID]
+            #             and data[3] == self.sub_owner_address
+            #         ):  ## Change backup topic in Digital Twin
+            #             asyncio.run_coroutine_threadsafe(
+            #                 _handle_backup_change(self.hass), self.hass.loop
+            #             )
             elif (
                 isinstance(data[1], int) and data[0] in self.devices_list
             ):  ## Datalog to change password
