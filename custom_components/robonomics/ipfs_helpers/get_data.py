@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import tarfile
 from io import BytesIO
+from collections.abc import AsyncIterator
 
 import aioipfs
 
@@ -44,6 +45,24 @@ class GetIPFSData:
         self.ipfs_hash = ipfs_hash
         self.gateways = self._get_gateways_list()
         self.max_number_of_requests = number_of_requests
+
+    async def get_file_data_stream(self) -> AsyncIterator[bytes] | None:
+        """Return an async iterator over the IPFS file data."""
+        res = await self._get_ipfs_data(is_directory=False)
+        if res is None:
+            return None
+
+        if isinstance(res, ClientResponse):
+            return res.content.iter_chunked(8192)
+        elif isinstance(res, str):
+            # Convert the string to a stream for consistency
+            async def string_stream(data: str) -> tp.AsyncIterator[bytes]:
+                yield data.encode()
+
+            return string_stream(res)
+
+        _LOGGER.error(f"Unexpected result type for streaming: {type(res)}")
+        return None
 
     async def get_file_data(self) -> tp.Optional[str]:
         res = await self._get_ipfs_data(is_directory=False)

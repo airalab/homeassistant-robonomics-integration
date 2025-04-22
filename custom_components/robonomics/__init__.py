@@ -42,7 +42,6 @@ from .const import (
     CONF_PINATA_SECRET,
     CONF_SENDING_TIMEOUT,
     CONF_SUB_OWNER_ADDRESS,
-    CREATE_BACKUP_SERVICE,
     DATA_PATH,
     DOMAIN,
     HANDLE_IPFS_REQUEST,
@@ -50,7 +49,6 @@ from .const import (
     IPFS_STATUS,
     PINATA,
     PLATFORMS,
-    RESTORE_BACKUP_SERVICE,
     ROBONOMICS,
     SAVE_VIDEO_SERVICE,
     TIME_CHANGE_COUNT,
@@ -82,8 +80,6 @@ from .ipfs_helpers.utils import IPFSLocalUtils
 from .manage_users import UserManager
 from .robonomics import Robonomics, get_or_create_twin_id
 from .services import (
-    restore_from_backup_service_call,
-    save_backup_service_call,
     save_video,
 )
 from .libp2p import LibP2P
@@ -117,12 +113,12 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
             minutes=entry.options[CONF_SENDING_TIMEOUT]
         )
         if (CONF_PINATA_PUB in entry.options) and (CONF_PINATA_SECRET in entry.options):
-            hass.data[DOMAIN][PINATA] = PinataPy(
-                entry.options[CONF_PINATA_PUB], entry.options[CONF_PINATA_SECRET]
-            )
+            hass.data[DOMAIN][CONF_PINATA_PUB] = entry.options[CONF_PINATA_PUB]
+            hass.data[DOMAIN][CONF_PINATA_SECRET] = entry.options[CONF_PINATA_SECRET]
             _LOGGER.debug("Use Pinata to pin files")
         else:
-            hass.data[DOMAIN][PINATA] = None
+            hass.data[DOMAIN].pop(CONF_PINATA_PUB)
+            hass.data[DOMAIN].pop(CONF_PINATA_SECRET)
             _LOGGER.debug("Use local node to pin files")
         hass.data[DOMAIN][TELEMETRY_SENDER].setup(hass.data[DOMAIN][CONF_SENDING_TIMEOUT])
         hass.data[DOMAIN][TIME_CHANGE_UNSUB]()
@@ -137,6 +133,9 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
             hass.data[DOMAIN][HANDLE_TIME_CHANGE_LIBP2P],
             timedelta(seconds=1),
         )
+        if DATA_BACKUP_AGENT_LISTENERS in hass.data:
+            for listener in hass.data[DATA_BACKUP_AGENT_LISTENERS]:
+                listener()
         _LOGGER.debug(f"HASS.data after: {hass.data[DOMAIN]}")
     except Exception as e:
         _LOGGER.error(f"Exception in update_listener: {e}")
@@ -222,12 +221,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if (CONF_PINATA_PUB in conf) and (CONF_PINATA_SECRET in conf):
         hass.data[DOMAIN][CONF_PINATA_PUB] = conf[CONF_PINATA_PUB]
         hass.data[DOMAIN][CONF_PINATA_SECRET] = conf[CONF_PINATA_SECRET]
-        hass.data[DOMAIN][PINATA] = PinataPy(
-            hass.data[DOMAIN][CONF_PINATA_PUB], hass.data[DOMAIN][CONF_PINATA_SECRET]
-        )
         _LOGGER.debug("Use Pinata to pin files")
     else:
-        hass.data[DOMAIN][PINATA] = None
         _LOGGER.debug("Use local node to pin files")
     hass.data[DOMAIN][IPFS_STATUS] = "OK"
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -343,27 +338,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, f"sensor.{IPFS_STATUS_ENTITY}", ipfs_daemon_state_changed
     )
 
-    async def handle_save_backup(call: ServiceCall) -> None:
-        """Callback for save_backup_to_robonomics service.
-        It creates secure backup, adds to IPFS and updates
-        the Digital Twin topic.
-        """
-
-        if TWIN_ID not in hass.data[DOMAIN]:
-            _LOGGER.debug("There is no twin id. Looking for one...")
-            await get_or_create_twin_id(hass)
-        await save_backup_service_call(hass, call, controller_account)
-
-    async def handle_restore_from_backup(call: ServiceCall) -> None:
-        """Callback for restore_from_robonomics_backup service.
-        It restores configuration file from backup.
-        """
-
-        if TWIN_ID not in hass.data[DOMAIN]:
-            _LOGGER.debug("There is no twin id. Looking for one...")
-            await get_or_create_twin_id(hass)
-        await restore_from_backup_service_call(hass, call, controller_account)
-
     async def handle_save_video(call: ServiceCall) -> None:
         """Callback for save_video_to_robonomics service"""
         if "entity_id" in call.data:
@@ -381,10 +355,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await save_video(hass, target, path, duration, controller_account)
 
     hass.services.async_register(DOMAIN, SAVE_VIDEO_SERVICE, handle_save_video)
-    hass.services.async_register(DOMAIN, CREATE_BACKUP_SERVICE, handle_save_backup)
-    hass.services.async_register(
-        DOMAIN, RESTORE_BACKUP_SERVICE, handle_restore_from_backup
-    )
 
     hass.data[DOMAIN][TIME_CHANGE_UNSUB] = async_track_time_interval(
         hass,

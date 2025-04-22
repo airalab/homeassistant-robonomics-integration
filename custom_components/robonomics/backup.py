@@ -6,16 +6,18 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 import logging
 from typing import Any
 
-from google_drive_api.exceptions import GoogleDriveApiError
-
 from homeassistant.components.backup import AgentBackup, BackupAgent, BackupAgentError
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import ChunkAsyncStreamIterator
 from homeassistant.util import slugify
+import json
 
-from .const import DOMAIN
+from .const import DOMAIN, ROBONOMICS, TWIN_ID, CONF_PINATA_PUB, CONF_PINATA_SECRET
 from . import DATA_BACKUP_AGENT_LISTENERS
+from .ipfs_helpers.add_gateways import PinataGateway
+from .ipfs_helpers.get_data import GetIPFSData
+from .robonomics import Robonomics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,8 +27,10 @@ async def async_get_backup_agents(
     **kwargs: Any,
 ) -> list[BackupAgent]:
     """Return a list of backup agents."""
-    entries = hass.config_entries.async_loaded_entries(DOMAIN)
-    return [RobonomicsBackupAgent()]
+    if hass.data[DOMAIN].get(CONF_PINATA_PUB) and hass.data[DOMAIN].get(CONF_PINATA_SECRET):
+        return [RobonomicsBackupAgent(hass)]
+    else:
+        return []
 
 
 @callback
@@ -59,10 +63,13 @@ class RobonomicsBackupAgent(BackupAgent):
     name = "Robonomics Backup-Agent"
     unique_id = "robonomics"
 
-    def __init__(self) -> None:
+    def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the cloud backup sync agent."""
         super().__init__()
-        self.backup_names = {}
+        self.cached_backups_meta: dict | None = None
+        self.last_backup_meta_hash: str | None = None
+        self.hass = hass
+        self.robonomics: Robonomics = self.hass.data[DOMAIN][ROBONOMICS]
 
     async def async_upload_backup(
         self,
@@ -79,19 +86,27 @@ class RobonomicsBackupAgent(BackupAgent):
         try:
             _LOGGER.debug("Uploading backup_id: %s", backup.backup_id)
             _LOGGER.debug("Uploading backup: %s", backup.as_dict())
-            self.backup_names[backup.backup_id] = backup.as_dict()
-        except (GoogleDriveApiError, HomeAssistantError, TimeoutError) as err:
+            backup_ipfs_hash, _ = await PinataGateway(self.hass).add_from_stream(open_stream, backup.name.replace(" ", "_"))
+            _LOGGER.debug("Backup IPFS hash: %s", backup_ipfs_hash)
+            old_backup_meta = await self._get_backups_meta()
+            _LOGGER.debug("Old backup meta: %s", old_backup_meta)
+            old_backup_meta[backup.backup_id] = {"meta": backup.as_dict(), "ipfs_hash": backup_ipfs_hash}
+            _LOGGER.debug("New backup meta: %s", old_backup_meta)
+            await self._set_new_backup_meta(old_backup_meta)
+        except (HomeAssistantError, TimeoutError) as err:
             raise BackupAgentError(f"Failed to upload backup: {err}") from err
 
     async def async_list_backups(self, **kwargs: Any) -> list[AgentBackup]:
         """List backups."""
         try:
+            _LOGGER.debug("Listing backups")
             backups = []
-            for backup in self.backup_names.values():
+            backups_meta = await self._get_backups_meta()
+            for backup in backups_meta.values():
                 _LOGGER.debug("Listing backup: %s", backup)
-                backups.append(AgentBackup.from_dict(backup))
+                backups.append(AgentBackup.from_dict(backup["meta"]))
             return backups
-        except (GoogleDriveApiError, HomeAssistantError, TimeoutError) as err:
+        except (HomeAssistantError, TimeoutError) as err:
             raise BackupAgentError(f"Failed to list backups: {err}") from err
 
     async def async_get_backup(
@@ -117,7 +132,10 @@ class RobonomicsBackupAgent(BackupAgent):
         :return: An async iterator that yields bytes.
         """
         _LOGGER.debug("Downloading backup_id: %s", backup_id)
-        raise BackupAgentError("Backup not found")
+        backup_hash = self.cached_backups_meta.get(backup_id, {}).get("ipfs_hash")
+        if backup_hash is None:
+            raise BackupAgentError(f"Backup with ID {backup_id} not found.")
+        return await GetIPFSData(self.hass, backup_hash).get_file_data_stream()
 
     async def async_delete_backup(
         self,
@@ -129,7 +147,48 @@ class RobonomicsBackupAgent(BackupAgent):
         :param backup_id: The ID of the backup that was returned in async_list_backups.
         """
         _LOGGER.debug("Deleting backup_id: %s", backup_id)
+        backups_meta = await self._get_backups_meta()
         try:
-            self.backup_names.pop(backup_id, None)
-        except (GoogleDriveApiError, HomeAssistantError, TimeoutError) as err:
+            backup_data = backups_meta.pop(backup_id, None)
+            if backup_data is not None:
+                backup_ipfs_hash = backup_data["ipfs_hash"]
+                _LOGGER.debug("Deleting backup IPFS hash: %s", backup_ipfs_hash)
+                await PinataGateway(self.hass).remove(backup_ipfs_hash)
+                await self._set_new_backup_meta(backups_meta)
+        except (HomeAssistantError, TimeoutError) as err:
             raise BackupAgentError(f"Failed to delete backup: {err}") from err
+
+    async def _get_backups_meta(self) -> dict:
+        """Get backups meta from IPFS."""
+        if self.cached_backups_meta is not None:
+            return self.cached_backups_meta
+        backup_meta_hash = await self.robonomics.get_backup_hash(self.hass.data[DOMAIN][TWIN_ID])
+        _LOGGER.debug(f"Backup meta hash: {backup_meta_hash}")
+        self.last_backup_meta_hash = backup_meta_hash
+        if backup_meta_hash is None:
+            return {}
+        try:
+            backups_meta = await GetIPFSData(self.hass, backup_meta_hash).get_file_data()
+            backups_meta = json.loads(backups_meta)
+            self.cached_backups_meta = backups_meta
+        except Exception as e:
+            _LOGGER.error(f"Error getting backups meta: {e}")
+            return {}
+        return backups_meta
+
+    async def _set_new_backup_meta(self, new_backup_meta: dict) -> None:
+        """Set new backup meta."""
+        self.cached_backups_meta = new_backup_meta
+        if new_backup_meta == {}:
+            await PinataGateway(self.hass).remove(self.last_backup_meta_hash)
+            await self.robonomics.remove_backup_topic(self.hass.data[DOMAIN][TWIN_ID])
+            self.last_backup_meta_hash = None
+            return
+        new_ipfs_hash = await PinataGateway(self.hass).add_json(new_backup_meta)
+        _LOGGER.debug(f"New backup meta IPFS hash: {new_ipfs_hash}")
+        await PinataGateway(self.hass).remove(self.last_backup_meta_hash)
+        self.last_backup_meta_hash = new_ipfs_hash
+        if self.last_backup_meta_hash is not None:
+            await self.robonomics.set_backup_topic(
+                self.last_backup_meta_hash, self.hass.data[DOMAIN][TWIN_ID]
+            )

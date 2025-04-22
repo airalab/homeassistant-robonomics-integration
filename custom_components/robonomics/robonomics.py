@@ -210,21 +210,6 @@ async def _run_launch_command(
         _LOGGER.error(f"Exception in sending command: {e}")
 
 
-@callback
-async def _handle_backup_change(hass: HomeAssistant) -> None:
-    """Handle change a backup hash in digital twin.
-
-    :param hass: HomeAssistant instance
-    """
-
-    _LOGGER.debug("Start handle backup change")
-    service_data = {
-        "message": "Backup was updated in Robonomics",
-        "title": "Update Backup",
-    }
-    await create_notification(hass, service_data)
-
-
 class Robonomics:
     """Represents methods to interact with Robonomics parachain"""
 
@@ -462,7 +447,7 @@ class Robonomics:
             return identity["info"]["display"][key]
 
     async def get_backup_hash(self, twin_number: int) -> tp.Optional[str]:
-        """Getting hash for backup file from Datalog.
+        """Get hash for backup file from Datalog.
 
         :param twin_number: Twin number where hash for backup file stores
 
@@ -485,7 +470,7 @@ class Robonomics:
             return None
 
     async def set_backup_topic(self, ipfs_hash: str, twin_number: int) -> None:
-        """Create new topic in Digital Twin for updated backup
+        """Create new topic in Digital Twin for updated backup.
 
         :param ipfs_hash: Hash for current backup file
         :param twin_number: Twin number where hash for backup file stores
@@ -498,8 +483,21 @@ class Robonomics:
         except Exception as e:
             _LOGGER.error(f"Exception in set backup topic {e}")
 
+    async def remove_backup_topic(self, twin_number: int) -> None:
+        """Remove backup topic in Digital Twin.
+
+        :param twin_number: Twin number where hash for backup file stores
+        """
+
+        try:
+            await self.remove_twin_topic_for_address(
+                twin_number, self.sub_owner_address
+            )
+        except Exception as e:
+            _LOGGER.error(f"Exception in remove backup topic {e}")
+
     async def set_config_topic(self, ipfs_hash: str, twin_number: int) -> None:
-        """Create new topic in Digital Twin for updated config
+        """Create new topic in Digital Twin for updated config.
 
         :param ipfs_hash: Hash for current config file
         :param twin_number: Twin number where hash for config file stores
@@ -513,7 +511,7 @@ class Robonomics:
             _LOGGER.error(f"Exception in set config topic {e}")
 
     async def set_media_topic(self, ipfs_hash: str, twin_number: int) -> None:
-        """Create new topic in Digital Twin for updated media folder
+        """Create new topic in Digital Twin for updated media folder.
 
         :param ipfs_hash: Hash for the media folder
         :param twin_number: Twin number where hash stores
@@ -535,7 +533,7 @@ class Robonomics:
             else:
                 _LOGGER.debug(f"Twin topic for address {address} does not exist")
                 return
-        await self._set_twin_topic(bytes_hash, twin_number, address)
+        await self._set_twin_topic(bytes_hash, twin_number, ZERO_ACC)
 
     async def set_twin_topic_with_remove_old(
         self, ipfs_hash: str, twin_number: int, address: str
@@ -749,15 +747,15 @@ class Robonomics:
                     )
                 else:
                     _LOGGER.debug(f"Got launch from not linked device: {data[0]}")
-            elif isinstance(data[1], int) and len(data) == 4:
-                if TWIN_ID in self.hass.data[DOMAIN]:
-                    if (
-                        data[1] == self.hass.data[DOMAIN][TWIN_ID]
-                        and data[3] == self.sub_owner_address
-                    ):  ## Change backup topic in Digital Twin
-                        asyncio.run_coroutine_threadsafe(
-                            _handle_backup_change(self.hass), self.hass.loop
-                        )
+            # elif isinstance(data[1], int) and len(data) == 4:
+            #     if TWIN_ID in self.hass.data[DOMAIN]:
+            #         if (
+            #             data[1] == self.hass.data[DOMAIN][TWIN_ID]
+            #             and data[3] == self.sub_owner_address
+            #         ):  ## Change backup topic in Digital Twin
+            #             asyncio.run_coroutine_threadsafe(
+            #                 _handle_backup_change(self.hass), self.hass.loop
+            #             )
             elif (
                 isinstance(data[1], int) and data[0] in self.devices_list
             ):  ## Datalog to change password

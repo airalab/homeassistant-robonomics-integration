@@ -1,8 +1,7 @@
 """
 This module contains functions to work with IPFS. It allows to send and receive files from IPFS.
 
-To start work with this module check next functions - add_telemetry_to_ipfs(), add_config_to_ipfs(),
-add_backup_to_ipfs(), create_folders() and get_ipfs_data().
+To start work with this module check next functions - add_telemetry_to_ipfs(), add_config_to_ipfs(), create_folders() and get_ipfs_data().
 """
 
 from __future__ import annotations
@@ -19,24 +18,19 @@ import time
 import ipfshttpclient2
 from crustinterface import Mainnet
 from homeassistant.core import HomeAssistant
-from homeassistant.components.hassio import is_hassio
+from homeassistant.helpers.hassio import is_hassio
 from pinatapy import PinataPy
 from robonomicsinterface.utils import web_3_auth
 from substrateinterface import KeypairType
 
 from .const import (
-    BACKUP_ENCRYPTED_PREFIX,
-    BACKUP_PREFIX,
     CONF_ADMIN_SEED,
     CONF_IPFS_GATEWAY,
-    CONF_IPFS_GATEWAY_AUTH,
-    CONF_IPFS_GATEWAY_PORT,
     CONF_PINATA_PUB,
     CONF_PINATA_SECRET,
     CONFIG_ENCRYPTED_PREFIX,
     CONFIG_PREFIX,
     DOMAIN,
-    IPFS_BACKUP_PATH,
     IPFS_CONFIG_PATH,
     IPFS_MAX_FILE_NUMBER,
     IPFS_MEDIA_PATH,
@@ -55,7 +49,7 @@ from .utils import (
     FileSystemUtils
 )
 from .ipfs_helpers.decorators import catch_ipfs_errors, catch_ipfs_errors_async
-from .ipfs_helpers.add_gateways import CustomGateway, LocalGateway
+from .ipfs_helpers.add_gateways import CustomGateway, LocalGateway, PinataGateway
 from .ipfs_helpers.get_data import GetIPFSData
 from .ipfs_helpers.utils import IPFSLocalUtils
 from .exceptions import CantConnectToIPFS
@@ -212,41 +206,6 @@ async def add_config_to_ipfs(
     return ipfs_hash
 
 
-async def add_backup_to_ipfs(
-    hass: HomeAssistant, filename_encrypted: str
-) -> tp.Optional[str]:
-    """Send backup file to IPFS
-
-    :param hass: Home Assistant instance
-    :param filename: file with full Home Assistant backup
-    :param filename_encrypted: encrypted file with full Home Assistant backup
-
-    :return: IPFS hash of the file
-    """
-
-    last_file_info = await IPFSLocalUtils(hass).get_last_file_hash(
-        IPFS_BACKUP_PATH, prefix=BACKUP_ENCRYPTED_PREFIX
-    )
-    if last_file_info is None:
-        last_file_info = (None, None)
-    last_file_encrypted_name, last_file_encrypted_hash = (
-        last_file_info[0],
-        last_file_info[1],
-    )
-
-    ipfs_hash, size = await _add_to_ipfs(
-        hass,
-        filename_encrypted,
-        IPFS_BACKUP_PATH,
-        False,
-        last_file_encrypted_hash,
-        last_file_encrypted_name,
-    )
-    await hass.async_add_executor_job(_upload_to_crust, hass, ipfs_hash, size)
-
-    return ipfs_hash
-
-
 async def add_media_to_ipfs(hass: HomeAssistant, filename: str) -> tp.Optional[str]:
     """Send media file to IPFS
 
@@ -306,9 +265,6 @@ async def create_folders(hass: HomeAssistant) -> None:
         if IPFS_TELEMETRY_PATH[1:] not in folder_names:
             await client.files.mkdir(IPFS_TELEMETRY_PATH)
             _LOGGER.debug(f"IPFS folder {IPFS_TELEMETRY_PATH} created")
-        if IPFS_BACKUP_PATH[1:] not in folder_names:
-            await client.files.mkdir(IPFS_BACKUP_PATH)
-            _LOGGER.debug(f"IPFS folder {IPFS_BACKUP_PATH} created")
         if IPFS_CONFIG_PATH[1:] not in folder_names:
             await client.files.mkdir(IPFS_CONFIG_PATH)
             _LOGGER.debug(f"IPFS folder {IPFS_CONFIG_PATH} created")
@@ -382,49 +338,6 @@ async def _check_save_previous_pin(hass: HomeAssistant, filename: str) -> bool:
         return True
 
 
-def _add_to_pinata(
-    hass: HomeAssistant,
-    filename: str,
-    pinata: PinataPy,
-    pin: bool,
-    last_file_hash: tp.Optional[str] = None,
-) -> tp.Tuple[tp.Optional[str], tp.Optional[int]]:
-    """Add file to Pinata service
-
-    :param hass:  Home Assistant instance
-    :param filename: file with data
-    :param pinata: pinata client object
-    :param pin: should save previous pin or not
-    :param last_file_hash: hash of file, which should be unpinned(if needed)
-
-    :return: IPFS hash of the file and file size in IPFS
-    """
-
-    _LOGGER.debug(f"Start adding {filename} to Pinata, pin: {pin}")
-    if not pin:
-        try:
-            pinata.remove_pin_from_ipfs(last_file_hash)
-            _LOGGER.debug(f"CID {last_file_hash} was unpinned from Pinata")
-            hass.data[DOMAIN][PINATA] = PinataPy(
-                hass.data[DOMAIN][CONF_PINATA_PUB],
-                hass.data[DOMAIN][CONF_PINATA_SECRET],
-            )
-        except Exception as e:
-            _LOGGER.warning(f"Exception in unpinning file from Pinata: {e}")
-    try:
-        res = None
-        res = pinata.pin_file_to_ipfs(filename, save_absolute_paths=False)
-        ipfs_hash: tp.Optional[str] = res["IpfsHash"]
-        ipfs_file_size: tp.Optional[int] = int(res["PinSize"])
-        _LOGGER.debug(f"File {filename} was added to Pinata with cid: {ipfs_hash}")
-    except Exception as e:
-        _LOGGER.error(f"Exception in pinata pin: {e}, pinata response: {res}")
-        ipfs_hash = None
-        ipfs_file_size = None
-        return ipfs_hash, ipfs_file_size
-    return ipfs_hash, ipfs_file_size
-
-
 def _upload_to_crust(
     hass: HomeAssistant, ipfs_hash: str, file_size: int
 ) -> tp.Optional[tp.Tuple[str, str]]:
@@ -488,8 +401,8 @@ async def _add_to_ipfs(
 
     pinata_ipfs_file_size, local_ipfs_file_size, custom_ipfs_file_size = 0, 0, 0
 
-    if hass.data[DOMAIN][PINATA] is not None:
-        added_hash_and_size = await hass.async_add_executor_job(_add_to_pinata, hass, filename, hass.data[DOMAIN][PINATA], pin, last_file_hash)
+    if hass.data[DOMAIN].get(CONF_PINATA_PUB) and hass.data[DOMAIN].get(CONF_PINATA_SECRET):
+        added_hash_and_size = await PinataGateway(hass).add(filename, pin, last_file_hash)
         pinata_hash, pinata_ipfs_file_size = (
             (added_hash_and_size[0], added_hash_and_size[1])
             if added_hash_and_size is not None
