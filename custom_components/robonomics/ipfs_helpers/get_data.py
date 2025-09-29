@@ -92,7 +92,6 @@ class GetIPFSData:
 
     def _get_gateways_list(self) -> tp.List[str]:
         gateways = [
-            IPFS_GATEWAY,
             MORALIS_GATEWAY,
             PINATA_GATEWAY,
             CRUST_GATEWAY_1,
@@ -179,6 +178,11 @@ class GetIPFSData:
         _LOGGER.debug(f"Response from {url} is {resp.status}")
         if resp.status == 200:
             if self.handle_ipfs_request:
+                data = await resp.read()
+                content_length = resp.headers.get("Content-Length")
+                if content_length is not None and len(data) != int(content_length):
+                    _LOGGER.warning(f"Incomplete file received: expected {content_length} bytes, got {len(data)} bytes")
+                    return None
                 self.handle_ipfs_request = False
                 return resp
             else:
