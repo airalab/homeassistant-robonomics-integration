@@ -3,7 +3,7 @@ import logging
 import json
 import typing as tp
 from homeassistant.core import HomeAssistant
-from homeassistant.components.hassio import is_hassio
+from homeassistant.helpers.hassio import is_hassio
 
 from .const import (
     LIBP2P_WS_SERVER,
